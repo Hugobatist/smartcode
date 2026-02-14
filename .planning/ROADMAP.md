@@ -13,7 +13,7 @@ SmartB Diagrams transforms from an internal Python prototype into a production T
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Project Bootstrap + Diagram Core** - TypeScript foundation, npm package structure, and diagram parsing/annotation service
-- [ ] **Phase 2: HTTP Server** - Serve browser UI, REST endpoints for diagram content, static asset bundling
+- [x] **Phase 2: HTTP Server** - Serve browser UI, REST endpoints for diagram content, static asset bundling
 - [ ] **Phase 3: WebSocket + Real-Time Sync** - File watcher, WebSocket broadcast, live updates replacing polling
 - [ ] **Phase 4: Interactive Browser UI** - Pan/zoom, keyboard shortcuts, flag interactions, export, file tree navigation
 - [ ] **Phase 5: MCP Server** - AI tool integration via stdio transport with tools and resources
@@ -50,8 +50,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — HTTP server core with CLI serve command, all live.html endpoints, REST API, CORS, port fallback
-- [ ] 02-02-PLAN.md — Status color classDef injection, structured error display with line numbers, server integration tests
+- [x] 02-01-PLAN.md — HTTP server core with CLI serve command, all live.html endpoints, REST API, CORS, port fallback
+- [x] 02-02-PLAN.md — Status color classDef injection, structured error display with line numbers, server integration tests
 
 ### Phase 3: WebSocket + Real-Time Sync
 **Goal**: Diagram changes propagate instantly to all connected browsers without manual refresh
@@ -162,7 +162,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Project Bootstrap + Diagram Core | 2/2 | ✓ Complete | 2026-02-14 |
-| 2. HTTP Server | 0/2 | Not started | - |
+| 2. HTTP Server | 2/2 | ✓ Complete | 2026-02-14 |
 | 3. WebSocket + Real-Time Sync | 0/3 | Not started | - |
 | 4. Interactive Browser UI | 0/3 | Not started | - |
 | 5. MCP Server | 0/3 | Not started | - |
