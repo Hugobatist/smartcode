@@ -127,7 +127,7 @@ Deferred to future release. Tracked but not in current roadmap.
 
 | Feature | Reason |
 |---------|--------|
-| Full visual diagram editor (draw.io style) | Breaks text-based design principle; maintaining bidirectional visual↔text sync is a rabbit hole |
+| Full visual diagram editor (draw.io style) | Breaks text-based design principle; maintaining bidirectional visual<>text sync is a rabbit hole |
 | Support for all 13 Mermaid diagram types | Only flowchart and state diagrams map to AI reasoning; others add complexity without value |
 | Cloud sync / SaaS hosting | Violates local-first principle; competes with Mermaid Chart Pro on their turf |
 | AI model selection / prompt engineering UI | SmartB is observability, not an AI coding tool; would compete with Cursor/Copilot |
@@ -145,7 +145,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | CORE-01 | Phase 1 | Pending |
 | CORE-02 | Phase 1 | Pending |
-| CORE-03 | Phase 1 | Pending |
+| CORE-03 | Phase 2 | Pending |
 | CORE-04 | Phase 1 | Pending |
 | CORE-05 | Phase 1 | Pending |
 | DIAG-01 | Phase 1 | Pending |
@@ -154,64 +154,64 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DIAG-04 | Phase 1 | Pending |
 | DIAG-05 | Phase 1 | Pending |
 | DIAG-06 | Phase 1 | Pending |
-| HTTP-01 | Phase 1 | Pending |
-| HTTP-02 | Phase 1 | Pending |
-| HTTP-03 | Phase 1 | Pending |
-| HTTP-04 | Phase 1 | Pending |
-| HTTP-05 | Phase 1 | Pending |
-| WS-01 | Phase 2 | Pending |
-| WS-02 | Phase 2 | Pending |
-| WS-03 | Phase 2 | Pending |
-| WS-04 | Phase 2 | Pending |
-| WS-05 | Phase 2 | Pending |
-| WS-06 | Phase 2 | Pending |
+| HTTP-01 | Phase 2 | Pending |
+| HTTP-02 | Phase 2 | Pending |
+| HTTP-03 | Phase 2 | Pending |
+| HTTP-04 | Phase 2 | Pending |
+| HTTP-05 | Phase 2 | Pending |
+| WS-01 | Phase 3 | Pending |
+| WS-02 | Phase 3 | Pending |
+| WS-03 | Phase 3 | Pending |
+| WS-04 | Phase 3 | Pending |
+| WS-05 | Phase 3 | Pending |
+| WS-06 | Phase 3 | Pending |
 | UI-01 | Phase 2 | Pending |
-| UI-02 | Phase 2 | Pending |
-| UI-03 | Phase 2 | Pending |
+| UI-02 | Phase 4 | Pending |
+| UI-03 | Phase 4 | Pending |
 | UI-04 | Phase 2 | Pending |
-| UI-05 | Phase 2 | Pending |
-| UI-06 | Phase 2 | Pending |
+| UI-05 | Phase 4 | Pending |
+| UI-06 | Phase 4 | Pending |
 | UI-07 | Phase 2 | Pending |
-| UI-08 | Phase 2 | Pending |
-| UI-09 | Phase 2 | Pending |
-| UI-10 | Phase 2 | Pending |
-| MCP-01 | Phase 3 | Pending |
-| MCP-02 | Phase 3 | Pending |
-| MCP-03 | Phase 3 | Pending |
-| MCP-04 | Phase 3 | Pending |
-| MCP-05 | Phase 3 | Pending |
-| MCP-06 | Phase 3 | Pending |
-| MCP-07 | Phase 3 | Pending |
-| MCP-08 | Phase 3 | Pending |
-| MCP-09 | Phase 3 | Pending |
-| MCP-10 | Phase 3 | Pending |
-| VSC-01 | Phase 4 | Pending |
-| VSC-02 | Phase 4 | Pending |
-| VSC-03 | Phase 4 | Pending |
-| VSC-04 | Phase 4 | Pending |
-| VSC-05 | Phase 4 | Pending |
-| VSC-06 | Phase 4 | Pending |
-| VSC-07 | Phase 4 | Pending |
-| SCALE-01 | Phase 5 | Pending |
-| SCALE-02 | Phase 5 | Pending |
-| SCALE-03 | Phase 5 | Pending |
-| SCALE-04 | Phase 5 | Pending |
-| DX-01 | Phase 3 | Pending |
-| DX-02 | Phase 1 | Pending |
-| DX-03 | Phase 3 | Pending |
-| DX-04 | Phase 3 | Pending |
-| DX-05 | Phase 5 | Pending |
-| DX-06 | Phase 1 | Pending |
-| AI-01 | Phase 3 | Pending |
-| AI-02 | Phase 5 | Pending |
-| AI-03 | Phase 5 | Pending |
-| AI-04 | Phase 3 | Pending |
+| UI-08 | Phase 4 | Pending |
+| UI-09 | Phase 4 | Pending |
+| UI-10 | Phase 3 | Pending |
+| MCP-01 | Phase 5 | Pending |
+| MCP-02 | Phase 5 | Pending |
+| MCP-03 | Phase 5 | Pending |
+| MCP-04 | Phase 5 | Pending |
+| MCP-05 | Phase 5 | Pending |
+| MCP-06 | Phase 5 | Pending |
+| MCP-07 | Phase 5 | Pending |
+| MCP-08 | Phase 5 | Pending |
+| MCP-09 | Phase 5 | Pending |
+| MCP-10 | Phase 5 | Pending |
+| VSC-01 | Phase 7 | Pending |
+| VSC-02 | Phase 7 | Pending |
+| VSC-03 | Phase 7 | Pending |
+| VSC-04 | Phase 7 | Pending |
+| VSC-05 | Phase 7 | Pending |
+| VSC-06 | Phase 7 | Pending |
+| VSC-07 | Phase 7 | Pending |
+| SCALE-01 | Phase 8 | Pending |
+| SCALE-02 | Phase 8 | Pending |
+| SCALE-03 | Phase 8 | Pending |
+| SCALE-04 | Phase 8 | Pending |
+| DX-01 | Phase 6 | Pending |
+| DX-02 | Phase 6 | Pending |
+| DX-03 | Phase 6 | Pending |
+| DX-04 | Phase 6 | Pending |
+| DX-05 | Phase 6 | Pending |
+| DX-06 | Phase 6 | Pending |
+| AI-01 | Phase 6 | Pending |
+| AI-02 | Phase 6 | Pending |
+| AI-03 | Phase 6 | Pending |
+| AI-04 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 57 total
-- Mapped to phases: 57
-- Unmapped: 0 ✓
+- v1 requirements: 63 total
+- Mapped to phases: 63
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-14*
-*Last updated: 2026-02-14 after initial definition*
+*Last updated: 2026-02-14 after roadmap creation*
