@@ -47,12 +47,11 @@ Plans:
   2. REST endpoints list available .mmd files and return individual diagram content as JSON
   3. Diagram nodes display color-coded status (green/red/yellow/gray) and malformed Mermaid syntax shows inline error messages with line numbers
   4. CORS headers are present so the browser UI works during local development
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 02-01: HTTP server with configurable port, graceful fallback, CORS, static asset serving
-- [ ] 02-02: REST API endpoints for diagram listing and content retrieval
-- [ ] 02-03: Browser UI foundation — Mermaid.js rendering, status colors, syntax error display
+- [ ] 02-01-PLAN.md — HTTP server core with CLI serve command, all live.html endpoints, REST API, CORS, port fallback
+- [ ] 02-02-PLAN.md — Status color classDef injection, structured error display with line numbers, server integration tests
 
 ### Phase 3: WebSocket + Real-Time Sync
 **Goal**: Diagram changes propagate instantly to all connected browsers without manual refresh
@@ -163,7 +162,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Project Bootstrap + Diagram Core | 2/2 | ✓ Complete | 2026-02-14 |
-| 2. HTTP Server | 0/3 | Not started | - |
+| 2. HTTP Server | 0/2 | Not started | - |
 | 3. WebSocket + Real-Time Sync | 0/3 | Not started | - |
 | 4. Interactive Browser UI | 0/3 | Not started | - |
 | 5. MCP Server | 0/3 | Not started | - |
