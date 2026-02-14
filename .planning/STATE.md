@@ -9,28 +9,28 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 
 ## Current Position
 
-Phase: 1 of 8 (Project Bootstrap + Diagram Core)
-Plan: 1 of 2 in current phase
-Status: Executing
-Last activity: 2026-02-14 — Completed 01-01 (Project Bootstrap scaffolding)
+Phase: 1 of 8 (Project Bootstrap + Diagram Core) -- COMPLETE
+Plan: 2 of 2 in current phase (all plans complete)
+Status: Phase Complete
+Last activity: 2026-02-14 — Completed 01-02 (Diagram Service)
 
-Progress: [█░░░░░░░░░] 6%
+Progress: [██░░░░░░░░] 13%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 1
-- Average duration: 3min
-- Total execution time: 0.05 hours
+- Total plans completed: 2
+- Average duration: 4.5min
+- Total execution time: 0.15 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| 01-project-bootstrap-diagram-core | 1 | 3min | 3min |
+| 01-project-bootstrap-diagram-core | 2 | 9min | 4.5min |
 
 **Recent Trend:**
-- Last 5 plans: 3min
+- Last 5 plans: 3min, 6min
 - Trend: baseline
 
 *Updated after each plan completion*
@@ -48,6 +48,9 @@ Recent decisions affecting current work:
 - [01-01]: Hardcoded version string in CLI instead of importing package.json to avoid ESM import assertion complexity
 - [01-01]: tsup onSuccess callback with cpSync for cross-platform static asset copy instead of shell cp command
 - [01-01]: Type-only barrel export in index.ts -- runtime exports are empty, types are in dist/index.d.ts
+- [01-02]: Node.js built-in fs.glob instead of fast-glob to avoid CJS-to-ESM bundling issues with tsup
+- [01-02]: Regex heuristic validator instead of @mermaid-js/parser since it lacks flowchart support
+- [01-02]: Annotation block format with %% --- ANNOTATIONS (auto-managed by SmartB Diagrams) --- markers
 
 ### Pending Todos
 
@@ -61,5 +64,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-14
-Stopped at: Completed 01-01-PLAN.md (Project Bootstrap scaffolding)
+Stopped at: Completed 01-02-PLAN.md (Diagram Service -- Phase 1 complete)
 Resume file: None
