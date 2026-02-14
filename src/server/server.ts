@@ -64,27 +64,14 @@ export async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
 }
 
 /**
- * Start the HTTP server for the diagram viewer.
- *
- * - Creates a DiagramService bound to the project directory
- * - Detects an available port (falls back if preferred port is in use)
- * - Serves static assets from getStaticDir() and diagram files from project dir
- * - Registers all routes (live.html endpoints + REST API)
- * - Opens the browser automatically (unless disabled)
- * - Handles graceful shutdown on SIGINT
+ * Create the HTTP request handler for the diagram server.
+ * This is the core handler logic shared between startServer and createHttpServer.
  */
-export async function startServer(options: ServerOptions): Promise<void> {
-  const projectDir = path.resolve(options.dir);
-  const service = new DiagramService(projectDir);
-  const staticDir = getStaticDir();
-  const routes = registerRoutes(service, projectDir);
-
-  const actualPort = await detect(options.port);
-  if (actualPort !== options.port) {
-    log.warn(`Port ${options.port} is in use, using port ${actualPort}`);
-  }
-
-  const handler = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+function createHandler(
+  routes: Route[],
+  staticDir: string,
+) {
+  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     try {
       const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
@@ -132,8 +119,21 @@ export async function startServer(options: ServerOptions): Promise<void> {
       sendJson(res, { error: message }, 500);
     }
   };
+}
 
-  const server = createServer((req, res) => {
+/**
+ * Create an http.Server instance for the given project directory.
+ * Used for integration testing (port 0) and as the core of startServer.
+ * Returns the raw http.Server so the caller controls listening and shutdown.
+ */
+export function createHttpServer(projectDir: string): ReturnType<typeof createServer> {
+  const resolvedDir = path.resolve(projectDir);
+  const service = new DiagramService(resolvedDir);
+  const staticDir = getStaticDir();
+  const routes = registerRoutes(service, resolvedDir);
+  const handler = createHandler(routes, staticDir);
+
+  return createServer((req, res) => {
     handler(req, res).catch((err) => {
       log.error('Unhandled error:', err);
       if (!res.headersSent) {
@@ -141,6 +141,27 @@ export async function startServer(options: ServerOptions): Promise<void> {
       }
     });
   });
+}
+
+/**
+ * Start the HTTP server for the diagram viewer.
+ *
+ * - Creates a DiagramService bound to the project directory
+ * - Detects an available port (falls back if preferred port is in use)
+ * - Serves static assets from getStaticDir() and diagram files from project dir
+ * - Registers all routes (live.html endpoints + REST API)
+ * - Opens the browser automatically (unless disabled)
+ * - Handles graceful shutdown on SIGINT
+ */
+export async function startServer(options: ServerOptions): Promise<void> {
+  const projectDir = path.resolve(options.dir);
+
+  const actualPort = await detect(options.port);
+  if (actualPort !== options.port) {
+    log.warn(`Port ${options.port} is in use, using port ${actualPort}`);
+  }
+
+  const server = createHttpServer(projectDir);
 
   server.listen(actualPort, () => {
     const url = `http://localhost:${actualPort}`;

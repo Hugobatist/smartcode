@@ -1,15 +1,26 @@
 import path from 'node:path';
+import { existsSync } from 'node:fs';
 
 /**
  * Resolve path to static assets bundled with the package.
  * Works regardless of global/local install location.
  *
- * In development: import.meta.dirname points to src/utils/
  * In production (built): import.meta.dirname points to dist/
- * Static assets are always at ../static relative to the built output.
+ *   -> static assets at dist/static/ (../static from dist/)
+ * In development/test: import.meta.dirname points to src/utils/
+ *   -> static assets at <root>/static/ (../../static from src/utils/)
  */
 export function getStaticDir(): string {
-  return path.join(import.meta.dirname, '..', 'static');
+  // Production path: dist/ -> dist/static/
+  const prodPath = path.join(import.meta.dirname, '..', 'static');
+  if (existsSync(prodPath)) return prodPath;
+
+  // Development path: src/utils/ -> <root>/static/
+  const devPath = path.join(import.meta.dirname, '..', '..', 'static');
+  if (existsSync(devPath)) return devPath;
+
+  // Fallback to original behavior
+  return prodPath;
 }
 
 export function getStaticFile(filename: string): string {
