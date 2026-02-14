@@ -32,11 +32,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The diagram service can parse a .mmd file, extract Mermaid content and `%% @flag` annotations, write updates back, and report structured validation errors for malformed syntax
   3. Multiple .mmd files organized in different project directories are discovered and managed independently
   4. TypeScript types for diagram nodes, flags, annotations, and status are exported and usable by downstream packages
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 01-01: TypeScript project scaffolding, build tooling, npm package configuration
-- [ ] 01-02: Diagram service — .mmd parsing, flag annotation extraction, validation, multi-file support
+- [ ] 01-01-PLAN.md — TypeScript project scaffolding, build tooling, CLI entry point, core types, static asset bundling
+- [ ] 01-02-PLAN.md — Diagram service with .mmd parsing, flag annotation extraction/injection, validation, multi-file/multi-project support
 
 ### Phase 2: HTTP Server
 **Goal**: Developers can start a server that serves a browser-based diagram viewer showing Mermaid diagrams rendered from .mmd files
