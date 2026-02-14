@@ -1,0 +1,44 @@
+{
+  "name": "smartb-diagrams",
+  "version": "0.1.0",
+  "description": "AI observability diagrams -- see what your AI is thinking",
+  "type": "module",
+  "bin": {
+    "smartb": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build",
+    "verify-pack": "npm pack --dry-run"
+  },
+  "dependencies": {
+    "commander": "^14.0.3"
+  },
+  "devDependencies": {
+    "@mermaid-js/parser": "^0.6.3",
+    "@types/node": "^25.2.3",
+    "fast-glob": "^3.3.3",
+    "picocolors": "^1.1.1",
+    "tsup": "^8.5.1",
+    "typescript": "~5.9",
+    "vitest": "^4.0.18"
+  }
+}
