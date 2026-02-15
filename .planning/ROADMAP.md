@@ -101,7 +101,11 @@ Plans:
   4. Delete/Backspace removes selected node and its edges, with .mmd file updated
   5. Escape deselects; clicking empty space deselects
   6. Interaction state machine prevents conflicts (can't flag while editing, can't pan while selecting)
-**Plans:** TBD
+**Plans:** 2 plans
+
+Plans:
+- [ ] 13-01-PLAN.md — FSM (interaction-state.js), selection module (selection.js), pan-zoom movement threshold
+- [ ] 13-02-PLAN.md — Context menu (context-menu.js), inline edit (inline-edit.js), integration wiring
 
 #### Phase 14: Undo/Redo + Edit Actions
 **Goal**: All diagram edit operations are undoable, and developers can copy/paste/duplicate nodes
@@ -147,7 +151,7 @@ Plans:
 | 10. Graph Model + Parser | 3/3 | Complete    | 2026-02-15 |
 | 11. Custom Renderer | 4/4 | Complete | 2026-02-15 |
 | 12. Server + Browser Integration | 3/3 | Complete | 2026-02-15 |
-| 13. Canvas Interactions | 0/? | Not Started | - |
+| 13. Canvas Interactions | 0/2 | Planning Complete | - |
 | 14. Undo/Redo + Edit Actions | 0/? | Not Started | - |
 | 15. AI Breakpoints + Ghost Paths | 0/? | Not Started | - |
 | 16. Heatmap + Session Recording | 0/? | Not Started | - |
