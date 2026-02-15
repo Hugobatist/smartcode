@@ -23,4 +23,13 @@ program
     });
   });
 
+program
+  .command('mcp')
+  .description('Start the MCP server for AI tool integration (stdio transport)')
+  .option('-d, --dir <path>', 'project directory', '.')
+  .action(async (options: { dir: string }) => {
+    const { startMcpServer } = await import('./mcp/server.js');
+    await startMcpServer(options.dir);
+  });
+
 program.parse();
