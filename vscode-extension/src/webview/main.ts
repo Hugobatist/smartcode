@@ -23,6 +23,7 @@ declare const mermaid: {
 interface WebviewState {
   currentFile: string;
   lastContent: string;
+  fileList: string[];
 }
 
 /** Server WebSocket message types (mirrors server WsMessage). */
@@ -36,11 +37,15 @@ type WsMessage =
 /** Messages received from the extension host. */
 interface DiagramUpdateMessage {
   type: 'diagram:update';
-  // WsMessage fields are spread in by the extension host
   file?: string;
   content?: string;
   files?: string[];
   project?: string;
+}
+
+interface TreeUpdateMessage {
+  type: 'tree:updated';
+  files: string[];
 }
 
 interface ConnectionStatusMessage {
@@ -48,65 +53,108 @@ interface ConnectionStatusMessage {
   status: string;
 }
 
-type ExtensionMessage = DiagramUpdateMessage | ConnectionStatusMessage;
+type ExtensionMessage = DiagramUpdateMessage | TreeUpdateMessage | ConnectionStatusMessage;
 
 import { initFlagUI, initFlagClickHandlers, hideFlagInput } from './flag-ui.js';
+import { initFileList, updateFileList, setActiveFile, hideFileList } from './file-list.js';
+
+/**
+ * Strip SmartB annotation blocks from raw .mmd content.
+ */
+function stripAnnotations(content: string): string {
+  const startMarker = '%% --- ANNOTATIONS';
+  const endMarker = '%% --- END ANNOTATIONS ---';
+  const startIdx = content.indexOf(startMarker);
+  const endIdx = content.indexOf(endMarker);
+
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) return content;
+
+  const endLineEnd = content.indexOf('\n', endIdx);
+  const before = content.substring(0, startIdx);
+  const after = endLineEnd === -1 ? '' : content.substring(endLineEnd + 1);
+  return (before + after).replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';
+}
 
 (function () {
   const vscode = acquireVsCodeApi();
 
   // Restore previous state
-  const state: WebviewState = vscode.getState() || { currentFile: '', lastContent: '' };
+  const state: WebviewState = vscode.getState() || { currentFile: '', lastContent: '', fileList: [] };
 
   const diagramEl = document.getElementById('diagram');
   const statusEl = document.getElementById('connection-status');
 
-  // Initialize mermaid for dark theme rendering
+  // Initialize mermaid for dark theme rendering.
   mermaid.initialize({
     startOnLoad: false,
     theme: 'dark',
-    securityLevel: 'sandbox',
+    securityLevel: 'loose',
     flowchart: { htmlLabels: true, curve: 'basis' },
   });
 
-  // Initialize flag UI with the vscode API reference
+  // Initialize UI components
   initFlagUI(vscode);
+  initFileList(vscode);
+
+  // Restore file list and active file from persisted state
+  if (state.fileList.length > 0) {
+    updateFileList(state.fileList);
+  }
+  if (state.currentFile) {
+    setActiveFile(state.currentFile);
+  }
 
   let renderCounter = 0;
 
   /**
    * Render a Mermaid diagram into the container.
-   * Uses mermaid.render() which returns sanitized SVG.
    */
   async function renderDiagram(content: string, file: string): Promise<void> {
     if (!diagramEl) return;
 
-    // Hide any open flag input
     hideFlagInput();
+    hideFileList();
+
+    const cleanContent = stripAnnotations(content);
 
     try {
       renderCounter++;
-      const { svg } = await mermaid.render('diagram-' + renderCounter, content);
+      const { svg } = await mermaid.render('diagram-' + renderCounter, cleanContent);
 
-      // Clear container safely, then insert sanitized SVG
       diagramEl.textContent = '';
       diagramEl.insertAdjacentHTML('afterbegin', svg);
 
-      // Attach click handlers to nodes for flag interaction
       initFlagClickHandlers();
 
-      // Persist state for restore on reshow
-      vscode.setState({ currentFile: file, lastContent: content });
-      // Update local state reference
+      // Update header with current file
+      setActiveFile(file);
+
+      // Persist state
       state.currentFile = file;
       state.lastContent = content;
+      vscode.setState(state);
     } catch (err) {
-      // Show render error
       diagramEl.textContent = '';
-      const errorMsg = document.createElement('p');
-      errorMsg.className = 'status-message error';
-      errorMsg.textContent = `Render error: ${err instanceof Error ? err.message : 'Unknown error'}`;
-      diagramEl.appendChild(errorMsg);
+      const container = document.createElement('div');
+      container.className = 'status-message error';
+
+      const title = document.createElement('p');
+      title.style.fontWeight = 'bold';
+      title.style.marginBottom = '8px';
+      title.textContent = `Syntax error in ${file || 'diagram'}`;
+
+      const detail = document.createElement('p');
+      detail.style.opacity = '0.8';
+      detail.style.fontSize = '0.85em';
+      const rawMsg = err instanceof Error ? err.message : 'Unknown error';
+      const match = rawMsg.match(/Parse error on line (\d+):/);
+      detail.textContent = match
+        ? `Parse error on line ${match[1]}. Check your Mermaid syntax.`
+        : rawMsg;
+
+      container.appendChild(title);
+      container.appendChild(detail);
+      diagramEl.appendChild(container);
     }
   }
 
@@ -116,11 +164,17 @@ import { initFlagUI, initFlagClickHandlers, hideFlagInput } from './flag-ui.js';
 
     switch (msg.type) {
       case 'diagram:update': {
-        // The extension host spreads WsMessage fields into this message.
-        // We check for file + content which indicates a file:changed event.
         if (msg.content && msg.file) {
           renderDiagram(msg.content, msg.file);
         }
+        break;
+      }
+
+      case 'tree:updated': {
+        const files = msg.files || [];
+        updateFileList(files);
+        state.fileList = files;
+        vscode.setState(state);
         break;
       }
 

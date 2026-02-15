@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 4: Interactive Browser UI** - Pan/zoom, keyboard shortcuts, flag interactions, export, file tree navigation
 - [x] **Phase 5: MCP Server** - AI tool integration via stdio transport with tools and resources
 - [x] **Phase 6: CLI + Developer Experience + AI Integration** - CLI commands, zero-config MCP setup, AI diagram conventions, flag-to-prompt pipeline
-- [ ] **Phase 7: VS Code Extension** - Sidebar webview panel, WebSocket client, marketplace publication
+- [ ] **Phase 7: VS Code Extension** - Sidebar webview panel, WebSocket client, file navigation, marketplace publication
 - [ ] **Phase 8: Scalability + Large Diagrams** - Hierarchical collapsing, rendering limits, breadcrumb navigation, focus mode
 
 ## Phase Details
@@ -122,19 +122,23 @@ Plans:
 ### Phase 7: VS Code Extension
 **Goal**: Developers see live AI reasoning diagrams in a VS Code sidebar panel without leaving their editor, with full flag interaction capability
 **Depends on**: Phase 3, Phase 5
-**Requirements**: VSC-01, VSC-02, VSC-03, VSC-04, VSC-05, VSC-06, VSC-07
+**Requirements**: VSC-01, VSC-02, VSC-03, VSC-04, VSC-05, VSC-06, VSC-07, VSC-08, VSC-09, VSC-10
 **Success Criteria** (what must be TRUE):
   1. Installing the extension from VS Code Marketplace adds a sidebar panel that connects to a running SmartB server and displays the live Mermaid diagram
   2. The diagram in the VS Code sidebar updates in real-time when the .mmd file changes (same latency as browser)
   3. Developer can click nodes in the VS Code webview to add flag annotations, and flags appear in both the VS Code panel and the browser UI simultaneously
   4. Closing and reopening the sidebar panel restores the previous diagram view state without reconnection errors
   5. A status bar indicator shows whether the extension is connected to the SmartB server
-**Plans:** 3 plans
+  6. The panel header shows which .mmd file is currently displayed
+  7. A file selector lets the developer navigate between multiple .mmd files without leaving the editor
+  8. When multiple projects are monitored, the project/folder context is visible in the panel
+**Plans:** 4 plans
 
 Plans:
-- [ ] 07-01-PLAN.md — Extension scaffolding (package.json, tsconfig, esbuild), WebviewViewProvider, WebSocket client in extension host
-- [ ] 07-02-PLAN.md — Mermaid rendering in webview, click-to-flag interaction, state persistence via getState/setState
-- [ ] 07-03-PLAN.md — Status bar connection indicator, README/CHANGELOG, VSIX packaging for marketplace
+- [x] 07-01-PLAN.md — Extension scaffolding (package.json, tsconfig, esbuild), WebviewViewProvider, WebSocket client in extension host
+- [x] 07-02-PLAN.md — Mermaid rendering in webview, click-to-flag interaction, state persistence via getState/setState
+- [x] 07-03-PLAN.md — Status bar connection indicator, README/CHANGELOG, VSIX packaging for marketplace
+- [ ] 07-04-PLAN.md — File name header, file selector dropdown, multi-file navigation in webview panel
 
 ### Phase 8: Scalability + Large Diagrams
 **Goal**: Diagrams with 50+ nodes remain usable through hierarchical collapsing, rendering limits, and focused navigation — preventing the "UML death" problem
@@ -166,5 +170,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Interactive Browser UI | 2/2 | ✓ Complete | 2026-02-15 |
 | 5. MCP Server | 3/3 | ✓ Complete | 2026-02-15 |
 | 6. CLI + DX + AI Integration | 3/3 | ✓ Complete | 2026-02-15 |
-| 7. VS Code Extension | 0/3 | Not started | - |
+| 7. VS Code Extension | 3/4 | In Progress | - |
 | 8. Scalability + Large Diagrams | 0/3 | Not started | - |

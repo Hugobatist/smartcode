@@ -5,23 +5,30 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Developers can see what their AI is thinking and intervene surgically before it finishes
-**Current focus:** Phase 7 in progress — VS Code Extension
+**Current focus:** Phase 7 in progress — VS Code Extension (file navigation)
 
 ## Current Position
 
 Phase: 7 of 8 (VS Code Extension)
-Plan: 3 of 3 in current phase (07-03 checkpoint pending)
-Status: Checkpoint pending (human-verify)
-Last activity: 2026-02-15 — 07-03 Task 1 complete, Task 2 awaiting human verification
+Plan: 4 of 4 in current phase (07-04 pending execution)
+Status: Ready to execute 07-04
+Last activity: 2026-02-15 — Plans 07-01/02/03 completed, 07-04 created (file navigation)
 
-Progress: [█████████░] 95%
+Progress: [████████░░] 85%
+
+## Handoff
+
+**Active handoff:** `.planning/HANDOFF.md`
+- Prepared 2026-02-15 for OpenClaw continuation
+- Contains full context, architecture, plan details, and commands
+- Next action: Execute 07-04-PLAN.md
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 17
-- Average duration: 3.1min
-- Total execution time: 0.87 hours
+- Total plans completed: 20
+- Average duration: 3.0min
+- Total execution time: 1.0 hours
 
 **By Phase:**
 
@@ -33,15 +40,13 @@ Progress: [█████████░] 95%
 | 04-interactive-browser-ui | 2 | 4min | 2min |
 | 05-mcp-server | 3 | 8min | 2.7min |
 | 06-cli-dx-ai-integration | 3 | 6min | 2min |
+| 07-vscode-extension | 3/4 | 11min | 3.7min |
 
 **Recent Trend:**
-- Last 5 plans: 2min, 2min, 2min, 3min, 4min
+- Last 5 plans: 2min, 3min, 4min, 3min, 4min
 - Trend: stable
 
 *Updated after each plan completion*
-| Phase 07 P01 | 3min | 2 tasks | 14 files |
-| Phase 07 P02 | 4min | 2 tasks | 8 files |
-| Phase 07 P03 | 4min | 1/2 tasks (checkpoint) | 8 files |
 
 ## Accumulated Context
 
@@ -113,59 +118,59 @@ Recent decisions affecting current work:
 
 #### Pre-Release Cleanup (code review findings — resolver antes de npm publish)
 
-**CRÍTICOS — resolver obrigatoriamente antes de qualquer release:**
+**CRITICOS — resolver obrigatoriamente antes de qualquer release:**
 
-1. **Mermaid `securityLevel: 'loose'` → trocar pra `'sandbox'` ou `'strict'`**
-   - **Onde:** `static/live.html` linhas 638, 1184, 1219, 1281 (4 ocorrências)
-   - **Problema:** Modo `loose` permite execução de HTML/JS arbitrário dentro dos diagramas. Se um agente de IA gerar um `.mmd` com `click A href "javascript:alert(1)"` via prompt injection, executa no browser.
-   - **Fix:** Trocar para `securityLevel: 'sandbox'` nas 4 ocorrências. Testar se rendering de click handlers legítimos continua funcionando.
+1. **Mermaid `securityLevel: 'loose'` -> trocar pra `'sandbox'` ou `'strict'`**
+   - **Onde:** `static/live.html` linhas 638, 1184, 1219, 1281 (4 ocorrencias)
+   - **Problema:** Modo `loose` permite execucao de HTML/JS arbitrario dentro dos diagramas. Se um agente de IA gerar um `.mmd` com `click A href "javascript:alert(1)"` via prompt injection, executa no browser.
+   - **Fix:** Trocar para `securityLevel: 'sandbox'` nas 4 ocorrencias. Testar se rendering de click handlers legitimos continua funcionando.
 
-2. **`readJsonBody` sem limite de tamanho — vulnerável a DoS**
+2. **`readJsonBody` sem limite de tamanho — vulneravel a DoS**
    - **Onde:** `src/server/server.ts` linhas 61-67
-   - **Problema:** Acumula chunks sem limite. Payload de gigas estoura memória. Porta pode estar exposta na rede local.
-   - **Fix:** Adicionar `MAX_BODY_SIZE = 1 * 1024 * 1024` (1MB). Abortar com 413 se exceder. Validar shape do JSON com Zod (já é dependência).
+   - **Problema:** Acumula chunks sem limite. Payload de gigas estoura memoria. Porta pode estar exposta na rede local.
+   - **Fix:** Adicionar `MAX_BODY_SIZE = 1 * 1024 * 1024` (1MB). Abortar com 413 se exceder. Validar shape do JSON com Zod (ja e dependencia).
 
-**ALTOS — resolver antes de release pública:**
+**ALTOS — resolver antes de release publica:**
 
 3. **`nodeId` sem escape no innerHTML do flag panel**
    - **Onde:** `static/annotations.js` linha 291-292
-   - **Problema:** `nodeId` vem do parsing do `.mmd` e é injetado direto no HTML: `data-node-id="${nodeId}"` e `${nodeId}`. Se o node ID contiver HTML malicioso, executa.
-   - **Fix:** Aplicar `escapeHtml(nodeId)` em ambas as ocorrências.
+   - **Problema:** `nodeId` vem do parsing do `.mmd` e e injetado direto no HTML: `data-node-id="${nodeId}"` e `${nodeId}`. Se o node ID contiver HTML malicioso, executa.
+   - **Fix:** Aplicar `escapeHtml(nodeId)` em ambas as ocorrencias.
 
-4. **`onclick` inline com string interpolation vulnerável a injection**
+4. **`onclick` inline com string interpolation vulneravel a injection**
    - **Onde:** `static/live.html` linhas 1007-1031 (renderNodes)
-   - **Problema:** `escapeHtml` não escapa `\` nem newlines. Nome de pasta como `test\');alert(1);//` passa pela sanitização no contexto de atributo onclick.
-   - **Fix:** Substituir onclick inline por `addEventListener` com `data-*` attributes e event delegation. Ou adicionar escape de `\` e newlines na sanitização.
+   - **Problema:** `escapeHtml` nao escapa `\` nem newlines. Nome de pasta como `test\');alert(1);//` passa pela sanitizacao no contexto de atributo onclick.
+   - **Fix:** Substituir onclick inline por `addEventListener` com `data-*` attributes e event delegation. Ou adicionar escape de `\` e newlines na sanitizacao.
 
 5. **Race condition em `setFlag/removeFlag/setStatus/removeStatus`**
    - **Onde:** `src/diagram/service.ts` linhas 79-102
-   - **Problema:** Read → modify → write async sem sincronização. Se a IA e o dev salvarem simultaneamente, um sobrescreve o outro. Risco real num produto de observabilidade onde dev e IA escrevem ao mesmo tempo.
-   - **Fix:** Lock simples por arquivo (Map<string, Promise>) que serializa operações de escrita no mesmo `.mmd`.
+   - **Problema:** Read -> modify -> write async sem sincronizacao. Se a IA e o dev salvarem simultaneamente, um sobrescreve o outro. Risco real num produto de observabilidade onde dev e IA escrevem ao mesmo tempo.
+   - **Fix:** Lock simples por arquivo (Map<string, Promise>) que serializa operacoes de escrita no mesmo `.mmd`.
 
-6. **`addProject` não registra rotas REST para projetos adicionais**
+6. **`addProject` nao registra rotas REST para projetos adicionais**
    - **Onde:** `src/server/server.ts` linhas 191-221
-   - **Problema:** `registerRoutes` só é chamado pro projeto default. Projetos adicionais recebem WebSocket updates mas não podem ser acessados via REST (`/api/diagrams`, `/save`, `/tree.json`).
+   - **Problema:** `registerRoutes` so e chamado pro projeto default. Projetos adicionais recebem WebSocket updates mas nao podem ser acessados via REST (`/api/diagrams`, `/save`, `/tree.json`).
    - **Fix:** Chamar `registerRoutes` ou criar routes parametrizadas por projeto no `addProject`.
 
 7. **Zero testes para frontend**
-   - **Problema:** ~1200 linhas de lógica em `annotations.js`, `diagram-editor.js`, `search.js`, `ws-client.js` sem nenhum teste. Funções de parsing/manipulação são puras e testáveis.
-   - **Fix:** Extrair lógica pura pra módulos ES importáveis. Testar com vitest (já configurado) ou test runner de browser.
+   - **Problema:** ~1200 linhas de logica em `annotations.js`, `diagram-editor.js`, `search.js`, `ws-client.js` sem nenhum teste. Funcoes de parsing/manipulacao sao puras e testaveis.
+   - **Fix:** Extrair logica pura pra modulos ES importaveis. Testar com vitest (ja configurado) ou test runner de browser.
 
-**MÉDIOS — resolver antes de v1 estável:**
+**MEDIOS — resolver antes de v1 estavel:**
 
 8. **`KNOWN_DIAGRAM_TYPES` duplicado**
    - **Onde:** `src/diagram/parser.ts` linhas 4-16 (com `as const`) e `src/diagram/validator.ts` linhas 4-16 (sem `as const`)
-   - **Fix:** Exportar de um único lugar (ex: `types.ts`).
+   - **Fix:** Exportar de um unico lugar (ex: `types.ts`).
 
-9. **Lógica de parsing duplicada entre backend e frontend**
-   - **Onde:** `src/diagram/annotations.ts` (TypeScript) e `static/annotations.js` (JavaScript) — mesmas regexes, mesma lógica
-   - **Fix:** Backend faz o parsing e envia dados prontos via WebSocket, ou compartilhar módulo ES entre ambos.
+9. **Logica de parsing duplicada entre backend e frontend**
+   - **Onde:** `src/diagram/annotations.ts` (TypeScript) e `static/annotations.js` (JavaScript) — mesmas regexes, mesma logica
+   - **Fix:** Backend faz o parsing e envia dados prontos via WebSocket, ou compartilhar modulo ES entre ambos.
 
 10. **`live.html` com 1532 linhas**
     - **Fix:** Extrair JavaScript inline para `app.js`. Extrair config Mermaid (duplicada 4x) para constante.
 
 11. **Watchers de projetos adicionais nunca fechados no shutdown**
-    - **Onde:** `src/server/server.ts` — SIGINT handler só fecha `fileWatcher` default, não os do map `watchers`.
+    - **Onde:** `src/server/server.ts` — SIGINT handler so fecha `fileWatcher` default, nao os do map `watchers`.
     - **Fix:** Iterar `watchers.values()` e chamar `.close()` em cada um no shutdown.
 
 12. **Static file path traversal check menos rigorosa**
@@ -173,79 +178,46 @@ Recent decisions affecting current work:
     - **Fix:** Usar `+ path.sep` no `startsWith` check, igual ao `resolveProjectPath`.
 
 13. **Sem testes para rotas POST, WebSocketManager, FileWatcher**
-    - **Fix:** Adicionar testes para `/save`, `/delete`, `/mkdir`, `/move`. Testes unitários para broadcast/namespace. Testes de FileWatcher com tmpdir.
+    - **Fix:** Adicionar testes para `/save`, `/delete`, `/mkdir`, `/move`. Testes unitarios para broadcast/namespace. Testes de FileWatcher com tmpdir.
 
-**BAIXOS — cleanup quando possível:**
+**BAIXOS — cleanup quando possivel:**
 
-14. **Bug no drag & drop — `knownFiles` e `renderFileList` não existem**
+14. **Bug no drag & drop — `knownFiles` e `renderFileList` nao existem**
     - **Onde:** `static/live.html` linhas 1506-1507
-    - **Fix:** Remover ou implementar corretamente. Hoje dá ReferenceError.
+    - **Fix:** Remover ou implementar corretamente. Hoje da ReferenceError.
 
-15. **Deps não utilizadas: `fast-glob` e `@mermaid-js/parser`**
+15. **Deps nao utilizadas: `fast-glob` e `@mermaid-js/parser`**
     - **Fix:** `npm uninstall fast-glob @mermaid-js/parser`
 
-16. **Versão hardcoded em `cli.ts` e `mcp/server.ts`**
+16. **Versao hardcoded em `cli.ts` e `mcp/server.ts`**
     - **Fix:** Ler de `package.json` ou constante compartilhada.
 
-17. **`refreshFileList` redundante quando dados já vêm via WebSocket**
+17. **`refreshFileList` redundante quando dados ja vem via WebSocket**
     - **Fix:** Usar dados do evento `tree:updated` direto em vez de fazer fetch adicional.
 
 18. **Mistura de `var`/`let`/`const` no frontend**
-    - **Fix:** Padronizar para `const`/`let` em todos os módulos.
+    - **Fix:** Padronizar para `const`/`let` em todos os modulos.
 
 ---
 
 #### v2 Feature Ideas (post-milestone completion)
 
-1. **Breakpoints no raciocínio da IA**
-   - **O que:** O dev marca um nó do fluxograma como "breakpoint". Quando a IA chega naquele passo do plano, a execução pausa e espera aprovação do dev antes de continuar.
-   - **Por que:** Flags são reativos (dev corrige depois). Breakpoints são preventivos (dev intercepta antes). Dá controle cirúrgico sobre decisões críticas da IA.
-   - **Como se conecta:** Estende o sistema de flags existente (`%% @flag`) com uma nova semântica `%% @breakpoint nodeId`. O MCP server (Phase 5) precisaria de um tool `check_breakpoints` que a IA chama antes de executar cada passo. O WebSocket (Phase 3) notifica o browser quando a IA está pausada num breakpoint.
-   - **Complexidade estimada:** Média — reutiliza flag infrastructure, precisa de novo MCP tool e UI de aprovação.
-   - **Diferencial competitivo:** Nenhuma ferramenta de IA oferece breakpoints no raciocínio. É o conceito de debugger aplicado a agentes de IA.
-
+1. **Breakpoints no raciocinio da IA**
 2. **Ghost Paths — caminhos descartados pela IA**
-   - **O que:** Quando a IA toma uma decisão entre múltiplos caminhos, os caminhos não escolhidos aparecem no diagrama como nós semitransparentes ("fantasmas") com a razão do descarte. O dev pode clicar num ghost path e dizer "vai por aqui".
-   - **Por que:** Hoje o dev só vê o resultado final. Não sabe o que a IA considerou e rejeitou. Às vezes o caminho descartado era o certo. Mostrar alternativas dá contexto completo do raciocínio.
-   - **Como se conecta:** Precisa de uma nova annotation `%% @ghost nodeId "razão do descarte"` ou um campo extra no MCP tool `update_diagram`. O renderer (live.html) precisaria de CSS para nós fantasma (opacity, dashed borders). Clicar num ghost path geraria um flag automático "prefiro esse caminho".
-   - **Complexidade estimada:** Alta — requer protocolo novo entre IA e SmartB, mudanças no Mermaid rendering (classDef para ghost nodes), e UX de redirecionamento.
-   - **Diferencial competitivo:** Transparência total do processo decisório da IA. Nenhum concorrente mostra alternativas descartadas.
+3. **Diagrama como contrato executavel**
+4. **Pattern Memory — aprender com flags historicos**
+5. **Risk Heatmap — custo/impacto visual por no**
+6. **Session Replay — rebobinar o raciocinio da IA**
 
-3. **Diagrama como contrato executável**
-   - **O que:** Inversão do fluxo atual. Em vez de a IA gerar o diagrama e o dev observar, o dev desenha/esboça um fluxograma com os passos desejados e a IA é obrigada a seguir essa estrutura. Se a IA desviar do plano, o SmartB detecta e alerta.
-   - **Por que:** Transforma o SmartB de "monitor" em "linguagem de programação visual". O dev expressa a arquitetura desejada como fluxograma, e a IA implementa dentro dessas constraints. É literalmente "programar via fluxogramas".
-   - **Como se conecta:** O MCP tool `get_diagram_context` (Phase 5) já dá à IA o estado do diagrama. Precisa de um novo modo "contract" onde o diagrama pré-existe e a IA atualiza status dos nós (pendente→em progresso→concluído) em vez de criar nós novos. O FileWatcher (Phase 3) monitoraria desvios. A UI (Phase 4) precisaria de um editor simplificado para o dev esboçar o plano.
-   - **Complexidade estimada:** Alta — mudança conceitual grande, precisa de editor de diagrama, sistema de validação de conformidade, e novo modo no MCP.
-   - **Diferencial competitivo:** Ninguém oferece "programação visual que constrains a IA". É o diferencial máximo do SmartB.
-
-4. **Pattern Memory — aprender com flags históricos**
-   - **O que:** O SmartB armazena todos os flags por projeto e identifica padrões recorrentes. Quando a IA está prestes a repetir um erro já flagado antes, o SmartB avisa proativamente antes que o dev precise intervir.
-   - **Por que:** Cada flag é um dado de preferência do dev. Com o tempo, centenas de flags formam um perfil de "como esse dev quer que a IA trabalhe nesse projeto". O SmartB aprende e fica mais valioso quanto mais é usado — criando um moat de retenção.
-   - **Como se conecta:** Precisa de um storage persistente de flags (SQLite ou JSON) além do `.mmd` atual. Um matcher de similaridade (embeddings ou keyword) compara a intenção da IA com flags passados. Um novo MCP tool `get_learned_preferences` retorna warnings antes da IA executar. O WebSocket notificaria o dev: "SmartB preveniu um erro baseado no flag X do dia Y".
-   - **Complexidade estimada:** Média — storage é simples, o matching de padrões pode começar com keyword matching e evoluir pra embeddings.
-   - **Diferencial competitivo:** Lock-in positivo — quanto mais o dev usa, mais o SmartB sabe. Migrar pra concorrente perde meses de aprendizado. É o equivalente a "histórico de code review" mas para interações com IA.
-
-5. **Risk Heatmap — custo/impacto visual por nó**
-   - **O que:** Cada nó do fluxograma recebe uma anotação de risco/impacto baseada no que a IA pretende fazer. Nós que modificam muitos arquivos, tocam banco de dados, ou são irreversíveis ficam destacados em cores quentes (laranja/vermelho). Nós read-only ou pure functions ficam frios (azul/verde).
-   - **Por que:** O dev bate o olho no diagrama e sabe imediatamente onde estão os pontos perigosos. Combina naturalmente com breakpoints — breakpoints automáticos em nós de alto risco.
-   - **Como se conecta:** A IA reportaria metadata de risco via MCP tool `update_node_status` (Phase 5) com campos adicionais (files_affected, is_reversible, touches_db). O classDef system (Phase 2) já suporta cores por nó — precisa de novos classDefs para risk levels. A UI (Phase 4) poderia ter um toggle "show risk overlay".
-   - **Complexidade estimada:** Média — a IA já sabe o risco (tem contexto do codebase), precisa de schema pra reportar e UI pra renderizar.
-   - **Diferencial competitivo:** Visual risk assessment de AI actions. Nenhum tool mostra "quão perigoso é o que a IA vai fazer" de forma visual.
-
-6. **Session Replay — rebobinar o raciocínio da IA**
-   - **O que:** Cada mudança no diagrama é versionada com timestamp. O dev pode arrastar um slider temporal e ver o diagrama evoluindo passo a passo — como um replay de partida. Mostra quando cada nó foi adicionado, quando status mudou, quando flags foram criados.
-   - **Por que:** Permite post-mortem ("onde a IA errou?"), aprendizado ("como a IA pensa sobre refactoring?"), e compartilhamento ("olha o replay de como a IA resolveu esse bug"). É observabilidade temporal, não só espacial.
-   - **Como se conecta:** O FileWatcher (Phase 3) já detecta mudanças em .mmd. Precisa de um changelog persistente (append-only log de diffs com timestamps). A UI precisaria de um componente de timeline/slider. O WebSocket poderia ter um modo "replay" além do modo "live". Export do replay como GIF/vídeo seria killer pra compartilhar.
-   - **Complexidade estimada:** Alta — versionamento temporal, UI de timeline, storage de histórico, rendering de diffs animados.
-   - **Diferencial competitivo:** "Git blame para raciocínio de IA". Nenhum concorrente oferece replay temporal de como a IA pensou.
+(Detalhes completos em versoes anteriores deste arquivo)
 
 ### Blockers/Concerns
 
-- ~~Research flag: Phase 5 (MCP) needs research on MCP tool/resource schema design for optimal AI agent UX~~ (resolved: 05-RESEARCH.md completed)
 - Research flag: Phase 8 (Scalability) needs research on hierarchical diagram navigation UX patterns
 
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Checkpoint pending 07-03-PLAN.md Task 2 (human-verify end-to-end extension)
-Resume file: .planning/phases/07-vscode-extension/07-03-PLAN.md
+Stopped at: Handoff prepared for OpenClaw — 07-04-PLAN.md ready for execution
+Resume file: .planning/HANDOFF.md
+Next action: Execute .planning/phases/07-vscode-extension/07-04-PLAN.md

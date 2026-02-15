@@ -1,12 +1,13 @@
 import * as vscode from 'vscode';
 import { DiagramViewProvider } from './diagram-provider.js';
-import { getHttpBaseUrl, httpPost } from './http-client.js';
+import { getHttpBaseUrl, httpGet, httpPost } from './http-client.js';
 import { StatusBarManager } from './status-bar.js';
 import { SmartBWsClient } from './ws-client.js';
 
 export function activate(context: vscode.ExtensionContext): void {
-  // Track current file and cached contents from WebSocket messages
+  // Track current file, file list, and cached contents from WebSocket messages
   let currentFile = '';
+  let fileList: string[] = [];
   const fileContents = new Map<string, string>();
 
   // 1. Create and register the sidebar webview provider
@@ -31,6 +32,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
   // Callback to send initial state when webview becomes visible
   provider.onWebviewReady = () => {
+    // Send file list if available
+    if (fileList.length > 0) {
+      provider.postMessage({ type: 'tree:updated', files: fileList });
+    }
+    // Send current diagram if available
     if (currentFile && fileContents.has(currentFile)) {
       provider.postMessage({
         type: 'diagram:update',
@@ -51,12 +57,25 @@ export function activate(context: vscode.ExtensionContext): void {
         currentFile = wsMsg.file;
       }
 
-      // Relay all messages to webview
-      provider.postMessage({ type: 'diagram:update', ...(msg as object) });
+      // Handle tree:updated events
+      if (wsMsg.type === 'tree:updated' && Array.isArray(wsMsg.files)) {
+        fileList = wsMsg.files as string[];
+        provider.postMessage({ type: 'tree:updated', files: fileList });
+      }
+
+      // Relay diagram updates to webview
+      if (wsMsg.type === 'file:changed' || wsMsg.type === 'file:added' || wsMsg.type === 'file:removed') {
+        provider.postMessage({ type: 'diagram:update', ...(msg as object) });
+      }
     },
     onStatus: (status) => {
       statusBar.setStatus(status);
       provider.postMessage({ type: 'connection:status', status });
+
+      // Fetch initial diagram data and file tree when connected
+      if (status === 'connected') {
+        fetchInitialData();
+      }
     },
   });
 
@@ -109,15 +128,81 @@ export function activate(context: vscode.ExtensionContext): void {
     if (data.type === 'selectFile') {
       const file = data.file as string;
       if (!file) return;
-      currentFile = file;
-      // If we have cached content, send it immediately
-      if (fileContents.has(file)) {
-        provider.postMessage({
-          type: 'diagram:update',
-          file,
-          content: fileContents.get(file),
-        });
+      selectFile(file);
+    }
+  }
+
+  /** Handle file selection from webview dropdown. */
+  async function selectFile(file: string): Promise<void> {
+    currentFile = file;
+
+    // If we have cached content, send it immediately
+    if (fileContents.has(file)) {
+      provider.postMessage({
+        type: 'diagram:update',
+        file,
+        content: fileContents.get(file),
+      });
+      return;
+    }
+
+    // Otherwise fetch from server
+    try {
+      const httpBaseUrl = getHttpBaseUrl(serverUrl);
+      const contentResp = await httpGet(`${httpBaseUrl}/api/diagrams/${encodeURIComponent(file)}`);
+      const parsed = JSON.parse(contentResp) as { mermaidContent: string };
+      fileContents.set(file, parsed.mermaidContent);
+      provider.postMessage({
+        type: 'diagram:update',
+        file,
+        content: parsed.mermaidContent,
+      });
+    } catch {
+      // Silent fail — file might not exist
+    }
+  }
+
+  /** Fetch file tree and initial diagram on WebSocket connection. */
+  async function fetchInitialData(): Promise<void> {
+    try {
+      const httpBaseUrl = getHttpBaseUrl(serverUrl);
+
+      // Fetch file tree first
+      const treeResp = await httpGet(`${httpBaseUrl}/tree.json`);
+      const treeData = JSON.parse(treeResp) as string[];
+      fileList = treeData;
+      provider.postMessage({ type: 'tree:updated', files: fileList });
+
+      // Then fetch and display the first valid diagram
+      if (fileList.length === 0) return;
+
+      const maxAttempts = Math.min(fileList.length, 5);
+      for (let i = 0; i < maxAttempts; i++) {
+        const file = fileList[i]!;
+        try {
+          const contentResp = await httpGet(`${httpBaseUrl}/api/diagrams/${encodeURIComponent(file)}`);
+          const parsed = JSON.parse(contentResp) as {
+            mermaidContent: string;
+            validation: { valid: boolean };
+          };
+
+          fileContents.set(file, parsed.mermaidContent);
+
+          if (!parsed.validation.valid && i < maxAttempts - 1) continue;
+
+          currentFile = file;
+          provider.postMessage({
+            type: 'diagram:update',
+            file,
+            content: parsed.mermaidContent,
+          });
+          return;
+        } catch {
+          continue;
+        }
       }
+    } catch {
+      // Silent fail — data will load on next file change
     }
   }
 
@@ -134,8 +219,6 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    // Append the flag annotation line to the current content.
-    // The SmartB server's DiagramService normalizes annotations on the next read cycle.
     const flagLine = `%% @flag ${nodeId} "${message}"`;
     const updatedContent = content.trimEnd() + '\n' + flagLine + '\n';
 
@@ -145,7 +228,6 @@ export function activate(context: vscode.ExtensionContext): void {
         filename: currentFile,
         content: updatedContent,
       });
-      // Update local cache with the new content
       fileContents.set(currentFile, updatedContent);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Unknown error';
