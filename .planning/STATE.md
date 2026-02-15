@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Developers can see what their AI is thinking and intervene surgically before it finishes
-**Current focus:** Phase 3 — WebSocket + Real-Time Sync (COMPLETE)
+**Current focus:** Phase 4 — Interactive Browser UI
 
 ## Current Position
 
-Phase: 3 of 8 (WebSocket + Real-Time Sync)
-Plan: 3 of 3 in current phase (03-03 complete -- phase done)
-Status: Phase Complete
-Last activity: 2026-02-15 — Completed 03-03 (Multi-Project WebSocket Namespacing)
+Phase: 4 of 8 (Interactive Browser UI)
+Plan: 1 of 2 in current phase (04-01 complete)
+Status: In Progress
+Last activity: 2026-02-15 — Completed 04-01 (Critical Bug Fixes)
 
-Progress: [██████░░░░] 54%
+Progress: [██████░░░░] 58%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 7
-- Average duration: 4min
-- Total execution time: 0.4 hours
+- Total plans completed: 8
+- Average duration: 3.6min
+- Total execution time: 0.5 hours
 
 **By Phase:**
 
@@ -30,9 +30,10 @@ Progress: [██████░░░░] 54%
 | 01-project-bootstrap-diagram-core | 2 | 9min | 4.5min |
 | 02-http-server | 2 | 8min | 4min |
 | 03-websocket-real-time-sync | 3 | 8min | 2.7min |
+| 04-interactive-browser-ui | 1 | 2min | 2min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 5min, 3min, 2min, 3min
+- Last 5 plans: 5min, 3min, 2min, 3min, 2min
 - Trend: stable/improving
 
 *Updated after each plan completion*
@@ -71,6 +72,9 @@ Recent decisions affecting current work:
 - [03-03]: Map<string, WebSocketServer> keyed by project name for namespace isolation
 - [03-03]: WsMessage connected type gains project field for client namespace awareness
 - [03-03]: addProject() on ServerInstance for lazy project registration with per-project FileWatcher
+- [04-01]: Temporarily re-initialize mermaid with htmlLabels:false for PNG export rather than stripping foreignObject from DOM
+- [04-01]: escapeHtml() on both display names and onclick path attributes with single-quote escaping for safe inline event handlers
+- [04-01]: isInitialRender flag reset in loadFile() ensures file navigation always triggers zoomFit while live updates preserve position
 
 ### Pending Todos
 
@@ -84,5 +88,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 03-03-PLAN.md (Multi-Project WebSocket Namespacing) -- Phase 3 complete
+Stopped at: Completed 04-01-PLAN.md (Critical Bug Fixes)
 Resume file: None
