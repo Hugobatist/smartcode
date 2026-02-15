@@ -30,13 +30,16 @@
     "verify-pack": "npm pack --dry-run"
   },
   "dependencies": {
+    "chokidar": "^5.0.0",
     "commander": "^14.0.3",
     "detect-port": "^2.1.0",
-    "open": "^11.0.0"
+    "open": "^11.0.0",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "@mermaid-js/parser": "^0.6.3",
     "@types/node": "^25.2.3",
+    "@types/ws": "^8.18.1",
     "fast-glob": "^3.3.3",
     "picocolors": "^1.1.1",
     "tsup": "^8.5.1",
