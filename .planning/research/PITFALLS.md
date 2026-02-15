@@ -1,391 +1,428 @@
-# Pitfalls Research
+# Domain Pitfalls: v2 Interactive Canvas + AI Observability
 
-**Domain:** AI observability developer tooling (MCP server + VS Code extension + npm global package + real-time diagram system)
-**Researched:** 2026-02-14
-**Confidence:** MEDIUM-HIGH (verified against Context7, official docs, and multiple community sources)
+**Domain:** Replacing static SVG renderer with interactive canvas, adding drag/select/edit capabilities, and building advanced AI observability features on top of an existing diagram tool
+**Researched:** 2026-02-15
+**Confidence:** MEDIUM-HIGH (verified against codebase analysis, community sources, and domain-specific case studies)
 
 ---
 
 ## Critical Pitfalls
 
-### Pitfall 1: console.log() Corrupts MCP stdio Transport
-
-**What goes wrong:**
-Any call to `console.log()` or `process.stdout.write()` in an MCP server using stdio transport injects non-JSON-RPC data into stdout, immediately corrupting the protocol stream. The AI client (Claude, Cursor, etc.) receives garbled data and kills the connection with no useful error message. This is the single most common MCP server bug reported in 2025-2026, appearing in projects from Anthropic's own repos to Chrome DevTools MCP.
-
-**Why it happens:**
-Developers instinctively use `console.log()` for debugging. In a normal Node.js app, stdout is for output. In MCP stdio mode, stdout IS the protocol channel. Any non-JSON-RPC byte corrupts the session. Third-party libraries also call `console.log()` internally, which the developer does not control.
-
-**How to avoid:**
-- Redirect all logging to stderr from day one: `const log = (...args) => console.error('[smartb]', ...args);`
-- Configure any logging library (pino, winston) to write to stderr explicitly
-- Intercept `process.stdout.write` in development to catch accidental stdout pollution
-- Use the MCP Inspector tool to view raw JSON-RPC messages during development
-- Lint rule: ban `console.log` in server code entirely
-
-**Warning signs:**
-- "Connection closed unexpectedly" errors in Claude/Cursor with no server-side error
-- MCP client reports "parse error" or "invalid JSON"
-- Server works in HTTP/SSE mode but fails in stdio mode
-- Intermittent failures that correlate with code paths containing debug logging
-
-**Phase to address:**
-Phase 1 (Foundation). Must be correct from the first line of MCP server code. A stderr-only logging utility should be the first thing built.
+Mistakes that cause rewrites, break existing functionality, or fundamentally derail the project.
 
 ---
 
-### Pitfall 2: SSE Transport Is Deprecated -- Build for Streamable HTTP
+### Pitfall 1: Big Bang Renderer Replacement -- Breaking Everything at Once
 
 **What goes wrong:**
-Building the remote transport layer on Server-Sent Events (SSE), which was deprecated in MCP spec version 2025-03-26 and replaced by Streamable HTTP. SSE's dual-endpoint architecture (one for receiving events, another for sending requests) creates session management complexity, deployment headaches behind load balancers, and split error channels that make debugging painful. Building on SSE means a rewrite within 6-12 months.
+Attempting to replace Mermaid.js with a custom canvas renderer in a single phase. The existing v1 has 6 modules (annotations.js, diagram-editor.js, collapse-ui.js, search.js, ws-client.js, plus 1757 lines in live.html) that ALL depend on Mermaid's SVG DOM output. Every one of these modules queries Mermaid-specific DOM structures: `#preview svg`, `.node`, `.cluster`, `.nodeLabel`, `.edgePath`, and ID patterns like `flowchart-{ID}-{N}` and `subGraph{N}-{ID}-{N}`. A big bang replacement breaks all of them simultaneously.
 
 **Why it happens:**
-Most MCP tutorials from early 2025 use SSE. Training data and older blog posts still reference it. The official spec change happened mid-2025, and many developers miss the migration.
+The temptation to "just swap the renderer" because the new system is architecturally cleaner. But the old system has deep coupling between rendering output and interaction code. SmartBAnnotations.extractNodeId() traverses the DOM looking for Mermaid-specific class names and ID patterns. SmartBCollapseUI.extractNodeId() does the same. SmartBSearch.search() queries `.nodeLabel` elements. The diagram-editor click handler looks for `flowchart-{ID}-{N}` patterns. All of this breaks the instant Mermaid SVG is replaced.
 
-**How to avoid:**
-- Use stdio for local tool integration (the project's primary use case as a VS Code extension companion)
-- Use Streamable HTTP (not SSE) for any remote/networked transport needs
-- Pin to MCP spec version 2025-06-18 or later
-- Monitor the MCP specification repo for transport changes: `github.com/modelcontextprotocol/specification`
+**Consequences:**
+- Flags stop working (cannot find nodes in SVG)
+- Search breaks (no `.nodeLabel` elements)
+- Collapse/expand breaks (no `.cluster` elements)
+- Node editing breaks (cannot parse node IDs from SVG)
+- VS Code extension webview breaks (same Mermaid DOM queries)
+- All 119 existing tests that depend on Mermaid output become invalid
+- Months of regression before feature parity with v1
 
-**Warning signs:**
-- Using `@modelcontextprotocol/sdk` with SSE transport classes
-- Two separate endpoints for client communication (GET for events, POST for requests)
-- "HTTPS redirection breaking SSE connections" errors in production
+**Prevention:**
+1. **Strangler fig pattern:** Build the new renderer alongside Mermaid, not instead of it. Both should coexist for at least one full phase.
+2. **Abstraction layer first:** Before touching the renderer, extract ALL DOM queries into a `DiagramDOM` interface that both Mermaid SVG and the new canvas system can implement. This means `findNode(id)`, `getNodeBBox(id)`, `getEdgeEndpoints(id)`, `getNodeLabel(id)` -- abstract operations, not DOM queries.
+3. **Feature parity gate:** The new renderer cannot replace Mermaid until it passes the exact same interaction test suite. Build the test suite BEFORE the renderer.
+4. **Parallel rendering mode:** Add a toggle (`?renderer=canvas` query param) so the old Mermaid path and new canvas path can be compared side-by-side during development.
 
-**Phase to address:**
-Phase 1 (Foundation). Transport choice is architectural and cannot be swapped cheaply later.
+**Detection:**
+- "I'll just quickly replace the render function" appears in any plan
+- A phase plan has "replace Mermaid" as step 1 instead of "abstract DOM queries" as step 1
+- No mention of backwards compatibility or migration path
+
+**Phase to address:** Must be the FIRST thing addressed in the renderer replacement phase. The abstraction layer IS the phase gate.
 
 ---
 
-### Pitfall 3: Webview State Loss and Memory Leaks in VS Code Extension
+### Pitfall 2: .mmd Round-Trip Fidelity Loss
 
 **What goes wrong:**
-VS Code destroys webview content when tabs move to the background. Developers either: (a) lose all diagram state on every tab switch, creating a terrible UX, or (b) enable `retainContextWhenHidden` which keeps the webview alive but consumes significant memory per panel. With real-time diagrams that accumulate state, this causes the extension host to consume gigabytes of RAM over multi-hour sessions.
+The new interactive editor allows users to drag nodes, resize subgraphs, add edges visually. These visual operations must be serialized back to .mmd text. But Mermaid syntax is lossy -- it encodes topology (what connects to what) and labels, but NOT positions, sizes, or visual styling beyond classDefs. When the custom renderer computes a layout and the user modifies it, writing back to .mmd loses all spatial information. The next render produces a completely different layout.
+
+This is the core architectural tension: .mmd is the source of truth (files on disk, version-controlled, AI-editable), but the interactive canvas needs information that .mmd cannot represent.
 
 **Why it happens:**
-VS Code's webview lifecycle is counterintuitive. The content is destroyed and recreated on visibility changes by default. The "easy fix" (`retainContextWhenHidden: true`) trades one problem for another. Additionally, event listeners registered in webviews that are not cleaned up on `onDidDispose` create memory leaks that compound over time.
+Mermaid is a declarative language: you describe the graph, and the layout engine decides positions. A visual editor is imperative: the user decides positions. These paradigms conflict. Every existing diagram tool that tried to use a text format as the source of truth while providing visual editing (PlantUML + visual editors, Graphviz + interactive tools) ran into this exact problem.
 
-**How to avoid:**
-- Use `getState()` / `setState()` API for webview state persistence (officially recommended, much lower overhead than `retainContextWhenHidden`)
-- Implement incremental state serialization: serialize only the current diagram state, not the full rendering context
-- Register all intervals, listeners, and subscriptions to `context.subscriptions` for automatic cleanup
-- Clear `setInterval`/`setTimeout` in `onDidDispose` handlers
-- Use `retainContextWhenHidden` ONLY for the primary diagram panel, never for auxiliary panels
-- Profile memory with VS Code's Process Explorer (Help > Open Process Explorer)
-- Note: you CANNOT send messages to a hidden webview even with `retainContextWhenHidden` enabled
+**Consequences:**
+- User drags a node to a specific position, saves, reloads -- node is in a different position
+- AI agent updates the .mmd file, user's careful layout is destroyed
+- Annotations reference positions that no longer exist after re-layout
+- Users lose trust in the tool ("it keeps moving my stuff around")
 
-**Warning signs:**
-- Extension host memory grows continuously during a session
-- Diagrams flicker or reset when switching between editor tabs
-- "Attempting to use a destroyed webview" errors in extension host logs
-- Users reporting VS Code slowdown after hours of use
+**Prevention:**
+1. **Metadata sidecar file:** Store visual layout data in a `.smartb.json` sidecar file alongside each `.mmd` file. Contains node positions, collapsed state, viewport settings. The .mmd file remains the topology source of truth; the sidecar stores the visual presentation.
+2. **Layout pinning:** When a user manually positions a node, pin it. Pinned nodes keep their position across re-renders. Unpinned nodes follow the automatic layout.
+3. **Stable layout algorithm:** Use ELK.js with `elk.algorithm: "layered"` and `elk.layered.crossingMinimization.strategy: "LAYER_SWEEP"` which produces deterministic, stable layouts for the same input graph. Same .mmd input always produces the same visual output.
+4. **Merge strategy for AI updates:** When an AI agent modifies the .mmd, preserve the sidecar layout for nodes that still exist. Only auto-layout new or repositioned nodes.
 
-**Phase to address:**
-Phase 2 (VS Code Extension). Must be designed into the webview architecture from the start, not retrofitted.
+**Detection:**
+- "We'll just re-render the .mmd after each edit" appears in any plan
+- No mention of layout persistence or position storage
+- Tests only verify topology, not visual stability
+
+**Phase to address:** Architecture decision needed BEFORE the first interactive feature. The sidecar file format must be designed before any drag/drop capability.
 
 ---
 
-### Pitfall 4: Diagrams Become Unreadable at Scale (The UML Death)
+### Pitfall 3: Vanilla JS Complexity Ceiling in Canvas Interactions
 
 **What goes wrong:**
-AI agent traces produce diagrams with hundreds of nodes and edges. Mermaid.js flowchart rendering is O(n^2) complex -- 100 connections is the practical performance limit before rendering slows significantly. Beyond 50 nodes in high-density graphs, cognitive overload makes diagrams useless. The tool becomes a wall of spaghetti that provides less insight than reading logs.
+Building a full interactive canvas editor (drag, select, multi-select, resize, undo/redo, keyboard shortcuts, context menus, snap-to-grid, zoom-to-cursor) in vanilla JavaScript without a framework. The current codebase already shows strain: live.html is 1757 lines, and the 5 IIFE modules communicate through `window.*` globals and callback hooks. Adding drag interaction requires: hit testing, coordinate transforms (screen to canvas to graph space), event state machines (mousedown+mousemove=drag vs mousedown+mouseup=click), z-order management, and render loop coordination. Each of these is manageable alone, but their interaction is combinatorial.
 
 **Why it happens:**
-This killed UML tools. Prescriptive diagramming (show everything) inevitably hits the wall where visual complexity exceeds human cognitive capacity (Miller's Law: 7 plus/minus 2 items in working memory). AI agent traces can generate hundreds of tool calls, reasoning steps, and branching decisions in a single session.
+The project constraint is "vanilla JS, no framework." This works well for simple UIs (displaying diagrams, handling a few click events). But interactive canvas editing is a fundamentally different complexity class. Framework-free diagram editors exist (draw.io/mxGraph is vanilla JS, roughly 200,000 lines), but they represent person-years of engineering. The risk is not that vanilla JS cannot do it -- it is that the codebase becomes unmaintainable before the feature set is complete.
 
-**How to avoid:**
-- Implement hierarchical collapsing: show summary nodes that expand on click, not flat graphs
-- Set hard rendering limits: max 50 visible nodes, max 100 edges per viewport
-- Use the ELK (Eclipse Layout Kernel) layout engine for complex hierarchical graphs instead of Mermaid's default dagre
-- Implement "focus mode": show only the subgraph relevant to a selected node plus 1-2 levels of context
-- Apply progressive disclosure: start with high-level phase overview, drill into detail on demand
-- Pre-compute layout server-side; do not rely on browser-side Mermaid rendering for large graphs
-- Consider switching from Mermaid to D3.js or Cytoscape.js for graphs exceeding 50 nodes
+**Consequences:**
+- State management becomes ad-hoc (is the user dragging? selecting? in flag mode? in edge-add mode? -- these states already conflict today)
+- Event handler conflicts between modules (annotations.js, diagram-editor.js, collapse-ui.js, and search.js ALL attach click handlers to the same `#preview-container`)
+- Memory leaks from event listeners that are not properly cleaned up across re-renders
+- Bugs that only appear in specific interaction sequences (drag + zoom + flag mode)
+- The 500-line limit forces splitting files, but the split files share global state through `window.*` -- this is distributed monolith, not modular code
 
-**Warning signs:**
-- Render time exceeds 2 seconds for any diagram
-- Users report "I can't find anything in this diagram"
-- Browser tab memory exceeds 500MB during diagram rendering
-- Horizontal scrolling required to see the full diagram
-- GitLab enforces a 5000-byte limit on Mermaid diagrams for a reason
+**Prevention:**
+1. **Event bus:** Replace the current callback-hooks pattern (`_initHooks` object passed to each module) with a proper event bus/pubsub. Modules communicate through events, not direct function calls. This decouples the modules and makes the interaction state machine explicit.
+2. **Interaction state machine:** Formalize the interaction modes as a state machine. The current code has implicit states (flagMode, addNode mode, addEdge mode, panning, selecting). Make these explicit: `IDLE -> PANNING -> IDLE`, `IDLE -> FLAG_MODE -> FLAG_PLACING -> IDLE`, etc. Only one interaction mode is active at a time. The state machine prevents conflicting handlers.
+3. **Canvas abstraction layer:** Build a thin `CanvasInteraction` class that handles: hit testing, coordinate transforms, drag detection (mousedown distance threshold), and delegates to the active interaction handler. All modules register with this layer instead of attaching raw DOM events.
+4. **Strongly consider a minimal rendering library:** Even within the "no framework" constraint, a library like Pixi.js (for Canvas2D/WebGL) or Rough.js (for SVG) handles the render loop, hit testing, and event delegation that would otherwise be thousands of lines of manual code. A rendering library is NOT a UI framework -- it is infrastructure, like using `ws` for WebSocket instead of raw TCP.
 
-**Phase to address:**
-Phase 2-3. Start with rendering limits in Phase 2, implement hierarchical collapsing in Phase 3. This is the single most likely product-killer and must be addressed before any public launch.
+**Detection:**
+- More than 3 modules attaching click handlers to the same DOM element
+- `window.*` globals used for inter-module communication beyond the existing set
+- Any file exceeding 400 lines in the static/ directory
+- Interaction bugs that require reproducing a specific click sequence
+
+**Phase to address:** Must be addressed at the START of the canvas phase. If the event bus and interaction state machine are not built first, every subsequent feature adds exponential complexity.
 
 ---
 
-### Pitfall 5: Single-Process Architecture Collapses Under Load
+### Pitfall 4: Layout Engine Async + Performance Cliffs
 
 **What goes wrong:**
-Running HTTP server + WebSocket server + MCP stdio handler in a single Node.js process. A synchronous Mermaid rendering operation or a large diagram layout computation blocks the event loop, freezing all WebSocket connections and making the MCP server unresponsive. The AI client times out, WebSocket clients disconnect, and diagram state is lost.
+ELK.js (the recommended replacement for Mermaid's dagre) runs its layout algorithm asynchronously because the core is a Java library compiled to JavaScript via GWT. Every layout computation returns a Promise. This means: (a) you cannot synchronously compute layout during rendering, (b) rapid diagram updates (AI agent sending 10+ updates/second) queue layout computations that may complete out of order, (c) the layout computation for a 100+ node graph takes 200-500ms, creating visible layout latency.
+
+Meanwhile, dagre (used internally by Mermaid) is synchronous but unmaintained since 2018, makes poor edge routing decisions, and has known bugs with complex subgraph nesting.
 
 **Why it happens:**
-Single-process is simpler to build and deploy. For an MVP, it works. But Mermaid/ELK layout computation is CPU-intensive. JSON serialization of large diagram state is synchronous. A single blocking operation cascades across all protocol handlers sharing the same event loop.
+ELK.js is the industry standard for graph layout. React Flow, Svelte Flow, and many production tools use it. But they all run into the same issues: (1) async layout means the diagram "pops" into position after rendering, creating visual jank, (2) layout for large graphs blocks the main thread (even though the API is async, the computation is CPU-bound in a single tick), (3) the Java API translated to JS has over 150 configuration options, and the wrong combination produces unusable layouts.
 
-**How to avoid:**
-- Profile event loop lag from day one: use `perf_hooks.monitorEventLoopDelay()` or `clinic.js`
-- Move diagram rendering/layout to a worker thread (`worker_threads`) or a separate process
-- Implement timeouts on all MCP tool handlers (the SDK supports `RequestTimeout`)
-- Use `setImmediate()` to yield the event loop during long-running computations
-- Design graceful shutdown in phases: (1) stop accepting new connections, (2) send WebSocket close frames, (3) drain in-flight MCP requests, (4) clean up resources
-- Set explicit timeout on WebSocket ping/pong (detect dead connections faster than TCP timeout)
+**Consequences:**
+- Diagram "flashes" on every update: first renders without positions, then jumps to computed positions
+- AI agent rapid-fire updates cause layout queue buildup, leading to stale layouts being applied
+- Large diagrams (100+ nodes) cause the main thread to freeze during layout computation
+- Edge routing produces crossing edges or routes through nodes with default settings
+- Users report "the diagram keeps jumping around" -- layout instability across updates
 
-**Warning signs:**
-- Event loop delay exceeding 100ms measured by monitoring
-- WebSocket clients receiving messages out of order or with increasing latency
-- MCP client reporting `RequestTimeout` errors during diagram generation
-- Process hanging on SIGTERM (sockets stuck in CLOSE_WAIT state)
+**Prevention:**
+1. **Layout debouncing with cancellation:** Do not compute layout on every update. Debounce with a 150ms window. Cancel in-flight layout computations when a new update arrives. Only apply the LATEST layout result.
+2. **Incremental layout:** For updates that add/remove 1-3 nodes, do not recompute the full layout. Compute positions for new nodes relative to their neighbors and pin existing nodes. Full layout only on user request (Ctrl+L or "Re-layout" button).
+3. **Web Worker layout:** Move ELK.js computation to a Web Worker. This prevents main thread blocking entirely. The worker receives the graph, computes layout, returns positions. The main thread applies positions to the renderer. Note: ELK.js officially supports Web Worker mode via `elk.bundled.js`.
+4. **Layout caching:** Cache the layout result keyed by a hash of the graph topology. If the same topology is requested again (common during collapse/expand toggling), return the cached layout instantly.
+5. **Deterministic configuration:** Use a fixed, tested ELK configuration. Do not expose all 150 options to users. Recommended starting point:
+   ```json
+   {
+     "elk.algorithm": "layered",
+     "elk.direction": "RIGHT",
+     "elk.spacing.nodeNode": 60,
+     "elk.layered.spacing.edgeNodeBetweenLayers": 40,
+     "elk.edgeRouting": "ORTHOGONAL"
+   }
+   ```
 
-**Phase to address:**
-Phase 1 (Foundation) for the basic architecture and shutdown handling. Phase 3 for worker thread offloading as diagrams grow complex.
+**Detection:**
+- Layout computation on the main thread without a Worker
+- No debounce on layout trigger during rapid updates
+- Users see nodes "jumping" on every AI agent update
+- Edge routing produces overlapping or crossing paths
+
+**Phase to address:** Must be solved in the renderer foundation phase. Retrofitting async layout and Workers into a synchronous rendering pipeline is a rewrite.
 
 ---
 
-### Pitfall 6: npm Global Package Fails on Windows
+### Pitfall 5: Undo/Redo Done Wrong in a Collaborative-Like System
 
 **What goes wrong:**
-The `#!/usr/bin/env node` shebang works on macOS/Linux but Windows handles it differently through npm's cmd shim. Path separators (`/` vs `\`), file permissions, and shell metacharacters behave differently. Postinstall scripts using Unix shell syntax (`export VAR=value`, `&&` chains) break on Windows CMD. Bundled HTML/CSS/JS assets referenced with `__dirname` resolve to unexpected locations when installed globally.
+Building undo/redo using the naive approach (store full state snapshots on every action) in a system where BOTH the user AND an AI agent modify the diagram. The undo stack captures user edits, but AI agent updates arrive via WebSocket and modify the same state. When the user undoes, they may undo an AI agent's change, or their undo may conflict with a subsequent AI update. The undo stack becomes a source of confusion and data corruption.
 
 **Why it happens:**
-macOS-first development. The developer's machine is macOS, CI runs on Linux, and Windows is tested last (or never). npm's `cross-spawn` shebang support is limited to `#!/usr/bin/env <program>` with no arguments. Global npm install paths differ across platforms (`/usr/local/lib` vs `%AppData%\npm`).
+Undo/redo seems simple (Ctrl+Z goes back) but is actually a distributed systems problem when multiple sources of truth exist. The current system has three mutation sources: (1) user edits in the browser editor, (2) AI agent updates via MCP, (3) file system changes via file watcher. All three modify the same .mmd file content. A naive undo stack does not distinguish between these sources.
 
-**How to avoid:**
-- Use `path.join()` and `path.resolve()` for ALL file paths, never string concatenation with `/`
-- Use `cross-env` for environment variables in npm scripts
-- Use `url.fileURLToPath(import.meta.url)` instead of `__dirname` in ESM (since the project uses ESM)
-- Bundle static assets (HTML/CSS/JS for the web UI) into the npm package using the `files` field in package.json, verified with `npm pack --dry-run`
-- Test `npm install -g` on Windows in CI (GitHub Actions provides Windows runners)
-- Avoid postinstall scripts entirely if possible; if required, use `cross-env` and `shx` for cross-platform shell commands
-- Never assume the global install directory is writable without elevation
+**Consequences:**
+- User presses Ctrl+Z and loses an AI agent's important update
+- Redo stack is invalidated when an AI update arrives during an undo sequence
+- File system watcher detects the undo as a "change," triggering a re-render loop
+- "Undo" means different things in different contexts (undo my drag? undo my flag? undo the AI's last step?)
 
-**Warning signs:**
-- Bug reports only from Windows users
-- "EACCES permission denied" errors on install
-- "Cannot find module" errors for bundled HTML/CSS assets after global install
-- `npm pack --dry-run` output missing expected files
+**Prevention:**
+1. **Separate undo stacks by source:** User actions have their own undo stack. AI updates do not. File system changes are treated as external events that fork a new undo branch.
+2. **Command pattern with source tagging:** Each command records its source (`user`, `ai`, `filesystem`). Ctrl+Z only undoes `user` commands. AI commands can be "rolled back" through a separate UI action ("Revert AI change").
+3. **Operational Transform (OT) lite:** When the user undoes an action, check if any AI updates were applied on top. If so, transform the undo to be compatible with the AI updates (similar to how Google Docs handles concurrent edits, but much simpler since the graph model has clear semantics).
+4. **Start without undo:** Seriously consider deferring undo/redo entirely. The .mmd file is version-controlled. The AI agent can regenerate any state. The value of undo in a collaborative observability tool is much lower than in a traditional editor. If undo is deferred, it avoids this entire pitfall class.
 
-**Phase to address:**
-Phase 1 (Foundation). File path handling and asset bundling must be cross-platform from the first `npm publish`. Add Windows to CI matrix immediately.
+**Detection:**
+- Undo implementation does not distinguish between user and AI changes
+- File watcher fires on undo-triggered saves, causing a loop
+- Tests for undo do not include scenarios with concurrent AI updates
+
+**Phase to address:** Design decision needed before implementing any edit capabilities. If undo is deferred, document the decision explicitly so it does not become a "we forgot" bug.
 
 ---
 
-### Pitfall 7: Building a Code Replacement Tool Instead of an Observability Tool
+### Pitfall 6: live.html Is Already 1757 Lines -- Refactoring Under Pressure
 
 **What goes wrong:**
-Feature creep toward "edit the diagram to change the code" or "generate code from diagrams." This is the graveyard of visual programming tools. Every attempt to make diagrams prescriptive (the diagram IS the source of truth) has failed for general-purpose programming because: visual representations are more verbose than text at expressing logic, they cannot handle abstraction at scale, they break version control, and they require constant bidirectional synchronization.
+The main HTML file is already 3.4x the project's 500-line limit. It contains: CSS (582 lines), HTML structure (114 lines), and JavaScript (1061 lines) including Mermaid initialization, rendering, pan/zoom, file sync, file tree, export (SVG + PNG with duplicate Mermaid configs), editor events, keyboard shortcuts, save/delete/rename operations, WebSocket handling, collapse integration, and annotation/search/editor initialization. Adding interactive canvas features (drag handlers, selection rectangle, context menu, property panel, toolbar states) to this file will push it past 3000 lines.
+
+The 5 IIFE modules were extracted as a partial mitigation, but they communicate through `window.*` globals and the `_initHooks` callback object -- this is not true modularity but distributed coupling.
 
 **Why it happens:**
-The temptation is enormous. Users ask for it. Investors want to hear "no-code." The demo is impressive. But as the sbensu analysis documents: developers never try to visualize business logic and code syntax. They visualize state transitions, network topology, memory layouts -- aspects that are "important, implicit, and hard to understand." Visual programming tools fail because they try to replace what developers are already good at (writing code) instead of augmenting what they struggle with (understanding system behavior).
+Organic growth. Each phase added features to live.html because it was the fastest path. The IIFE extraction (annotations.js, diagram-editor.js, etc.) moved code out but not the coupling. The modules still reach into live.html's scope through hooks, and live.html reaches into the modules through `window.SmartBAnnotations`, `window.MmdEditor`, etc.
 
-**How to avoid:**
-- Define and enforce the product boundary: SmartB Diagrams is a READ-ONLY observability layer, not a code editor
-- The diagram is a DERIVED VIEW of AI agent behavior, never a source of truth
-- User interactions on diagrams create ANNOTATIONS and FLAGS, not code changes
-- Every feature request for "edit code from diagram" gets redirected to "flag this step for the developer to investigate in their editor"
-- Study successful observability tools (Datadog flame graphs, Chrome DevTools Network tab) -- they show what happened, they do not try to change what will happen
+**Consequences:**
+- Adding new features creates merge conflicts with any other work touching live.html
+- CSS specificity wars between inline styles and external CSS
+- Duplicate Mermaid initialization configs (lines 712-741 and 1281-1345 and 1316-1345 -- the PNG export has its own copy)
+- Global state variables (`zoom`, `panX`, `panY`, `autoSync`, `lastContent`, etc.) create hidden dependencies
+- No unit tests possible for the inline JavaScript
+- New developers cannot understand the system without reading all 3706 lines of static/ code
 
-**Warning signs:**
-- Feature requests for "click to edit code from diagram"
-- Product discussions about "bidirectional sync between diagram and code"
-- Marketing language shifting from "see what your AI agent did" to "control your AI agent visually"
-- Any feature that requires parsing or modifying source code
+**Prevention:**
+1. **Refactor BEFORE adding features, not during:** Dedicate a full plan to splitting live.html into proper ES modules BEFORE adding any canvas code. This is not optional cleanup -- it is prerequisite infrastructure.
+2. **Module system migration:** Move from IIFEs + `<script>` tags to ES modules bundled with a tool (esbuild or Vite in library mode). This enables: proper imports/exports, tree shaking, TypeScript for client code, and eliminates `window.*` globals.
+3. **Specific splits:**
+   - `live.html` -> pure HTML skeleton (< 100 lines)
+   - `styles/` -> CSS files by component
+   - `core/state.ts` -> centralized state store
+   - `core/event-bus.ts` -> inter-module communication
+   - `renderer/mermaid-renderer.ts` -> Mermaid-specific rendering
+   - `renderer/canvas-renderer.ts` -> new canvas renderer
+   - `interactions/pan-zoom.ts` -> pan/zoom logic
+   - `interactions/drag-select.ts` -> new drag/select
+   - `ui/toolbar.ts`, `ui/sidebar.ts`, `ui/editor-panel.ts` -> UI components
+4. **Deduplication:** The Mermaid config is duplicated 3 times in live.html. Extract to a single `mermaid-config.ts` module.
 
-**Phase to address:**
-Every phase. This is a strategic constraint that must be defended in every planning session.
+**Detection:**
+- Any plan that adds JavaScript to live.html without first refactoring it
+- live.html exceeds 2000 lines
+- New modules added as IIFEs with `window.*` exports
+
+**Phase to address:** FIRST plan of the v2 milestone. The refactoring is the phase gate for all subsequent work.
 
 ---
 
-## Technical Debt Patterns
+## Moderate Pitfalls
 
-| Shortcut | Immediate Benefit | Long-term Cost | When Acceptable |
-|----------|-------------------|----------------|-----------------|
-| `retainContextWhenHidden: true` on all webviews | No state management needed | Memory grows unbounded per session | MVP only, for primary panel only; replace with `getState`/`setState` before Phase 3 |
-| Rendering Mermaid client-side for all diagram sizes | Simpler architecture, no server-side rendering | Browser freezes on large diagrams, blocks UI thread | Acceptable for diagrams under 30 nodes; must offload for larger |
-| Storing full diagram history in memory | Fast undo/redo, simple implementation | Memory exhaustion during long AI agent sessions | Acceptable in MVP; implement ring buffer or persistence by Phase 3 |
-| Single `package.json` for MCP + HTTP + VS Code extension | One repo, simple deployment | Cannot independently version or deploy components | Acceptable through Phase 2; extract packages by Phase 4 |
-| Hardcoding Mermaid syntax generation | Fast to implement, direct control | Cannot swap rendering engine when limits are hit | Never acceptable; use an intermediate graph data model from day one |
-| Skipping Windows CI | Faster CI, simpler setup | 30% of VS Code users on Windows cannot install | Never acceptable; add Windows runner from first publish |
+Mistakes that cause significant rework or degraded experience but do not require full rewrites.
 
-## Integration Gotchas
+---
 
-| Integration | Common Mistake | Correct Approach |
-|-------------|----------------|------------------|
-| MCP TypeScript SDK (v2) | Importing from `@modelcontextprotocol/sdk` (v1 package path) | Import from `@modelcontextprotocol/core` and `@modelcontextprotocol/client`/`server` (v2 restructured exports) |
-| MCP TypeScript SDK ESM | TypeScript imports without `.js` extension fail at runtime | Use `.js` extensions in imports even in `.ts` files, or use `tsdown` bundler that correctly rewrites imports |
-| MCP TypeScript SDK tsconfig | Default module resolution does not work | Set `"moduleResolution": "Node16"` or `"NodeNext"` in tsconfig.json |
-| MCP tool output schemas | Returning plain text when a Zod/JSON schema is declared | If `outputSchema` is declared, you MUST return `structuredContent` matching that schema, not `content` |
-| VS Code Webview CSP | No Content Security Policy set, or `unsafe-inline` allowed | Define strict CSP: `default-src 'none'; img-src ${webview.cspSource} https:; script-src ${webview.cspSource}; style-src ${webview.cspSource};` |
-| VS Code Webview Workers | Loading Web Workers from extension folder | Web Workers in webviews can only be loaded from `data:` or `blob:` URIs, not from file paths |
-| VS Code Extension Publishing | PAT scoped to specific organization | Create PAT with "All accessible organizations" and "Marketplace (Manage)" scope |
-| npm global bin | Using `#!/usr/bin/env node --experimental-modules` | Shebang must be `#!/usr/bin/env node` only (no arguments); cross-spawn only supports this exact form |
-| WebSocket reconnection | Reconnecting immediately after disconnect | Use exponential backoff (100ms, 200ms, 400ms... cap at 30s) with jitter to prevent thundering herd |
-| MCP multi-server | Assuming tools are safe in isolation | Tool combinations across MCP servers can create "toxic combinations"; validate tool interactions end-to-end |
+### Pitfall 7: SVG vs Canvas Choice Locks You In
 
-## Performance Traps
+**What goes wrong:**
+Choosing HTML5 Canvas (immediate mode) for the renderer because "canvas is faster" without understanding the tradeoffs. Canvas provides no DOM -- every node, edge, and label is painted pixels. This means: no CSS styling, no native text selection, no screen reader accessibility, no browser dev tools inspection, no SVG export without re-rendering. The current system relies heavily on SVG DOM features: CSS classes for styling (`.flagged`, `.search-match`), DOM IDs for node identification, `getBBox()` for badge positioning, and `outerHTML` for SVG export.
 
-| Trap | Symptoms | Prevention | When It Breaks |
-|------|----------|------------|----------------|
-| Mermaid.js rendering large flowcharts | Render time > 5s, browser tab freezes | Cap at 50 visible nodes; use ELK layout for hierarchical graphs; pre-render server-side | > 100 connections (O(n^2) complexity) |
-| Storing all WebSocket messages in memory | Memory grows linearly with session duration | Implement ring buffer, persist to disk, or paginate history | > 1 hour session with active AI agent |
-| Full diagram re-render on every event | CPU spikes on each AI agent step, dropped frames | Implement incremental/diff-based updates; only re-render changed subgraph | > 20 events/second from AI agent |
-| Synchronous JSON serialization of diagram state | Event loop blocks during state snapshots | Use `JSON.stringify` with streaming, or serialize in worker thread | > 10MB diagram state object |
-| VS Code extension activating eagerly | Slows VS Code startup for all users | Use lazy activation events: `onCommand:`, `onView:`, not `*` | Any time; affects all users from install |
-| stdio transport for high-throughput scenarios | Latency acceptable for tool calls but not for streaming diagram updates | Use stdio for MCP tool calls; use WebSocket (via HTTP server) for real-time diagram streaming | > 100 updates/second |
+Conversely, choosing SVG for the renderer because "we already use SVG" ignores the performance cliff: SVG hits its ceiling at around 300 DOM elements where layout/paint/compositing costs dominate.
 
-## Security Mistakes
+**Prevention:**
+1. **Hybrid approach:** Use SVG for individual node rendering (leverages CSS, DOM inspection, accessibility) but apply pan/zoom transforms at the container level. This is what JointJS, React Flow, and draw.io do.
+2. **Virtualized SVG:** Only render nodes that are in the viewport. Off-screen nodes are removed from the DOM and re-added when scrolled into view. This extends SVG performance to thousands of logical nodes while keeping hundreds of DOM elements.
+3. **Canvas for overview, SVG for detail:** When zoomed out past a threshold, switch to a canvas "minimap" renderer for performance. When zoomed in, use SVG for interactivity. This is the pattern used by large-scale map applications.
 
-| Mistake | Risk | Prevention |
-|---------|------|------------|
-| MCP server accepting arbitrary file paths without validation | Path traversal: AI agent could read/write files outside project scope | Validate and resolve all paths against a configured project root; reject paths containing `..` |
-| Storing API keys in environment variables passed via MCP config | Keys visible in process environment, logged by crash reporters | Use OAuth where possible; if API keys required, use secure credential storage (VS Code SecretStorage API) |
-| Webview loading remote scripts without CSP | Cross-site scripting via injected diagram content | Strict Content Security Policy; only load scripts from `webview.cspSource` |
-| MCP tool descriptions containing user-controllable content | Prompt injection: malicious content in tool descriptions manipulates AI behavior | Sanitize all tool descriptions; never include user input in MCP tool metadata |
-| Running postinstall scripts with elevated privileges | Supply chain attack vector during npm install | Avoid postinstall scripts; if needed, ensure they are minimal and auditable |
-| WebSocket server without origin validation | Cross-site WebSocket hijacking from malicious web pages | Validate `Origin` header on WebSocket upgrade; restrict to `localhost` and known VS Code origins |
+**Phase to address:** Architecture phase. The rendering strategy must be decided before any renderer code is written.
 
-## UX Pitfalls
+---
 
-| Pitfall | User Impact | Better Approach |
-|---------|-------------|-----------------|
-| Showing raw Mermaid syntax errors to users | Confusion, perceived instability -- users did not write the Mermaid code | Catch Mermaid parse errors silently; show a "diagram unavailable" placeholder with a "view raw data" escape hatch |
-| Requiring manual configuration to connect MCP + extension + browser | Installation friction kills adoption; 3-component setup is already complex | Auto-discovery: extension finds the MCP server, server opens the browser UI; zero configuration for the default local workflow |
-| Diagram updates causing layout thrashing | Nodes jump around on every update, making it impossible to track a specific step | Maintain stable node positions across updates; only reflow when the user explicitly requests it |
-| No progressive disclosure for complex traces | User overwhelmed by 200-node AI agent trace on first view | Start with collapsed summary view (3-5 high-level phases); let user drill into detail |
-| Forcing a specific diagram style/orientation | Left-to-right does not work for all mental models | Support multiple layout orientations (LR, TB); let users choose and remember preference |
-| Treating all AI agent events equally | Important decisions buried among routine tool calls | Visually distinguish decision points, errors, and flagged items; use color and size coding |
+### Pitfall 8: Coordinate Transform Bugs in Interactive Canvas
 
-## "Looks Done But Isn't" Checklist
+**What goes wrong:**
+The interactive canvas has three coordinate spaces: screen space (mouse events), viewport space (after accounting for scroll), and graph space (after accounting for pan and zoom). Every interaction -- click, drag, hover, context menu -- must transform between these spaces correctly. The current code has a basic version of this (panX/panY/zoom applied to a CSS transform), but interactive editing requires the REVERSE transform: given a mouse click at screen position (X,Y), what graph node is at that position? This reverse transform must account for: scroll position, CSS transforms on parent elements, devicePixelRatio on high-DPI screens, and the render-time padding applied by the layout engine.
 
-- [ ] **MCP server:** Works in stdio mode -- verify no stdout pollution by running with `MCP Inspector` and checking raw JSON-RPC stream
-- [ ] **MCP server:** Error responses use correct JSON-RPC error codes -- verify `ProtocolError` vs `SdkError` distinction (v2 SDK change)
-- [ ] **VS Code extension:** Webview survives tab switch -- verify state persists after moving tab to background and back
-- [ ] **VS Code extension:** Clean deactivation -- verify all intervals, listeners, and WebSocket connections are cleaned up (check with Process Explorer)
-- [ ] **npm package:** Installs globally on Windows -- verify with `npm install -g` on a Windows machine/CI, check the bin shim works
-- [ ] **npm package:** All static assets (HTML, CSS, JS for web UI) are included -- verify with `npm pack --dry-run` listing all expected files
-- [ ] **WebSocket:** Reconnects after server restart -- verify the client reconnects with exponential backoff and resynchronizes diagram state
-- [ ] **WebSocket:** Handles mid-update disconnect -- verify partial diagram state is not rendered; wait for full state sync after reconnect
-- [ ] **Diagrams:** Readable at 100+ nodes -- verify with a real AI agent trace; if unreadable, the collapsing/filtering is not working
-- [ ] **Diagrams:** Stable layout on incremental updates -- verify nodes do not jump positions when a new node is added
-- [ ] **Graceful shutdown:** Clean exit on SIGTERM -- verify no sockets stuck in CLOSE_WAIT, no orphaned child processes
-- [ ] **Cross-platform:** Path handling uses `path.join()` everywhere -- grep the codebase for string concatenation with `/` in file paths
+**Prevention:**
+1. **Single source of truth for transforms:** Create a `ViewportTransform` class with `screenToGraph(x, y)` and `graphToScreen(x, y)` methods. ALL code that needs coordinate transforms uses this class. No ad-hoc `(x - panX) / zoom` calculations scattered across modules.
+2. **Unit test the transforms:** Coordinate transforms are mathematically deterministic. Test them with known inputs/outputs at various zoom levels and pan positions, including edge cases (zoom < 1, negative pan, high-DPI displays).
+3. **Use `getScreenCTM()` for SVG:** If using SVG rendering, the `getScreenCTM()` method provides the exact current transformation matrix. Use its inverse for screen-to-SVG coordinate conversion. This handles all parent transforms and scroll automatically.
+
+**Phase to address:** First interaction feature. The transform class must exist before any hit testing or drag logic.
+
+---
+
+### Pitfall 9: Session Recording Blows Up Storage
+
+**What goes wrong:**
+Recording AI reasoning sessions (every diagram state, every interaction, timestamps) for replay features. A single AI agent session can produce 50-200 diagram updates over 5-30 minutes. If each update stores the full .mmd content (roughly 5-50KB depending on diagram complexity), a 30-minute session generates 1-10MB of recording data. Over a workday of active development, this accumulates to 50-100MB. Since the tool is local-first, this data lives on the developer's machine with no automatic cleanup.
+
+**Prevention:**
+1. **Delta storage:** Store only the diff between consecutive states, not full snapshots. Graph topology changes are typically small (1-5 node additions/modifications per update). A diff-based recording reduces storage by 90%+.
+2. **Configurable retention:** Default to 7 days of recordings. Provide a `smartb cleanup` CLI command. Show storage usage in `smartb status`.
+3. **Opt-in recording:** Do not record by default. Recording should be explicitly enabled per session. Most users want live visualization, not replay.
+4. **Cap per session:** Maximum 1000 events per recording, maximum 10MB per recording file. Older events are evicted when the cap is reached.
+
+**Phase to address:** When session recording is implemented. This is a later-phase concern, but the storage format design should be decided early.
+
+---
+
+### Pitfall 10: Feature Dependency Chains Create Unshippable Phases
+
+**What goes wrong:**
+Advanced observability features (ghost paths, AI breakpoints, heatmaps, session replay) each depend on a chain of prerequisites. Ghost paths require: layout engine (positions) + historical state storage + diff computation + semi-transparent rendering. AI breakpoints require: MCP bidirectional communication + session recording + breakpoint state management + resume protocol. If any link in the chain is missing, the feature is unshippable. Planning these as "Phase N: Add ghost paths, breakpoints, heatmaps, and replay" creates a phase that can never be completed because the prerequisites were not addressed in earlier phases.
+
+**Prevention:**
+1. **One feature per phase:** Each observability feature gets its own phase with explicit prerequisites listed.
+2. **Prerequisites first, feature second:** A phase plan should read: "Phase N-1: Build the diff engine. Phase N: Add ghost paths using the diff engine." Not "Phase N: Build diff engine AND ghost paths."
+3. **Vertical slices, not horizontal layers:** Instead of building all infrastructure then all features, build one complete vertical slice (e.g., "session recording for a single diagram" end-to-end) before expanding horizontally (multi-diagram recording, replay controls, sharing).
+4. **Feature flags:** Advanced features ship behind flags. Users who do not need them never see them. This allows shipping incomplete-but-functional phases.
+
+**Phase to address:** Roadmap planning. The phase structure must be designed around dependency chains, not feature groupings.
+
+---
+
+### Pitfall 11: VS Code Extension Diverges from Browser UI
+
+**What goes wrong:**
+The VS Code webview and the browser UI (live.html) share the same rendering and interaction code, but diverge as features are added to one but not the other. The canvas renderer works in the browser but breaks in the webview CSP. The drag interaction works in the browser but conflicts with VS Code's own drag handlers. The keyboard shortcuts work in the browser but clash with VS Code keybindings. Over time, the two UIs become separate products that must be maintained independently.
+
+**Prevention:**
+1. **Single rendering core:** The renderer must be a standalone module with NO DOM dependencies beyond what it is given. It receives a container element and renders into it. Both live.html and the VS Code webview provide the container.
+2. **CSP-compatible from day one:** VS Code webviews enforce Content Security Policy. All rendering code must work with `nonce`-based CSP. No inline styles via `element.style.cssText = ...` (the current code does this extensively). No dynamic code evaluation.
+3. **Keyboard shortcut abstraction:** Define shortcuts as a map (`{ "mod+z": "undo", "mod+shift+z": "redo" }`) that both environments interpret. The browser registers them directly. The VS Code extension registers them as `keybinding` contributions in package.json.
+4. **Test in both environments:** Every interaction feature must be tested in both live.html and the VS Code webview. Add a CI step that loads the webview in a VS Code test harness.
+
+**Phase to address:** Must be a constraint from the first line of new renderer code. Not something to "fix later."
+
+---
+
+## Minor Pitfalls
+
+Issues that cause friction or minor bugs but are straightforward to fix.
+
+---
+
+### Pitfall 12: Hit Testing Complexity in Graph Rendering
+
+**What goes wrong:**
+Determining which node or edge the user clicked in a custom renderer. Nodes are rectangles (easy). But edges are curves (splines, beziers) -- testing if a click is "on" a curve requires distance-to-curve computation. Labels on edges need separate hit testing. Subgraph containers overlap with their children. The z-order of overlapping elements determines which one receives the click.
+
+**Prevention:**
+Use SVG-based rendering where hit testing is free (browser handles it via DOM events). If using Canvas, use a hidden "hit canvas" where each element is drawn with a unique color -- the color at the mouse position identifies the element. This is the standard technique used by Pixi.js, Konva.js, and Canvas-based map renderers.
+
+**Phase to address:** Renderer implementation phase. This is a known-solved problem.
+
+---
+
+### Pitfall 13: Export Regression When Switching Renderers
+
+**What goes wrong:**
+SVG and PNG export currently work through Mermaid's rendered SVG (with a workaround for Canvas taint using `htmlLabels: false`). A custom renderer that does not produce SVG natively breaks export. Canvas-based renderers can export to PNG via `canvas.toBlob()` but not to SVG without a separate rendering path.
+
+**Prevention:**
+Maintain the ability to render to SVG even if the primary interactive renderer uses Canvas or a hybrid approach. The export path can use a non-interactive SVG renderer (headless Mermaid, or a dedicated SVG export function in the custom renderer).
+
+**Phase to address:** Export must be explicitly tested after any renderer change. Add export regression tests.
+
+---
+
+### Pitfall 14: Mermaid Initialization Duplication
+
+**What goes wrong:**
+The current codebase has the Mermaid configuration duplicated 3 times in live.html (lines 712-741 for initial setup, lines 1281-1345 for PNG export with `htmlLabels: false`, and lines 1316-1407 for restore after export). Any change to theme or configuration must be applied in all three places. This is already a source of drift and will worsen when adding a second renderer.
+
+**Prevention:**
+Extract the Mermaid config into a single constant/module BEFORE adding any new rendering code. This is a 15-minute fix that prevents a class of subtle styling bugs.
+
+**Phase to address:** Refactoring phase (first plan of v2).
+
+---
+
+## Phase-Specific Warnings
+
+| Phase Topic | Likely Pitfall | Mitigation |
+|-------------|---------------|------------|
+| live.html refactoring | Breaking existing features during split | Write comprehensive integration tests BEFORE splitting. Test every interaction (flag, search, collapse, export, file tree, editor, pan/zoom) |
+| DOM abstraction layer | Abstraction too thin (leaky) or too thick (slow) | Define the interface from the consumer side (what do annotations, search, and collapse NEED?), not from the implementation side |
+| Custom renderer MVP | Trying to match Mermaid styling exactly | Accept visual differences. The custom renderer should look BETTER, not identical. Do not waste weeks matching Mermaid's exact font metrics |
+| ELK.js integration | Layout configuration paralysis (150+ options) | Start with the recommended 6-option config from Pitfall 4. Only add options when a specific layout problem is reported |
+| Drag and drop | Drag interferes with pan (both use mousedown+mousemove) | Require a modifier key for drag (hold Shift to drag) or detect target first (drag on a node = move node, drag on background = pan). Do not make both use bare mousedown |
+| Multi-select | Selection state management complexity | Start with single-select only. Multi-select (Shift+click, rubber band) is a separate phase. Attempting both at once doubles the interaction state machine |
+| Session recording | Recording changes WebSocket message format | Keep recording as a DECORATOR on the existing WebSocket handler, not an inline modification. The recording layer wraps messages, the rendering layer is unaware of recording |
+| AI breakpoints | Blocking AI agent execution from the browser | This requires bidirectional MCP communication (not currently supported -- MCP tools are request/response). Research MCP notifications/sampling before planning this feature |
+| Ghost paths | Rendering semi-transparent "what could have been" paths | Requires the graph model to support multiple concurrent "versions" of the same subgraph. This is essentially a branch/merge data structure. Do not underestimate the data model complexity |
+| Heatmap overlay | Performance of rendering heatmap on every frame | Pre-compute the heatmap as a static overlay image. Do not recalculate on every render. Update when underlying data changes, not when viewport changes |
+
+## Existing Technical Debt Interaction
+
+The v1 has specific technical debt that will interact dangerously with v2 features:
+
+| Existing Debt | v2 Feature It Conflicts With | Resolution |
+|--------------|------------------------------|------------|
+| live.html at 1757 lines (3.4x limit) | Any new UI feature | MUST refactor before adding canvas code |
+| 5 IIFE modules with `window.*` globals | Event bus / state management | Replace with ES modules during refactoring |
+| Mermaid SVG DOM coupling in all interaction modules | Custom renderer | Build DOM abstraction layer first |
+| Duplicate Mermaid configs (3 copies) | Renderer configuration | Extract to single config module |
+| `innerHTML` usage in renderTree() and renderPanel() | Security / CSP in VS Code webview | Replace with DOM API calls |
+| `renderFileList()` referenced at line 1649 but never defined (uses `renderTree()`) | Build errors after refactoring | Fix dead code before splitting |
+| No client-side TypeScript | Type safety in complex interaction code | Migrate static/ to TypeScript as part of ES module migration |
+| No client-side tests | Regression detection during refactoring | Write integration tests before any refactoring |
 
 ## Recovery Strategies
 
 | Pitfall | Recovery Cost | Recovery Steps |
 |---------|---------------|----------------|
-| stdout pollution in MCP server | LOW | Replace all `console.log` with `console.error`; add lint rule; single PR |
-| Built on SSE transport | HIGH | Rewrite transport layer to Streamable HTTP; update all client connection logic; test with all supported AI clients |
-| Webview memory leaks | MEDIUM | Audit all event listeners and intervals; add `onDidDispose` cleanup; replace `retainContextWhenHidden` with `getState`/`setState`; requires testing across session lengths |
-| Diagrams unreadable at scale | HIGH | Requires new intermediate graph data model, collapsing logic, possibly swapping rendering engine from Mermaid to D3/Cytoscape; architectural change |
-| Event loop blocking from rendering | MEDIUM | Move rendering to worker thread; requires refactoring the rendering pipeline but does not change the API surface |
-| Windows install broken | LOW-MEDIUM | Fix path handling, shebang, and bundled assets; add Windows CI; regression risk is low but testing surface is large |
-| Feature creep toward code editing | HIGH | Requires product discipline and scope rollback; rewriting features to be read-only is more work than not building them |
-| WebSocket state desync after reconnect | MEDIUM | Implement full state snapshot on reconnect (not just delta); add sequence numbers to detect missed messages |
-
-## Pitfall-to-Phase Mapping
-
-| Pitfall | Prevention Phase | Verification |
-|---------|------------------|--------------|
-| stdout corrupts MCP stdio | Phase 1: Foundation | Lint rule banning `console.log`; MCP Inspector test in CI |
-| SSE transport deprecated | Phase 1: Foundation | Verify imports use Streamable HTTP or stdio transport classes only |
-| Webview memory leaks | Phase 2: VS Code Extension | Memory profiling test: run extension for 1 hour, verify memory stays under 200MB |
-| Diagrams unreadable at scale | Phase 2-3: Rendering System | Load test with 200-node AI trace; verify collapsing reduces visible nodes to under 50 |
-| Single-process event loop blocking | Phase 1-3: Progressive | Event loop delay monitoring from Phase 1; worker threads added by Phase 3 |
-| Windows global install failure | Phase 1: Foundation | Windows CI runner from first npm publish |
-| Product scope creep to code editing | Every Phase | Feature review checklist includes "Is this read-only observability?" gate |
-| WebSocket reconnection failures | Phase 2: Real-time System | Automated test: kill server, verify client reconnects and state resynchronizes |
-| MCP security (path traversal) | Phase 1: Foundation | Input validation on all MCP tool parameters; no file access outside project root |
-| VS Code marketplace rejection | Phase 2: Extension Publishing | Pre-publish checklist: < 30 keywords, .vscodeignore configured, PAT scoped correctly, no bundled secrets |
-| npm bundled assets missing | Phase 1: Foundation | `npm pack --dry-run` check in CI; verify HTML/CSS/JS files present |
-| Developer tool adoption failure | Phase 4+: Launch | Zero-config install path tested with 5 external users; time-to-first-diagram under 2 minutes |
-
-## Historical Lessons: Why Diagram Tools Fail
-
-### Why UML Tools Failed to Achieve Mainstream Adoption
-
-**Root causes (MEDIUM confidence, multiple sources agree):**
-1. **Verbosity over insight:** UML captured everything, so it surfaced nothing. Developers produced informal diagrams instead because UML formalism was more work than value.
-2. **Maintenance burden:** Diagrams decoupled from code became stale immediately. No one updates a class diagram after every refactor.
-3. **Prescriptive vs descriptive:** UML was designed to prescribe architecture (design-first). Developers actually work code-first and want to understand what already exists.
-4. **Tool lock-in:** Proprietary tools (Rational Rose, Enterprise Architect) created expensive dependencies. Text-based alternatives (PlantUML, Mermaid) rose from 2016 onward precisely because they were version-controllable and free.
-
-**What is different about SmartB's approach:**
-- Observability (what happened) vs prescription (what should happen)
-- Auto-generated from runtime behavior vs manually drawn
-- Ephemeral/session-scoped vs permanent documentation
-- Plugin/overlay vs standalone tool
-
-### Why Visual Programming Repeatedly Fails
-
-**Root causes (HIGH confidence, verified by sbensu analysis and multiple HN/Lobsters discussions):**
-1. **Wrong target:** Visual tools try to replace code syntax (if/for/while), but developers never struggle with that. They struggle with understanding system-level behavior.
-2. **Abstraction ceiling:** Visual representations are MORE verbose than text at expressing logic. A simple `for` loop is one line of code but a multi-node flowchart. This verbosity puts a ceiling on abstraction.
-3. **Scalability wall:** No visual language has worked for programs equivalent to 100,000 lines of code. The visual representation collapses at scale.
-4. **Domain specificity:** Visual programming succeeds ONLY in narrow domains with natural visual representations: Unreal Blueprints (game logic), Max/MSP (audio), LabVIEW (hardware). General-purpose visual programming does not exist.
-
-**The key insight for SmartB:**
-Developers DO want visual tools -- but for aspects that are "important, implicit, and hard to understand" (network topology, state transitions, request flows). SmartB's value is making the IMPLICIT behavior of AI agents EXPLICIT and visual. This is fundamentally different from replacing code with diagrams.
-
-### Developer Tool Adoption Killers
-
-**Root causes (MEDIUM confidence, synthesized from Evil Martians analysis and Stack Overflow 2025 survey):**
-1. **Configuration complexity:** If setup takes more than 2 minutes, most developers abandon the tool. Three-component systems (MCP server + VS Code extension + browser) are inherently risky.
-2. **Latency:** Devtool sessions are long (hours, not seconds). Latency matters more than throughput. If the diagram lags behind the AI agent by even 2 seconds, it feels broken.
-3. **Trust deficit:** 2025 data shows developer trust in AI tools dropped to 29%. Any tool in the AI space must earn trust through transparency and reversibility.
-4. **Tool fatigue:** 54% of developers use 6+ tools daily. Another tool needs to clearly reduce total tool count or integrate invisibly into existing workflow.
-5. **"Works for me" trap:** The developer who builds the tool has deep context. They cannot evaluate onboarding friction. The first 5 external users will reveal 90% of the real friction points.
+| Big bang renderer replacement | VERY HIGH | Revert to Mermaid, build abstraction layer, implement new renderer behind feature flag, migrate module by module |
+| .mmd round-trip loss | HIGH | Design sidecar file format, migrate existing position data, update all save/load paths |
+| Vanilla JS complexity explosion | HIGH | Introduce ES module bundler, migrate IIFE modules, build event bus -- essentially a rewrite of the client architecture |
+| Layout engine blocking main thread | MEDIUM | Move to Web Worker -- requires serializing graph data across worker boundary but does not change the API surface |
+| Undo/redo conflicts with AI updates | MEDIUM | Redesign undo stack with source tagging; requires touching all mutation paths but not the UI |
+| live.html monolith | MEDIUM | Split into modules incrementally; requires comprehensive test coverage first to avoid regressions |
+| VS Code / browser divergence | HIGH | Unify the rendering core -- may require rewriting VS Code webview if it diverged too far |
 
 ## Sources
 
-### MCP Protocol and Transport
-- [MCP Transport Protocols: stdio vs SSE vs StreamableHTTP](https://mcpcat.io/guides/comparing-stdio-sse-streamablehttp/) -- MEDIUM confidence
-- [Why MCP Deprecated SSE and Went with Streamable HTTP](https://blog.fka.dev/blog/2025-06-06-why-mcp-deprecated-sse-and-go-with-streamable-http/) -- MEDIUM confidence
-- [MCP Transports Specification (2025-06-18)](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports) -- HIGH confidence
-- [MCP TypeScript SDK Error Handling](https://github.com/modelcontextprotocol/typescript-sdk) -- HIGH confidence (Context7 verified)
-- [Building MCP Servers the Right Way](https://maurocanuto.medium.com/building-mcp-servers-the-right-way-a-production-ready-guide-in-typescript-8ceb9eae9c7f) -- MEDIUM confidence
-- [Debugging MCP stdio Transport](https://jianliao.github.io/blog/debug-mcp-stdio-transport) -- MEDIUM confidence
-- [Chrome DevTools MCP stdout corruption issue](https://github.com/ChromeDevTools/chrome-devtools-mcp/issues/570) -- HIGH confidence (primary source)
+### Rendering Performance and Architecture
+- [SVG vs Canvas vs WebGL for Diagram Viewers (Medium, Dec 2025)](https://medium.com/@codetip.top/svg-vs-canvas-vs-webgl-for-diagram-viewers-tradeoffs-bottlenecks-and-how-to-measure-8cedbd3b7499) -- MEDIUM confidence
+- [SVG versus Canvas: Which to Choose (JointJS)](https://www.jointjs.com/blog/svg-versus-canvas) -- MEDIUM confidence
+- [Optimising HTML5 Canvas Rendering (AG Grid)](https://blog.ag-grid.com/optimising-html5-canvas-rendering-best-practices-and-techniques/) -- MEDIUM confidence
+- [SVG vs Canvas Performance (Boris Smus)](https://smus.com/canvas-vs-svg-performance/) -- MEDIUM confidence
 
-### MCP Security
-- [MCP Security Survival Guide (Towards Data Science)](https://towardsdatascience.com/the-mcp-security-survival-guide-best-practices-pitfalls-and-real-world-lessons/) -- MEDIUM confidence
-- [State of MCP Server Security 2025 (Astrix)](https://astrix.security/learn/blog/state-of-mcp-server-security-2025/) -- MEDIUM confidence
-- [MCP Server Vulnerabilities 2026](https://www.practical-devsecops.com/mcp-security-vulnerabilities/) -- MEDIUM confidence
+### Layout Engines
+- [ELK.js GitHub Repository](https://github.com/kieler/elkjs) -- HIGH confidence (primary source)
+- [ELK Layout Options Reference](https://eclipse.dev/elk/reference/options.html) -- HIGH confidence (official docs)
+- [React Flow Layout Overview](https://reactflow.dev/learn/layouting/layouting) -- MEDIUM confidence
+- [ELK.js with React Flow (Medium)](https://medium.com/@armanaryanpour/auto-layout-positioning-in-react-flow-using-elkjs-eclipse-layout-kernel-with-typescript-and-6389a2cc0119) -- MEDIUM confidence
 
-### VS Code Extension Development
-- [VS Code Webview API (Official)](https://code.visualstudio.com/api/extension-guides/webview) -- HIGH confidence (Context7 verified)
-- [VS Code Extension Host](https://code.visualstudio.com/api/advanced-topics/extension-host) -- HIGH confidence
-- [VS Code Extension Runtime Security](https://code.visualstudio.com/docs/configure/extensions/extension-runtime-security) -- HIGH confidence
-- [Extension host memory issues](https://github.com/microsoft/vscode/issues/171017) -- HIGH confidence (primary source)
-- [VS Code Publishing Extensions](https://code.visualstudio.com/api/working-with-extensions/publishing-extension) -- HIGH confidence
+### Undo/Redo Architecture
+- [Undo, Redo, and the Command Pattern (esveo)](https://www.esveo.com/en/blog/undo-redo-and-the-command-pattern/) -- MEDIUM confidence
+- [Designing a Lightweight Undo History with TypeScript (JitBlox)](https://www.jitblox.com/blog/designing-a-lightweight-undo-history-with-typescript) -- MEDIUM confidence
+- [Intro to Undo/Redo Systems in JavaScript (Medium)](https://medium.com/fbbd/intro-to-writing-undo-redo-systems-in-javascript-af17148a852b) -- MEDIUM confidence
 
-### Mermaid.js and Diagram Rendering
-- [Mermaid flowchart rendering optimization discussion](https://github.com/mermaid-js/mermaid/issues/7328) -- HIGH confidence (primary source)
-- [Mermaid compact rendering mode request](https://github.com/mermaid-js/mermaid/issues/6781) -- HIGH confidence (primary source)
-- [Mermaid-Sonar: Detecting Hidden Complexity](https://entropicdrift.com/blog/mermaid-sonar-complexity-analyzer/) -- MEDIUM confidence
-- [GitLab Mermaid 5000-byte rendering limit](https://gitlab.com/gitlab-org/gitlab/-/issues/27173) -- HIGH confidence (primary source)
+### Diagram Editor Libraries and Patterns
+- [JavaScript SVG Diagram Editor (CodeX, Medium)](https://medium.com/codex/javascript-svg-diagram-editor-which-weighs-6-5-less-than-bootstrap-open-source-library-b753feaaf835) -- MEDIUM confidence
+- [Top JavaScript Diagramming Libraries 2026 (JointJS)](https://www.jointjs.com/blog/javascript-diagramming-libraries) -- MEDIUM confidence
+- [Mermaid.js Renderer Configuration](https://github.com/mermaid-js/mermaid/issues/2029) -- HIGH confidence (primary source)
 
-### Visual Programming and UML History
-- [sbensu: We need visual programming. No, not like that.](https://blog.sbensu.com/posts/demand-for-visual-programming/) -- HIGH confidence (primary analysis)
-- [UML is Back. Or is it? (USI Research)](https://www.inf.usi.ch/phd/raglianti/publications/Romeo2025a.pdf) -- MEDIUM confidence
-- [Why Most Developers Don't Like Visual Programming (AIM)](https://analyticsindiamag.com/deep-tech/why-most-developers-dont-like-visual-programming/) -- MEDIUM confidence
-- [Visual programming is stuck on the form](https://interjectedfuture.com/visual-programming-is-stuck-on-the-form/) -- MEDIUM confidence
+### Feature Creep and Developer Tools
+- [Feature Creep Is Killing Your Software (DesignRush)](https://www.designrush.com/agency/software-development/trends/feature-creep) -- MEDIUM confidence
+- [Feature Creep Management (Tempo)](https://www.tempo.io/glossary/feature-creep) -- LOW confidence
 
-### Node.js Architecture and WebSocket
-- [How to Handle Graceful Shutdown for WebSocket Servers](https://oneuptime.com/blog/post/2026-02-02-websocket-graceful-shutdown/view) -- MEDIUM confidence
-- [WebSocket Architecture Best Practices (Ably)](https://ably.com/topic/websocket-architecture-best-practices) -- MEDIUM confidence
-- [WebSocket Reconnection Logic](https://oneuptime.com/blog/post/2026-01-27-websocket-reconnection-logic/view) -- MEDIUM confidence
+### Refactoring and Technical Debt
+- [Refactoring JavaScript Legacy Code (Delicious Brains)](https://deliciousbrains.com/refactoring-legacy-javascript/) -- MEDIUM confidence
+- [How to Refactor Complex Codebases (freeCodeCamp)](https://www.freecodecamp.org/news/how-to-refactor-complex-codebases) -- MEDIUM confidence
 
-### Developer Tool Adoption
-- [6 Things Developer Tools Must Have in 2026 (Evil Martians)](https://evilmartians.com/chronicles/six-things-developer-tools-must-have-to-earn-trust-and-adoption) -- MEDIUM confidence
-- [Stack Overflow 2025 Developer Survey](https://stackoverflow.blog/2025/12/29/developers-remain-willing-but-reluctant-to-use-ai-the-2025-developer-survey-results-are-here) -- HIGH confidence
-- [5 Case Studies on Developer Tool Adoption](https://business.daily.dev/resources/5-case-studies-on-developer-tool-adoption) -- MEDIUM confidence
-
-### npm Packaging
-- [cross-spawn shebang limitations](https://www.npmjs.com/package/cross-spawn/v/7.0.6) -- HIGH confidence
-- [Troubleshooting NPM Scripts Cross-Platform](https://www.mindfulchase.com/explore/troubleshooting-tips/build-bundling/troubleshooting-npm-scripts-cross-platform-bugs,-ci-failures,-and-build-chaining-in-node-js-projects.html) -- MEDIUM confidence
-- [npm ignore-scripts security best practices](https://www.nodejs-security.com/blog/npm-ignore-scripts-best-practices-as-security-mitigation-for-malicious-packages) -- MEDIUM confidence
+### SmartB Diagrams Codebase Analysis
+- Codebase inspection: `static/live.html` (1757 lines), `static/annotations.js` (421 lines), `static/diagram-editor.js` (403 lines), `static/collapse-ui.js` (290 lines), `static/search.js` (296 lines), `static/ws-client.js` (71 lines) -- HIGH confidence (primary source)
+- Total static/ code: 3706 lines across 8 files
+- All 5 IIFE modules use `window.*` global exports and `_initHooks` callback pattern
+- Mermaid config duplicated 3 times in live.html
 
 ---
-*Pitfalls research for: AI observability developer tooling (SmartB Diagrams)*
-*Researched: 2026-02-14*
+*Pitfalls research for: SmartB Diagrams v2 -- Interactive Canvas Renderer + Advanced AI Observability*
+*Researched: 2026-02-15*

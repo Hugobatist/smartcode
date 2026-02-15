@@ -1,272 +1,402 @@
-# Stack Research
+# Technology Stack
 
-**Domain:** AI observability developer tooling (MCP server + HTTP server + VS Code extension + CLI)
-**Researched:** 2026-02-14
-**Confidence:** HIGH
-
----
-
-## Decision: MCP SDK v1.x Now, Migrate to v2 When Stable
-
-The MCP TypeScript SDK is mid-transition. The v2 monorepo (`@modelcontextprotocol/server`, `@modelcontextprotocol/client`, etc.) is on the main branch but pre-alpha. The stable release is `@modelcontextprotocol/sdk` v1.26.0. A stable v2 is anticipated Q1 2026 but not yet shipped as of 2026-02-14.
-
-**Recommendation:** Start with `@modelcontextprotocol/sdk` v1.x (stable, production-ready, 25K+ dependents). The v1 API surface for MCP servers is mature and unlikely to see breaking changes. When v2 goes stable, migration is straightforward -- the core `McpServer` class and tool/resource registration patterns remain the same; only package names and transport imports change.
-
-**Risk if we wait for v2:** Unknown timeline slip. v1 has 6+ months of continued support after v2 ships.
-**Risk if we start with v1:** Minor migration cost (import path changes). Acceptable.
+**Project:** SmartB Diagrams v2 -- Interactive Canvas + AI Observability
+**Researched:** 2026-02-15
+**Scope:** NEW stack additions for v2 milestone only. Existing stack (ws, commander, chokidar, zod, MCP SDK, tsup, vitest) is validated and not re-researched.
 
 ---
 
-## Recommended Stack
+## Recommended Stack Additions
 
-### Core Technologies
+### Graph Layout Engine
 
-| Technology | Version | Purpose | Why Recommended | Confidence |
-|------------|---------|---------|-----------------|------------|
-| **Node.js** | 22.x LTS | Runtime | Active LTS until 2027-04-30. Node 24.x is also Active LTS but 22.x has broader ecosystem compat. Stable native `fetch`, `WebSocket` client API (stable since v22.4.0). | HIGH |
-| **TypeScript** | 5.9.x | Language | Latest stable release. TS 6.0 beta just dropped (2026-02-11) but too new for production. 5.9 has excellent Node16/NodeNext module resolution. TS 7 (Go-based) is still preview. | HIGH |
-| **@modelcontextprotocol/sdk** | 1.26.0 | MCP server framework | Official Anthropic SDK. Provides `McpServer` class, stdio transport, tool/resource/prompt registration with Zod schemas. Used by Claude Code, Cursor, and all major MCP clients. | HIGH |
-| **zod** | 3.25.x (v3, v4-compatible) | Schema validation | Required peer dependency of MCP SDK v1.x. MCP SDK v1 uses zod v3 internally. Zod 4.3.x is out but MCP v1 still expects v3 imports. Use `zod@^3.25` for v1 compat. When migrating to MCP SDK v2, switch to `zod@^4.3`. | HIGH |
-| **ws** | 8.19.x | WebSocket server | The standard Node.js WebSocket server library (25K+ dependents). Zero dependencies, blazing fast, battle-tested. Node.js has native WebSocket *client* but no native *server* -- ws fills this gap. | HIGH |
-| **mermaid** | 11.12.x | Diagram rendering (browser) | Official Mermaid.js library for browser-side rendering. Use client-side only via CDN or bundled into webview. `mermaid.render()` is the programmatic API. Do NOT attempt server-side Mermaid rendering (requires headless browser). | HIGH |
-| **commander** | 14.0.x | CLI argument parsing | De facto standard for Node.js CLIs. Clean subcommand support (`smartb-diagrams init`, `serve`, `status`). TypeScript types included. Requires Node >= 20. | HIGH |
-| **esbuild** | 0.27.x | Bundler | Used for both: (1) bundling the npm package/CLI, (2) bundling VS Code extension. Sub-second builds. Native TypeScript support (strips types, no type-checking). | HIGH |
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| **elkjs** | ^0.11.0 | Automatic graph layout (node positioning) | ELK (Eclipse Layout Kernel) is the gold standard for hierarchical/layered graph layout. It replaces Mermaid's internal Dagre-based layout with a far more configurable engine. Supports layered, force, stress, radial, and box algorithms. 8MB unpacked but only the `elk.bundled.js` (~1.2MB minified) is needed in browser. Zero runtime dependencies. Web Worker support for non-blocking layout on large graphs. Used by Mermaid itself via `@mermaid-js/layout-elk`, React Flow, Svelte Flow, Eclipse GLSP, and Sprotty. |
 
-### Supporting Libraries
+**Why ELK.js over alternatives:**
 
-| Library | Version | Purpose | When to Use | Confidence |
-|---------|---------|---------|-------------|------------|
-| **chokidar** | 5.x | File watching | Watch `.mmd` files for changes to trigger WebSocket updates. ESM-only in v5, requires Node >= 20. Proven in 30M+ repos. | HIGH |
-| **open** | 10.x | Open browser | `smartb-diagrams serve` should auto-open browser. Cross-platform `open(url)`. | MEDIUM |
-| **picocolors** | 1.x | Terminal colors | Lightweight (no dependencies) terminal color output for CLI. Smaller than chalk. | MEDIUM |
-| **tsup** | 8.5.x | Build orchestration | Wraps esbuild with sensible defaults for library/CLI builds. Handles CJS/ESM dual output, dts generation, shims. Use for building the npm package. | HIGH |
-| **vitest** | 4.0.x | Testing | Fast, Vite-powered test runner. Native TypeScript, ESM support. Use for unit + integration tests. | HIGH |
+| Engine | Verdict | Reason |
+|--------|---------|--------|
+| **ELK.js** | **USE THIS** | Best hierarchical layout quality. Ports support (future: typed edges). Compound graphs (subgraphs). Web Worker support. Active maintenance (Kiel University). |
+| dagre / @dagrejs/dagre | REJECT | Unmaintained since 2015. Codebase frozen. Limited layout options. No compound graph support. 830KB unpacked but produces inferior layouts for complex diagrams. |
+| d3-force | REJECT | Physics-based, non-deterministic. Produces different layouts each run. Not suitable for AI reasoning diagrams that need stable, reproducible layouts. Good for social networks, bad for flowcharts. |
+| d3-hierarchy | REJECT | Requires single root node. Assigns uniform width/height to all nodes. Too restrictive for our varied diagram types. |
+| Cytoscape.js | REJECT | Full graph visualization framework (280KB+ minified). Includes its own rendering, events, styling. We need layout-only; adding Cytoscape means fighting its rendering system or using it as an overweight layout calculator. |
 
-### Development Tools
+### .mmd Parsing to Graph Model
 
-| Tool | Purpose | Notes |
-|------|---------|-------|
-| **tsup** | Build CLI + MCP server bundle | `tsup src/index.ts --format esm --dts` for the npm package |
-| **esbuild** | Build VS Code extension | VS Code extensions need separate esbuild config (CommonJS output for extension host, ESM for webview) |
-| **vitest** | Test runner | Config: `vitest.config.ts` with `environment: 'node'` |
-| **@modelcontextprotocol/inspector** | MCP server testing | Official MCP Inspector for testing tool/resource registration without a real client |
-| **TypeScript** | Type checking | Run `tsc --noEmit` separately from build (esbuild/tsup don't type-check) |
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| **@mermaid-js/parser** | ^0.6.3 | Parse .mmd text to AST | Already a devDependency. Produces a structured AST from Mermaid flowchart syntax using Langium (Chevrotain-based lexer/parser). Move to runtime dependency for server-side AST extraction. The AST is the source of truth for building our internal graph model that feeds ELK.js. |
+| **Custom AST-to-ELK transformer** | n/a (built in-house) | Convert Mermaid AST to ELK JSON graph | No library exists for this. Write a ~200-line transformer: `MermaidAST -> { children: ElkNode[], edges: ElkEdge[] }`. Maps node shapes, edge types, subgraph hierarchy to ELK's `children`/`edges`/`layoutOptions` format. |
 
-### VS Code Extension Stack
+**Why not regex parsing:** The existing `src/diagram/parser.ts` uses regex for simple node/edge extraction. This works for annotation injection but is too fragile for full graph model construction. `@mermaid-js/parser` uses a proper grammar (Langium) and handles all Mermaid flowchart syntax edge cases (quoted labels, special characters, nested subgraphs, multiple edge types).
 
-| Technology | Version | Purpose | Why Recommended | Confidence |
-|------------|---------|---------|-----------------|------------|
-| **@types/vscode** | ^1.96.0 | VS Code API types | Match your minimum VS Code engine version | HIGH |
-| **esbuild** | 0.27.x | Extension bundler | Official VS Code recommendation. Use `yo code` generator with esbuild option. | HIGH |
-| **Webview API** (built-in) | -- | Side panel UI | No framework needed for diagram display. Load Mermaid.js in webview, receive diagram updates via `postMessage`. Vanilla JS is sufficient for a diagram viewer. | HIGH |
+**Why not Mermaid's internal parser (mermaid.mermaidAPI.parse):** Requires browser DOM. Cannot run server-side. Also, the internal `parser.yy` API is undocumented and changes between Mermaid versions. `@mermaid-js/parser` is the official, stable, server-side parsing solution.
+
+### SVG Rendering (Custom Canvas)
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| **Native SVG DOM API** | n/a (built-in) | Render nodes, edges, labels as SVG elements | No library needed. The browser's native `document.createElementNS('http://www.w3.org/2000/svg', ...)` API is sufficient for creating `<rect>`, `<text>`, `<path>`, `<g>` elements. Vanilla JS constraint means no React/Vue. SVG.js (2.6MB) adds convenience but not enough value for our specific use case where we control all shapes. Custom rendering gives us full control over node appearance, interaction targets, and data attributes for observability features. |
+| **elkjs-svg** | Reference only | SVG generation from ELK JSON | Study its approach (~32KB, zero deps) but do NOT use directly. It produces static SVG without interactivity. Instead, build a custom renderer inspired by its pattern: iterate ELK's layouted JSON, create SVG elements with positions from layout. Our renderer adds interaction handlers, data attributes, CSS classes, and animation support that elkjs-svg lacks. |
+
+**Why not SVG.js / @svgdotjs/svg.js:**
+- 2.6MB unpacked. Adds a fluent API (`draw.rect(100,50).fill('#f06')`) that looks nice but creates an abstraction layer between us and the DOM.
+- Every SVG element becomes a wrapper object. For a diagram with 100+ nodes, that is 100+ wrapper objects we do not need.
+- The native SVG API is well-documented, performant, and gives us direct access to element properties.
+- Our static JS files are vanilla -- adding SVG.js means either a CDN load or bundling it, increasing page weight.
+
+**Why not Snap.svg:**
+- Abandoned. Last significant update was years ago.
+- Adobe stopped maintaining it.
+
+### Heatmap / Overlay Rendering
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| **simpleheat** | ^0.4.0 | Canvas-based heatmap rendering | Tiny (3KB), zero dependencies, by Mourner (Leaflet/Mapbox). Renders heatmap on a `<canvas>` element that overlays our SVG diagram. Canvas is transparent by default so it layers perfectly. API: `simpleheat(canvas).data(points).radius(r).draw()`. Points are `[x, y, intensity]` triples -- maps directly to node visit counts. Used in production by Leaflet.heat. |
+
+**Integration approach:** Position a `<canvas>` element absolutely over the SVG diagram container. When heatmap mode is active, map each node's `(cx, cy)` from the SVG layout to canvas coordinates, with intensity proportional to visit count / execution frequency. The SVG shows through the transparent canvas, and the heatmap gradient overlays it.
+
+**Why not pure SVG heatmap:** SVG does not support radial gradients that blend between arbitrary points efficiently. Canvas with simpleheat produces smooth, performant heatmaps even with 200+ data points. SVG-based approaches require one `<radialGradient>` per point, which tanks performance.
+
+**Why not heatmap.js:** 36KB, more features than needed (click events, legend, etc.). simpleheat is the rendering core that heatmap.js itself wraps.
+
+### Undo/Redo System
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| **Custom Command Pattern** | n/a (built in-house) | Undo/redo for all diagram mutations | No library. The Command Pattern is straightforward to implement in ~150 lines. Each command has `execute()` and `undo()` methods. A `CommandHistory` manager maintains two stacks (undo/redo). Batching support for compound operations (e.g., "move node" = position change + edge re-route). This is the standard approach used by three.js editor, VS Code, Figma, and every serious editor. |
+
+**Why not a library (e.g., `undo-manager`, `immer` patches):**
+- Undo-manager npm packages are typically <100 lines and unmaintained.
+- Immer patches track object mutations but do not understand graph semantics (adding a node must also undo edge connections).
+- Our commands are domain-specific: `AddNodeCommand`, `MoveNodeCommand`, `AddEdgeCommand`, `ChangeStatusCommand`, `SetBreakpointCommand`. These encode graph-level intent, not generic object diffs.
+
+### Session Recording / Replay
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| **Custom event stream** | n/a (built in-house) | Record diagram state changes over time | Lightweight JSON event log, not DOM recording. Each event is `{ timestamp, type, payload }` -- e.g., `{ ts: 1234, type: 'node:status', payload: { id: 'A', status: 'ok' } }`. Store as JSONL (one event per line) on disk. Replay by replaying events at recorded timestamps. ~50-100 bytes per event. |
+
+**Why not rrweb:** rrweb records full DOM snapshots and mutations (clicks, scrolls, CSS changes). It is designed for user session replay of web pages. We need AI agent action replay -- a stream of diagram state changes (node status updates, edge additions, flag annotations). rrweb would capture irrelevant UI interactions (scrolling, panel resizing) and miss the semantic meaning of diagram changes. Our event stream is 100x smaller and directly meaningful.
+
+**Data format:**
+```jsonl
+{"ts":1708012345000,"type":"session:start","payload":{"file":"plan.mmd","nodes":12}}
+{"ts":1708012345100,"type":"node:status","payload":{"id":"A","status":"in-progress"}}
+{"ts":1708012345500,"type":"node:status","payload":{"id":"A","status":"ok"}}
+{"ts":1708012346000,"type":"edge:add","payload":{"from":"A","to":"B","label":"next"}}
+{"ts":1708012347000,"type":"node:status","payload":{"id":"B","status":"problem"}}
+{"ts":1708012348000,"type":"flag:add","payload":{"nodeId":"B","message":"Wrong approach"}}
+```
+
+### Ghost Path / Breakpoint Rendering
+
+| Technology | Version | Purpose | Why |
+|------------|---------|---------|-----|
+| **SVG animations + CSS** | n/a (built-in) | Ghost path animation, breakpoint indicators | Ghost paths (showing alternative/discarded reasoning paths) are rendered as dashed SVG `<path>` elements with reduced opacity and CSS animation (`stroke-dashoffset` animation). Breakpoint indicators are SVG circles with pulsing CSS animation overlaid on nodes. No library needed -- CSS animations on SVG elements are well-supported in all modern browsers and performant. |
+
+**Ghost path rendering approach:**
+- When the AI discards a reasoning path, the nodes along that path get `status: 'discarded'`.
+- The renderer draws edges to discarded nodes with `stroke-dasharray: "8,4"`, `opacity: 0.3`, and a CSS class `.ghost-edge`.
+- Optional: animate `stroke-dashoffset` for a "flowing" ghost effect.
+
+**Breakpoint rendering approach:**
+- A breakpoint is a flag annotation with `type: 'breakpoint'`.
+- The renderer adds a red circle SVG indicator at the node's top-right corner.
+- When the AI reaches a breakpoint node, execution pauses (MCP tool returns a "paused at breakpoint" status).
+- The indicator pulses via CSS `@keyframes`.
+
+---
+
+## Internal Graph Model (New Type Definitions)
+
+These types bridge the Mermaid AST and ELK layout engine. They are the core data model for v2.
+
+```typescript
+// ─── Graph Model (replaces DiagramNode/DiagramEdge for v2) ───
+
+interface GraphNode {
+  id: string;
+  label: string;
+  shape: 'rect' | 'rounded' | 'circle' | 'diamond' | 'hexagon' | 'stadium';
+  status?: NodeStatus;
+  width: number;    // computed from label text
+  height: number;   // computed from label text
+  // After layout:
+  x?: number;
+  y?: number;
+  // Observability:
+  visitCount?: number;      // for heatmap
+  breakpoint?: boolean;     // for breakpoint indicator
+  ghostPath?: boolean;      // for ghost rendering
+}
+
+interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+  type: 'arrow' | 'open' | 'dotted' | 'thick';
+  // After layout:
+  sections?: ElkEdgeSection[];
+  // Observability:
+  ghostPath?: boolean;
+}
+
+interface GraphGroup {
+  id: string;
+  label: string;
+  children: string[];       // node IDs
+  childGroups: string[];    // nested group IDs
+  parent?: string;
+  collapsed?: boolean;
+}
+
+interface DiagramGraph {
+  nodes: Map<string, GraphNode>;
+  edges: GraphEdge[];
+  groups: Map<string, GraphGroup>;
+  metadata: {
+    diagramType: string;
+    direction: 'LR' | 'RL' | 'TB' | 'BT';
+  };
+}
+
+// ─── ELK Integration Types ───
+
+interface ElkLayoutResult {
+  nodes: Map<string, { x: number; y: number; width: number; height: number }>;
+  edges: Map<string, { sections: ElkEdgeSection[] }>;
+  groups: Map<string, { x: number; y: number; width: number; height: number }>;
+}
+
+// ─── Undo/Redo Types ───
+
+interface Command {
+  type: string;
+  execute(): void;
+  undo(): void;
+  description: string;    // for UI display
+}
+
+interface CommandHistory {
+  undoStack: Command[];
+  redoStack: Command[];
+  maxSize: number;         // prevent unbounded memory growth
+}
+
+// ─── Session Recording Types ───
+
+interface SessionEvent {
+  ts: number;              // Unix timestamp ms
+  type: string;            // e.g., 'node:status', 'edge:add', 'flag:add'
+  payload: Record<string, unknown>;
+}
+
+interface Session {
+  id: string;
+  file: string;
+  startedAt: number;
+  events: SessionEvent[];
+}
+
+// ─── Heatmap Types ───
+
+interface HeatmapData {
+  points: Array<[number, number, number]>;  // [x, y, intensity]
+  maxIntensity: number;
+}
+```
+
+---
+
+## Integration Architecture
+
+### Data Flow: .mmd File to Interactive Canvas
+
+```
+.mmd file (on disk)
+    |
+    v
+@mermaid-js/parser  (server-side, AST extraction)
+    |
+    v
+AST-to-Graph transformer  (server-side, custom)
+    |
+    v
+DiagramGraph model  (shared between server and client)
+    |
+    v
+ELK.js layout  (browser-side, via Web Worker)
+    |
+    v
+Custom SVG renderer  (browser-side, vanilla JS)
+    |
+    v
+Interactive SVG in DOM  (drag, select, hover, breakpoints, ghost paths)
+    |
+    v
+Heatmap canvas overlay  (simpleheat, when heatmap mode active)
+```
+
+### Where Each Technology Runs
+
+| Technology | Runs In | Rationale |
+|------------|---------|-----------|
+| @mermaid-js/parser | Node.js server | Parse .mmd to AST server-side. Send graph model JSON to browser via WebSocket. |
+| ELK.js | Browser (Web Worker) | Layout computation is CPU-intensive for large graphs. Web Worker prevents UI blocking. Browser-side means layout responds to drag interactions without server round-trip. |
+| Custom SVG renderer | Browser | Renders SVG from layouted graph. Handles all interactions (drag, click, hover). |
+| simpleheat | Browser | Canvas overlay for heatmap mode. |
+| Undo/redo (CommandHistory) | Browser | All undo/redo is client-side. Commands modify the graph model and re-render. Save back to server via existing WebSocket/REST. |
+| Session recording | Node.js server | Server records events from MCP tool calls and file changes. Replay data sent to browser on demand. |
+
+### Bundling Strategy
+
+| Asset | Bundle Approach | Delivery |
+|-------|----------------|----------|
+| elkjs | `elk.bundled.min.js` served as static asset from `dist/static/` | `<script>` tag in live.html (like current Mermaid CDN) |
+| elkjs Web Worker | `elk-worker.min.js` in `dist/static/` | Loaded by elkjs when Web Worker mode enabled |
+| simpleheat | Copy `simpleheat.js` (3KB) to `static/` | `<script>` tag in live.html |
+| @mermaid-js/parser | Bundled into server dist by tsup | Server-side only, part of `dist/cli.js` |
+| Custom renderer | `canvas-renderer.js` in `static/` | `<script>` tag in live.html |
+| Undo/redo module | `undo-redo.js` in `static/` | `<script>` tag in live.html |
+| Session replay UI | `session-replay.js` in `static/` | `<script>` tag in live.html |
+
+**Critical:** elkjs must be served as a static file, not bundled by tsup. tsup targets Node.js (`platform: 'node'`). elkjs's browser bundle (`elk.bundled.js`) is a self-contained IIFE that works directly in the browser.
+
+---
+
+## Alternatives Considered
+
+| Category | Recommended | Alternative | Why Not |
+|----------|-------------|-------------|---------|
+| Layout engine | ELK.js | dagre | Unmaintained, inferior layout quality, no compound graphs |
+| Layout engine | ELK.js | d3-force | Non-deterministic, wrong paradigm for directed flowcharts |
+| Layout engine | ELK.js | Cytoscape.js | Too heavy (full framework), fights our custom rendering |
+| SVG rendering | Native SVG DOM | SVG.js | Unnecessary abstraction, 2.6MB overhead, wrapper objects |
+| SVG rendering | Native SVG DOM | Snap.svg | Abandoned by Adobe |
+| SVG rendering | Native SVG DOM | elkjs-svg | Static output only, no interactivity |
+| Heatmap | simpleheat | heatmap.js | 12x larger, features we do not need |
+| Heatmap | simpleheat | Pure SVG gradients | Poor performance with many points, complex to implement |
+| Heatmap | simpleheat | WebGL (visual-heatmap) | Overkill for our data sizes (<500 points) |
+| Undo/redo | Custom command pattern | Immer patches | Does not understand graph semantics |
+| Undo/redo | Custom command pattern | undo-manager npm | Unmaintained, trivially small, not worth a dependency |
+| Session replay | Custom event stream | rrweb | Records DOM, not diagram semantics; 100x more data |
+| .mmd parsing | @mermaid-js/parser | Regex (current) | Too fragile for full graph model, misses edge cases |
+| .mmd parsing | @mermaid-js/parser | mermaid.mermaidAPI.parse | Requires browser DOM, undocumented internal API |
 
 ---
 
 ## Installation
 
 ```bash
-# Core dependencies
-npm install @modelcontextprotocol/sdk zod@^3.25 ws commander
+# NEW runtime dependency
+npm install elkjs
 
-# Supporting
-npm install chokidar open picocolors
+# MOVE from devDependencies to dependencies
+# @mermaid-js/parser is already installed as devDep -- move to dependencies
+npm install @mermaid-js/parser
 
-# Dev dependencies
-npm install -D typescript@~5.9 tsup vitest esbuild @types/node @types/ws
+# NEW browser-only assets (copy to static/, not npm install)
+# simpleheat: download from https://github.com/mourner/simpleheat
+# elk.bundled.min.js: copy from node_modules/elkjs/lib/elk.bundled.min.js
 
-# VS Code extension dev (separate package or workspace)
-npm install -D @types/vscode @vscode/vsce
+# No other new npm packages needed
+```
+
+### Post-install setup
+
+```bash
+# Copy ELK.js browser bundle to static assets
+cp node_modules/elkjs/lib/elk.bundled.js static/elk.bundled.js
+cp node_modules/elkjs/lib/elk-worker.min.js static/elk-worker.min.js
+
+# Download simpleheat (3KB, no npm package needed)
+curl -o static/simpleheat.js https://raw.githubusercontent.com/mourner/simpleheat/gh-pages/simpleheat.js
+```
+
+Alternatively, add a build step in tsup `onSuccess` to copy these files:
+
+```typescript
+// tsup.config.ts addition
+onSuccess: async () => {
+  cpSync('static', 'dist/static', { recursive: true });
+  cpSync('node_modules/elkjs/lib/elk.bundled.js', 'dist/static/elk.bundled.js');
+  cpSync('node_modules/elkjs/lib/elk-worker.min.js', 'dist/static/elk-worker.min.js');
+}
 ```
 
 ---
 
-## Alternatives Considered
-
-| Recommended | Alternative | When to Use Alternative |
-|-------------|-------------|-------------------------|
-| `ws` | `socket.io` | Never for this project. Socket.io adds protocol overhead, rooms/namespaces complexity, and a client library requirement. We need raw WebSocket for simple diagram push. |
-| `ws` | Node.js native WebSocket | When Node.js ships a native WebSocket *server* (not yet as of Node 24.x). Native client exists but no server. |
-| `commander` | `yargs` | If you need complex option parsing with lots of flags. Commander is cleaner for subcommand-style CLIs like ours. |
-| `commander` | `oclif` | If building a large CLI framework with plugins. Overkill for 3-4 subcommands. |
-| `tsup` | Raw `esbuild` | If you need maximum control or tsup's defaults don't fit. For the VS Code extension build, use raw esbuild directly (VS Code has specific bundling requirements). |
-| `tsup` | `unbuild` / `tshy` | unbuild for library publishing to JSR. tshy for dual CJS/ESM. Neither adds value over tsup for our CLI use case. |
-| `chokidar` | `node:fs.watch` | Never. `fs.watch` has platform-inconsistent behavior, no recursive watching on all platforms, and no debouncing. chokidar exists because `fs.watch` is broken. |
-| `vitest` | `jest` | If team already uses Jest. Vitest is faster, has native ESM/TS, and better DX. No reason to choose Jest for a greenfield project. |
-| Vanilla JS webview | React in webview | If the VS Code side panel needs complex state management (forms, lists, interactions). For a diagram viewer with annotation overlays, vanilla JS + Mermaid is sufficient. Revisit if UI complexity grows. |
-| `picocolors` | `chalk` | If you need full 256-color/truecolor support. picocolors covers our needs (status messages, errors) at 1/10th the size. |
-| Mermaid CDN in browser | Server-side Mermaid rendering | Never for real-time use. SSR Mermaid requires headless Chromium (Puppeteer), adds 200MB+ dependency, 500ms+ per render. Browser-side rendering is instant. |
-
----
-
-## What NOT to Use
+## What NOT to Add
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| **Express.js** | Heavyweight for our needs. We serve static files + WebSocket + a few JSON endpoints. Node's built-in `http` module handles this in ~50 lines. Express adds 30+ transitive dependencies for zero benefit here. | `node:http` (built-in) + `ws` |
-| **Socket.io** | Adds custom protocol on top of WebSocket. Requires Socket.io client library in browser. Our use case is simple: server pushes diagram JSON to browser. Raw WebSocket is simpler and faster. | `ws` |
-| **Fastify / Hono / Koa** | Same rationale as Express. We have 3-4 routes total. A framework adds dependency weight and abstraction we don't need. | `node:http` built-in |
-| **React/Vue/Svelte in VS Code webview** | For a diagram viewer, a JS framework adds build complexity (bundling framework into webview), increases load time, and is unnecessary. Mermaid already renders to SVG; we just need to display it and overlay annotations. | Vanilla JS + Mermaid.js CDN in webview |
-| **@mermaid-js/mermaid-cli** for server-side rendering | Requires Puppeteer (headless Chromium). Adds ~200MB to install, 500ms+ per render. For real-time diagramming, render in the browser where Mermaid is designed to run. | Mermaid.js client-side rendering in browser/webview |
-| **Zod v4** (with MCP SDK v1.x) | MCP SDK v1 expects Zod v3 imports (`from 'zod'`). Zod v4 changes the import to `from 'zod/v4'`. Mixing causes type incompatibilities with MCP tool schemas. | `zod@^3.25` until MCP SDK v2 migration |
-| **tsx** for production runtime | `tsx` is for development (run TS files directly). Ship compiled JS via tsup/esbuild. Global CLI must run without requiring tsx as a runtime dependency. | Compile with tsup, ship JS |
-| **Primus** | Abandoned/unmaintained WebSocket wrapper. Last meaningful update years ago. | `ws` |
-| **Webpack** | Slow, complex config. esbuild does the same job 100x faster with less config. VS Code officially recommends esbuild for extension bundling. | `esbuild` (direct) or `tsup` (wrapper) |
+| **React/Vue/Svelte** | Project constraint: vanilla JS in browser. Adding a framework means bundling it, a build step for static assets, and fighting the existing vanilla JS codebase. | Native DOM API + SVG API |
+| **D3.js (full)** | 250KB+ for a visualization library. We need layout (ELK) and rendering (native SVG), not D3's bindable data-joins. D3 is designed for data visualization, not interactive editors. | ELK.js (layout) + native SVG (rendering) |
+| **Cytoscape.js** | 280KB+ graph framework. Has its own rendering, events, styling. We would use 5% of its API (layout) and ignore the rest. Philosophical mismatch: Cytoscape renders; we want to render ourselves. | ELK.js |
+| **Konva.js / Fabric.js** | Canvas-based rendering libraries. We need SVG (for CSS styling, DOM event handling, and export). Canvas libraries mean re-implementing text layout, hit testing, and losing SVG export. | Native SVG |
+| **Joint.js / mxGraph** | Commercial / heavy diagramming frameworks. Joint.js is 400KB+. mxGraph is abandoned (now draw.io internals). Both impose their own data model. | Custom graph model + ELK.js + native SVG |
+| **Mermaid.js** (for v2 rendering) | v2 replaces Mermaid rendering with custom canvas. Mermaid stays for backward compat / fallback but is not the primary renderer. Do not add new Mermaid dependencies. | Custom SVG renderer with ELK.js layout |
+| **rrweb** | 50KB+ library for DOM session replay. Records clicks, scrolls, CSS mutations. We need diagram state changes, not UI replay. | Custom JSONL event stream |
+| **WebSocket library for client** | The browser has native `WebSocket`. The existing `ws-client.js` already implements reconnection with exponential backoff. Do not add socket.io-client or similar. | Native `WebSocket` API (already in use) |
 
 ---
 
-## Architecture-Relevant Stack Decisions
+## Version Compatibility (New Dependencies)
 
-### Single Process Design
-
-The tool runs as ONE Node.js process that is simultaneously:
-1. An **MCP server** (stdio transport -- Claude Code/Cursor spawn it as a child process)
-2. An **HTTP server** (serves diagram viewer UI on `localhost:PORT`)
-3. A **WebSocket server** (pushes real-time diagram updates to browser)
-4. A **file watcher** (monitors `.mmd` files for external changes)
-
-This is achievable because:
-- MCP stdio transport reads from `process.stdin` / writes to `process.stdout` (non-blocking)
-- HTTP + WebSocket servers share the same `http.Server` instance (ws attaches to it)
-- File watcher runs as async event emitter
-- All are event-driven, non-blocking -- fits Node.js single-thread model perfectly
-
-```
-Claude Code ──stdio──> [MCP Server]
-                            |
-                        [Core Logic] ──> read/write .mmd files
-                            |
-Browser    <──WebSocket──> [HTTP + WS Server]
-                            |
-Filesystem <──chokidar──> [File Watcher]
-```
-
-### MCP Transport: Stdio for IDE Integration
-
-Claude Code and Cursor connect to MCP servers via **stdio transport** (spawn as child process). This is the standard local integration pattern. The HTTP Streamable transport is for remote/hosted MCP servers -- not our use case.
-
-Configuration in `~/.claude.json` or `.mcp.json`:
-```json
-{
-  "mcpServers": {
-    "smartb-diagrams": {
-      "type": "stdio",
-      "command": "smartb-diagrams",
-      "args": ["serve"]
-    }
-  }
-}
-```
-
-### Mermaid Rendering: Browser-Only
-
-Mermaid.js is designed for browser environments. It requires DOM APIs (`SVGTextElement.getBBox()`) to compute layout. Server-side rendering requires headless Chromium, which violates our constraints (minimal deps, <100ms latency).
-
-Strategy:
-- Server stores/manages `.mmd` text files
-- Browser/webview loads Mermaid.js and renders SVG client-side
-- WebSocket pushes updated `.mmd` content; browser re-renders instantly
-- VS Code webview loads Mermaid.js from CDN or bundled asset
-
-### npm Global Package Structure
-
-```
-smartb-diagrams/
-  package.json          # bin: { "smartb-diagrams": "./dist/cli.js" }
-  dist/
-    cli.js              # Entry point (#!/usr/bin/env node)
-    server.js           # MCP + HTTP + WS server
-    public/             # Static assets (HTML, bundled Mermaid viewer JS)
-  src/
-    cli.ts              # Commander setup
-    server.ts           # Core server logic
-    mcp/                # MCP tool/resource handlers
-    http/               # HTTP routes + static serving
-    ws/                 # WebSocket handler
-    watcher.ts          # chokidar file watcher
-```
+| Package | Compatible With | Notes |
+|---------|-----------------|-------|
+| `elkjs@^0.11.0` | Browser (all modern), Node >= 12 | Browser bundle is self-contained IIFE. Web Worker version needs `elk-worker.min.js` served as static asset. |
+| `@mermaid-js/parser@^0.6.3` | Node >= 18 | Uses Langium internally. ESM-only. Already a devDependency, moving to runtime dependency for server-side parsing. |
+| `simpleheat@0.4.0` | Browser (canvas-capable) | No npm install needed. Single 3KB file copied to static/. Works in all modern browsers with Canvas API. |
 
 ---
 
-## Version Compatibility
+## Existing Stack (Unchanged, Not Re-Researched)
 
-| Package A | Compatible With | Notes |
-|-----------|-----------------|-------|
-| `@modelcontextprotocol/sdk@1.26.x` | `zod@^3.25` | v1 SDK requires Zod v3. Do NOT use Zod v4 with MCP SDK v1. |
-| `@modelcontextprotocol/sdk@1.26.x` | `node >= 18` | SDK supports Node 18+, but we target Node 22 LTS for other deps. |
-| `chokidar@5.x` | `node >= 20` | v5 is ESM-only, requires Node 20+. |
-| `commander@14.x` | `node >= 20` | v14 dropped Node 18 support. |
-| `tsup@8.5.x` | `typescript@~5.9`, `esbuild@0.27.x` | tsup 8.x uses esbuild internally. |
-| `mermaid@11.12.x` | Browser only | Do not import in Node.js server code. Load via CDN or bundle for webview. |
-| `ws@8.19.x` | `node >= 18` | No external dependencies. |
-| `vitest@4.0.x` | `typescript@~5.9`, `node >= 22` | Vitest 4.x requires Node 22+. |
+These remain exactly as-is from v1. Listed for completeness.
 
----
-
-## Stack Patterns by Variant
-
-**If MCP SDK v2 ships stable before development starts:**
-- Switch to `@modelcontextprotocol/server` + `zod@^4.3`
-- Use `StdioServerTransport` from `@modelcontextprotocol/server/server/stdio`
-- Everything else remains the same
-
-**If VS Code side panel needs rich interactivity beyond diagram display:**
-- Add Preact (3KB) to webview, bundled via esbuild
-- Still avoid React (too heavy for a webview panel)
-- Mermaid.js remains the rendering engine regardless
-
-**If the project needs to support Windows natively:**
-- MCP stdio transport works, but `npx` commands need `cmd /c` wrapper
-- chokidar v5 handles Windows paths correctly
-- Test file path handling with `node:path` (not string concatenation)
-
----
-
-## Package.json Key Fields
-
-```json
-{
-  "name": "smartb-diagrams",
-  "type": "module",
-  "bin": {
-    "smartb-diagrams": "./dist/cli.js"
-  },
-  "engines": {
-    "node": ">=22"
-  },
-  "files": ["dist"],
-  "scripts": {
-    "build": "tsup",
-    "dev": "tsup --watch",
-    "test": "vitest",
-    "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
-  }
-}
-```
+| Technology | Version | Role in v2 |
+|------------|---------|------------|
+| Node.js | >= 22 LTS | Runtime |
+| TypeScript | ~5.9 | Language |
+| ws | ^8.19.0 | WebSocket server (now also sends graph model JSON, not just raw .mmd) |
+| @modelcontextprotocol/sdk | ^1.26.0 | MCP server (new tools: set_breakpoint, get_session, replay_session) |
+| commander | ^14.0.3 | CLI |
+| chokidar | ^5.0.0 | File watcher |
+| zod | ^4.3.6 | Schema validation (MCP tool schemas for new observability tools) |
+| tsup | ^8.5.1 | Build (server-side bundle) |
+| vitest | ^4.0.18 | Tests |
+| Mermaid.js | 11.x (CDN) | Fallback rendering + VS Code extension (until extension gets custom renderer) |
 
 ---
 
 ## Sources
 
-- `/modelcontextprotocol/typescript-sdk` (Context7) -- MCP server API, transport options, McpServer class, tool/resource registration. **HIGH confidence.**
-- `/mermaid-js/mermaid` (Context7) -- Mermaid.render() API, browser-only rendering, v11 documentation. **HIGH confidence.**
-- `/microsoft/vscode-docs` (Context7) -- Webview panel API, message passing, serialization. **HIGH confidence.**
-- [MCP TypeScript SDK GitHub](https://github.com/modelcontextprotocol/typescript-sdk) -- v1 vs v2 status, monorepo structure, transport docs. **HIGH confidence.**
-- [MCP Official Docs - Build Server](https://modelcontextprotocol.io/docs/develop/build-server) -- Stdio transport setup, project configuration. **HIGH confidence.**
-- [Claude Code MCP Docs](https://code.claude.com/docs/en/mcp) -- How Claude Code connects to MCP servers, stdio config. **HIGH confidence.**
-- [Node.js Releases](https://nodejs.org/en/about/previous-releases) -- LTS schedule, v22 Active LTS. **HIGH confidence.**
-- [ws npm](https://www.npmjs.com/package/ws) -- v8.19.0, WebSocket server for Node.js. **HIGH confidence.**
-- [commander npm](https://www.npmjs.com/package/commander) -- v14.0.3, CLI parsing. **HIGH confidence.**
-- [tsup npm](https://www.npmjs.com/package/tsup) -- v8.5.1, TypeScript bundler. **HIGH confidence.**
-- [Zod v4 Release Notes](https://zod.dev/v4) -- v4.3.6 current, v3 compat notes. **HIGH confidence.**
-- [mermaid npm](https://www.npmjs.com/package/mermaid) -- v11.12.2, latest stable. **HIGH confidence.**
-- [esbuild npm](https://www.npmjs.com/package/esbuild) -- v0.27.3, latest. **HIGH confidence.**
-- [chokidar npm](https://www.npmjs.com/package/chokidar) -- v5.x, ESM-only, Node >= 20. **HIGH confidence.**
-- [vitest npm](https://www.npmjs.com/package/vitest) -- v4.0.18, latest. **HIGH confidence.**
-- [VS Code Extension Bundling](https://code.visualstudio.com/api/working-with-extensions/bundling-extension) -- esbuild recommended for extensions. **HIGH confidence.**
-- [TypeScript npm](https://www.npmjs.com/package/typescript) -- v5.9.3 stable, v6.0 beta. **HIGH confidence.**
-- [Mermaid SSR Issue #3650](https://github.com/mermaid-js/mermaid/issues/3650) -- Confirms browser requirement for rendering, JSDOM insufficient. **HIGH confidence.**
+- [elkjs npm](https://www.npmjs.com/package/elkjs) -- v0.11.0, layout engine. Verified via `npm view elkjs version`. **HIGH confidence.**
+- [elkjs GitHub](https://github.com/kieler/elkjs) -- Web Worker support, JSON format, layout algorithms. **HIGH confidence.**
+- [ELK JSON Format](https://eclipse.dev/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html) -- Official graph data structure documentation. **HIGH confidence.**
+- [ELK Layout Options](https://eclipse.dev/elk/reference/options.html) -- Algorithm configuration reference. **HIGH confidence.**
+- [@mermaid-js/parser npm](https://www.npmjs.com/package/@mermaid-js/parser) -- v0.6.3, AST parsing. Verified via `npm view`. **HIGH confidence.**
+- [@dagrejs/dagre npm](https://www.npmjs.com/package/@dagrejs/dagre) -- v2.0.4, confirmed unmaintained. **HIGH confidence.**
+- [Dagre Alternatives and Reviews](https://www.libhunt.com/r/dagre) -- Ecosystem comparison. **MEDIUM confidence.**
+- [elkjs-svg GitHub](https://github.com/EmilStenstrom/elkjs-svg) -- Reference SVG renderer, 32KB. **HIGH confidence.**
+- [simpleheat GitHub](https://github.com/mourner/simpleheat) -- v0.4.0, 3KB canvas heatmap. **HIGH confidence.**
+- [SVG drag interaction tutorial](https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/) -- Vanilla JS SVG drag implementation. **MEDIUM confidence.**
+- [svg-drag-select GitHub](https://github.com/luncheon/svg-drag-select) -- 1.8KB, reference for select-on-drag. **MEDIUM confidence.**
+- [Command Pattern undo/redo](https://www.esveo.com/en/blog/undo-redo-and-the-command-pattern/) -- Implementation patterns. **MEDIUM confidence.**
+- [rrweb GitHub](https://github.com/rrweb-io/rrweb) -- Session replay reference (rejected for our use case). **HIGH confidence.**
+- [Mermaid AST parsing issue #2523](https://github.com/mermaid-js/mermaid/issues/2523) -- Community discussion on AST extraction. **MEDIUM confidence.**
+- [CSS SVG filter heat map](https://expensive.toys/blog/svg-filter-heat-map) -- SVG filter technique reference. **MEDIUM confidence.**
+- [Interactive Debugging of Multi-Agent AI Systems (CHI 2025)](https://dl.acm.org/doi/full/10.1145/3706598.3713581) -- Breakpoint and steering patterns for AI agent debugging. **MEDIUM confidence.**
+- [LangGraph Studio Debugging Guide](https://mem0.ai/blog/visual-ai-agent-debugging-langgraph-studio) -- Graph breakpoint reference implementation. **MEDIUM confidence.**
 
 ---
-*Stack research for: SmartB Diagrams -- AI observability developer tooling*
-*Researched: 2026-02-14*
+
+*Stack research for: SmartB Diagrams v2 -- Interactive Canvas + AI Observability*
+*Researched: 2026-02-15*

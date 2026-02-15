@@ -1,174 +1,131 @@
 # Roadmap: SmartB Diagrams
 
-## Overview
+## Milestone v1.0 (Complete)
 
-SmartB Diagrams transforms from an internal Python prototype into a production TypeScript npm package that provides real-time AI reasoning observability. The roadmap follows a strict dependency chain: core diagram logic and HTTP serving come first, then real-time WebSocket sync, then the interactive browser UI, then MCP integration for AI tools, then CLI and developer experience polish, then the VS Code extension, and finally scalability features for large diagrams. Each phase delivers a coherent, independently verifiable capability that unblocks the next.
+All 8 phases completed on 2026-02-15. See `.planning/phases/` for details.
 
-## Phases
+## Milestone v2.0: Interactive Canvas + AI Observability
 
-**Phase Numbering:**
-- Integer phases (1, 2, 3): Planned milestone work
-- Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
+### Overview
 
-Decimal phases appear between their surrounding integers in numeric order.
+v2.0 replaces Mermaid.js as a black-box renderer with a custom interactive SVG pipeline. The roadmap follows a strict dependency chain: refactor the monolithic live.html first, then build the graph model and custom renderer, then add canvas interactions, then AI observability features, and finally advanced replay capabilities. Each phase delivers a coherent, independently verifiable capability that unblocks the next.
 
-- [x] **Phase 1: Project Bootstrap + Diagram Core** - TypeScript foundation, npm package structure, and diagram parsing/annotation service
-- [x] **Phase 2: HTTP Server** - Serve browser UI, REST endpoints for diagram content, static asset bundling
-- [x] **Phase 3: WebSocket + Real-Time Sync** - File watcher, WebSocket broadcast, live updates replacing polling
-- [x] **Phase 4: Interactive Browser UI** - Pan/zoom, keyboard shortcuts, flag interactions, export, file tree navigation
-- [x] **Phase 5: MCP Server** - AI tool integration via stdio transport with tools and resources
-- [x] **Phase 6: CLI + Developer Experience + AI Integration** - CLI commands, zero-config MCP setup, AI diagram conventions, flag-to-prompt pipeline
-- [ ] **Phase 7: VS Code Extension** - Sidebar webview panel, WebSocket client, file navigation, marketplace publication
-- [x] **Phase 8: Scalability + Large Diagrams** - Hierarchical collapsing, rendering limits, breadcrumb navigation, focus mode
+### Phases
 
-## Phase Details
+- [ ] **Phase 1: Foundation Refactoring** - Extract live.html into modules, DOM abstraction layer, event bus
+- [ ] **Phase 2: Graph Model + Parser** - Internal graph model types, .mmd parser, serializer, round-trip tests
+- [ ] **Phase 3: Custom Renderer** - dagre layout engine, SVG renderer, parallel rendering mode, feature parity gate
+- [ ] **Phase 4: Server + Browser Integration** - Graph API endpoint, WebSocket graph:update, live.html integration, Mermaid fallback
+- [ ] **Phase 5: Canvas Interactions** - Node selection, context menu, inline edit, keyboard shortcuts
+- [ ] **Phase 6: Undo/Redo + Edit Actions** - Command pattern, copy/paste/duplicate, folder management
+- [ ] **Phase 7: AI Breakpoints + Ghost Paths** - Breakpoint annotations, ghost path rendering, MCP tools
+- [ ] **Phase 8: Heatmap + Session Recording** - Risk heatmap overlay, session store, session replay UI
 
-### Phase 1: Project Bootstrap + Diagram Core
-**Goal**: Developers have a working TypeScript project that compiles to a globally installable npm package with a complete diagram parsing and annotation service
-**Depends on**: Nothing (first phase)
-**Requirements**: CORE-01, CORE-02, CORE-04, CORE-05, DIAG-01, DIAG-02, DIAG-03, DIAG-04, DIAG-05, DIAG-06
+### Phase Details
+
+#### Phase 1: Foundation Refactoring
+**Goal**: live.html is split into < 500-line modules with proper event bus communication, and a DOM abstraction layer decouples interaction code from Mermaid's SVG DOM structure
+**Depends on**: v1.0 complete
 **Success Criteria** (what must be TRUE):
-  1. Running `npm install -g .` from the repo installs the `smartb` command that executes without error on macOS (and Linux/Windows path handling is correct)
-  2. The diagram service can parse a .mmd file, extract Mermaid content and `%% @flag` annotations, write updates back, and report structured validation errors for malformed syntax
-  3. Multiple .mmd files organized in different project directories are discovered and managed independently
-  4. TypeScript types for diagram nodes, flags, annotations, and status are exported and usable by downstream packages
-**Plans:** 2 plans
+  1. live.html is under 300 lines (HTML shell + script imports only)
+  2. All existing features work identically (flags, search, collapse, export, file tree, pan/zoom, editor)
+  3. Each extracted module is under 500 lines
+  4. Modules communicate via an event bus, not window.* globals
+  5. A DiagramDOM abstraction layer provides findNode/getNodeBBox/getNodeLabel without Mermaid-specific queries
+  6. All 131 existing tests still pass
+**Plans:** TBD
 
-Plans:
-- [x] 01-01-PLAN.md — TypeScript project scaffolding, build tooling, CLI entry point, core types, static asset bundling
-- [x] 01-02-PLAN.md — Diagram service with .mmd parsing, flag annotation extraction/injection, validation, multi-file/multi-project support
-
-### Phase 2: HTTP Server
-**Goal**: Developers can start a server that serves a browser-based diagram viewer showing Mermaid diagrams rendered from .mmd files
+#### Phase 2: Graph Model + Parser
+**Goal**: The server can parse any .mmd flowchart file into a structured GraphModel and serialize it back with round-trip fidelity
 **Depends on**: Phase 1
-**Requirements**: CORE-03, HTTP-01, HTTP-02, HTTP-03, HTTP-04, HTTP-05, UI-01, UI-04, UI-07
 **Success Criteria** (what must be TRUE):
-  1. Running `smartb serve` starts an HTTP server on port 3333 (or falls back to next available port) and opens a browser page that renders a Mermaid diagram from a .mmd file
-  2. REST endpoints list available .mmd files and return individual diagram content as JSON
-  3. Diagram nodes display color-coded status (green/red/yellow/gray) and malformed Mermaid syntax shows inline error messages with line numbers
-  4. CORS headers are present so the browser UI works during local development
-**Plans:** 2 plans
+  1. GraphModel types (GraphNode, GraphEdge, GraphSubgraph) are defined and exported
+  2. parseMermaidToGraph() handles all flowchart node shapes, edge types, subgraphs, styles, and annotations
+  3. serializeGraphToMermaid() produces semantically equivalent .mmd text (parse(serialize(parse(text))) === parse(text))
+  4. Round-trip tests cover 20+ .mmd fixtures including nested subgraphs, special characters, and all edge types
+  5. Existing .mmd files with flags and statuses parse correctly into the graph model
+**Plans:** TBD
 
-Plans:
-- [x] 02-01-PLAN.md — HTTP server core with CLI serve command, all live.html endpoints, REST API, CORS, port fallback
-- [x] 02-02-PLAN.md — Status color classDef injection, structured error display with line numbers, server integration tests
-
-### Phase 3: WebSocket + Real-Time Sync
-**Goal**: Diagram changes propagate instantly to all connected browsers without manual refresh
+#### Phase 3: Custom Renderer
+**Goal**: The browser can render a flowchart diagram from a GraphModel using dagre layout and custom SVG, producing output visually similar to Mermaid
 **Depends on**: Phase 2
-**Requirements**: WS-01, WS-02, WS-03, WS-04, WS-05, WS-06, UI-10
 **Success Criteria** (what must be TRUE):
-  1. Editing a .mmd file on disk causes the browser diagram to update within 50ms without any page refresh or user action
-  2. Opening multiple browser tabs shows the same diagram updating simultaneously across all tabs
-  3. Disconnecting and reconnecting the network causes the WebSocket client to automatically reconnect with exponential backoff and resume receiving updates
-  4. Adding or removing .mmd files updates the file listing in all connected clients without restart
-  5. Multiple project directories can be monitored simultaneously with changes isolated to their namespace
-**Plans:** 3 plans
+  1. dagre computes node positions from GraphModel (nodes, edges, subgraphs)
+  2. Custom SVG renderer generates `<g data-node-id>` elements for each node with correct shapes
+  3. Edges render as SVG `<path>` elements with arrow markers
+  4. Subgraphs render as background rectangles with labels
+  5. A `?renderer=custom` query param toggles between Mermaid and custom renderer
+  6. ViewportTransform class correctly converts screen ↔ graph coordinates at all zoom levels
+**Plans:** TBD
 
-Plans:
-- [x] 03-01-PLAN.md — WebSocket server (ws) attached to HTTP server, chokidar file watcher on .mmd files, ServerInstance return type
-- [x] 03-02-PLAN.md — Client-side WebSocket with auto-reconnect and exponential backoff, replace polling in live.html
-- [x] 03-03-PLAN.md — Multi-project namespacing via noServer mode, per-project WebSocket isolation
-
-### Phase 4: Interactive Browser UI
-**Goal**: Developers can interact with diagrams through pan/zoom, keyboard shortcuts, flag annotations, and export — a complete diagram workstation in the browser
+#### Phase 4: Server + Browser Integration
+**Goal**: The full data flow works end-to-end: file change → server parses to GraphModel → WebSocket sends graph JSON → browser renders with custom renderer
 **Depends on**: Phase 3
-**Requirements**: UI-02, UI-03, UI-05, UI-06, UI-08, UI-09
 **Success Criteria** (what must be TRUE):
-  1. Developer can pan, zoom, and fit-to-view the diagram canvas using mouse and keyboard controls
-  2. Pressing F enters flag mode where clicking a node opens a dialog to add a `%% @flag` annotation that persists to the .mmd file
-  3. A flag panel lists all active flags and clicking a flag navigates to and highlights the flagged node on the diagram
-  4. Developer can export the current diagram view as SVG or PNG
-  5. A file tree sidebar lets the developer navigate between multiple .mmd files and the selected diagram loads in the main canvas
-**Plans:** 2 plans
+  1. GET /api/graph/:file returns GraphModel JSON
+  2. WebSocket sends `graph:update` messages alongside existing `file:changed` (backward compat)
+  3. live.html uses custom renderer for flowchart diagrams, Mermaid fallback for others
+  4. All existing interactions (flags, search, collapse, export) work with the custom renderer via DiagramDOM abstraction
+  5. Status colors, flag badges, and search highlights render correctly on custom SVG
+**Plans:** TBD
 
-Plans:
-- [x] 04-01-PLAN.md — Fix PNG export (Canvas taint), XSS-safe file tree rendering, zoom preservation on live updates
-- [x] 04-02-PLAN.md — Ctrl+F node search with highlight navigation
-
-### Phase 5: MCP Server
-**Goal**: AI coding tools (Claude Code, Cursor) can connect via MCP to read developer flags, update diagrams, and get diagram context — completing the bidirectional feedback loop
-**Depends on**: Phase 3
-**Requirements**: MCP-01, MCP-02, MCP-03, MCP-04, MCP-05, MCP-06, MCP-07, MCP-08, MCP-09, MCP-10
-**Success Criteria** (what must be TRUE):
-  1. An AI tool connected via MCP stdio can call `update_diagram` to create or modify a .mmd file and the change appears in the browser within 100ms
-  2. An AI tool can call `read_flags` and receive a structured JSON list of all active developer flags with node IDs and messages
-  3. An AI tool can call `get_diagram_context` and `update_node_status` to read diagram state and set node statuses that render as colors in the browser
-  4. MCP resources expose the list of available diagram files and individual file content for AI tool discovery
-  5. No stdout writes occur from the server process — all logging goes to stderr so the MCP stdio transport is never corrupted
-**Plans:** 3 plans
-
-Plans:
-- [x] 05-01-PLAN.md — MCP foundation: SDK install, Zod schemas, @status annotation support, MCP server skeleton, smartb mcp CLI command
-- [x] 05-02-PLAN.md — MCP tools (update_diagram, read_flags, get_diagram_context, update_node_status) and resources (diagram list, diagram content)
-- [x] 05-03-PLAN.md — Shared-process integration (--serve mode), graceful shutdown, end-to-end verification
-
-### Phase 6: CLI + Developer Experience + AI Integration
-**Goal**: Developers have a polished CLI workflow (init, serve, status), zero-config MCP setup, and AI agents have conventions and tools for generating useful diagrams and responding to flags
-**Depends on**: Phase 5
-**Requirements**: DX-01, DX-02, DX-03, DX-04, DX-05, DX-06, AI-01, AI-02, AI-03, AI-04
-**Success Criteria** (what must be TRUE):
-  1. Running `smartb init` in a new directory creates a project config and sample .mmd file; `smartb serve` starts the server and opens the browser; `smartb status` shows server status, connected clients, and active flags
-  2. Adding the SmartB MCP entry to claude_desktop_config.json (or equivalent) requires zero additional configuration — the AI tool connects and can immediately use all MCP tools
-  3. An AI agent following the provided CLAUDE.md instructions and Mermaid conventions emits structured reasoning diagrams that render correctly in the browser
-  4. When a developer flags a node, the `get_correction_context` MCP tool returns a structured prompt containing the flag message, node context, and surrounding diagram state that the AI can use to course-correct
-**Plans:** 3 plans
-
-Plans:
-- [x] 06-01-PLAN.md — CLI commands: smartb init (project scaffolding) and smartb status (server diagnostics), /api/status endpoint, WebSocketManager.getClientCount()
-- [x] 06-02-PLAN.md — get_correction_context MCP tool (flag-to-prompt pipeline), helpful error messages for no .mmd files and port conflicts
-- [x] 06-03-PLAN.md — README with quick start guide, MCP setup instructions, AI diagram conventions, example CLAUDE.md for AI agents
-
-### Phase 7: VS Code Extension
-**Goal**: Developers see live AI reasoning diagrams in a VS Code sidebar panel without leaving their editor, with full flag interaction capability
-**Depends on**: Phase 3, Phase 5
-**Requirements**: VSC-01, VSC-02, VSC-03, VSC-04, VSC-05, VSC-06, VSC-07, VSC-08, VSC-09, VSC-10
-**Success Criteria** (what must be TRUE):
-  1. Installing the extension from VS Code Marketplace adds a sidebar panel that connects to a running SmartB server and displays the live Mermaid diagram
-  2. The diagram in the VS Code sidebar updates in real-time when the .mmd file changes (same latency as browser)
-  3. Developer can click nodes in the VS Code webview to add flag annotations, and flags appear in both the VS Code panel and the browser UI simultaneously
-  4. Closing and reopening the sidebar panel restores the previous diagram view state without reconnection errors
-  5. A status bar indicator shows whether the extension is connected to the SmartB server
-  6. The panel header shows which .mmd file is currently displayed
-  7. A file selector lets the developer navigate between multiple .mmd files without leaving the editor
-  8. When multiple projects are monitored, the project/folder context is visible in the panel
-**Plans:** 4 plans
-
-Plans:
-- [x] 07-01-PLAN.md — Extension scaffolding (package.json, tsconfig, esbuild), WebviewViewProvider, WebSocket client in extension host
-- [x] 07-02-PLAN.md — Mermaid rendering in webview, click-to-flag interaction, state persistence via getState/setState
-- [x] 07-03-PLAN.md — Status bar connection indicator, README/CHANGELOG, VSIX packaging for marketplace
-- [x] 07-04-PLAN.md — File name header, file selector dropdown, multi-file navigation in webview panel
-
-### Phase 8: Scalability + Large Diagrams
-**Goal**: Diagrams with 50+ nodes remain usable through hierarchical collapsing, rendering limits, and focused navigation — preventing the "UML death" problem
+#### Phase 5: Canvas Interactions
+**Goal**: Developers can select nodes, right-click for context menu, double-click to edit labels inline, and use keyboard shortcuts for diagram manipulation
 **Depends on**: Phase 4
-**Requirements**: SCALE-01, SCALE-02, SCALE-03, SCALE-04
 **Success Criteria** (what must be TRUE):
-  1. Mermaid subgraphs can be expanded and collapsed by clicking, and collapsed subgraphs show a summary node with child count
-  2. Diagrams with more than 50 nodes automatically collapse to show only top-level groups with a "show more" affordance for drilling in
-  3. A breadcrumb trail at the top of the diagram shows the current hierarchy path and allows navigation back to parent levels
-  4. Selecting a node enters focus mode showing that node's subgraph plus one level of surrounding context, filtering out unrelated diagram sections
-**Plans:** 3 plans
+  1. Clicking a node selects it with a visual indicator (blue border, corner handles)
+  2. Right-clicking a node shows a context menu with Edit, Delete, Duplicate, Flag, Connect actions
+  3. Double-clicking a node label opens an inline contenteditable overlay for editing
+  4. Delete/Backspace removes selected node and its edges, with .mmd file updated
+  5. Escape deselects; clicking empty space deselects
+  6. Interaction state machine prevents conflicts (can't flag while editing, can't pan while selecting)
+**Plans:** TBD
 
-Plans:
-- [x] 08-01-PLAN.md — Subgraph parsing, collapse/expand interaction, collapse-ui.js
-- [x] 08-02-PLAN.md — Node limit (50), auto-collapse, notice UI, server integration
-- [x] 08-03-PLAN.md — Breadcrumb navigation, focus mode (double-click), Escape to exit
+#### Phase 6: Undo/Redo + Edit Actions
+**Goal**: All diagram edit operations are undoable, and developers can copy/paste/duplicate nodes
+**Depends on**: Phase 5
+**Success Criteria** (what must be TRUE):
+  1. Ctrl+Z undoes the last user action; Ctrl+Shift+Z redoes
+  2. Undo stack only tracks user actions, not AI/filesystem changes
+  3. Ctrl+C copies selected node(s); Ctrl+V pastes with new IDs and offset position
+  4. Ctrl+D duplicates selected node(s) in place
+  5. Folder rename and delete work from file tree context menu
+  6. Command history is capped at 100 entries
+**Plans:** TBD
 
-## Progress
+#### Phase 7: AI Breakpoints + Ghost Paths
+**Goal**: Developers can set breakpoints on diagram nodes that pause AI execution, and discarded reasoning branches appear as ghost paths
+**Depends on**: Phase 4 (custom renderer required for ghost path rendering)
+**Success Criteria** (what must be TRUE):
+  1. `%% @breakpoint NodeId` annotation marks a node as a breakpoint with visual indicator (red circle)
+  2. MCP tool `check_breakpoints()` returns "pause" when AI reaches a breakpoint node
+  3. Browser shows notification bar: "Breakpoint hit on Node X. [Continue] [Remove]"
+  4. Ghost paths (discarded reasoning branches) render as dashed edges at 30% opacity
+  5. A toggle button shows/hides ghost paths
+  6. MCP tool `record_ghost_path()` allows AI to log abandoned paths
+**Plans:** TBD
 
-**Execution Order:**
-Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
-(Phases 4 and 5 can run in parallel after Phase 3; Phase 7 depends on both 3 and 5)
+#### Phase 8: Heatmap + Session Recording
+**Goal**: Developers can see AI reasoning patterns as a heatmap overlay and replay how a diagram evolved over time
+**Depends on**: Phase 7
+**Success Criteria** (what must be TRUE):
+  1. `%% @risk NodeId high|medium|low "reason"` annotation adds risk level to nodes
+  2. Heatmap mode colors nodes by execution frequency (cold blue → hot red)
+  3. Session events are recorded as JSONL in `.smartb/sessions/`
+  4. MCP tools `start_session`, `record_step`, `end_session` allow AI to record reasoning
+  5. Timeline scrubber UI replays diagram evolution at 1x/2x/4x speed
+  6. Diff highlighting shows added (green), removed (red), modified (yellow) nodes between frames
+**Plans:** TBD
+
+### Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Project Bootstrap + Diagram Core | 2/2 | ✓ Complete | 2026-02-14 |
-| 2. HTTP Server | 2/2 | ✓ Complete | 2026-02-14 |
-| 3. WebSocket + Real-Time Sync | 3/3 | ✓ Complete | 2026-02-15 |
-| 4. Interactive Browser UI | 2/2 | ✓ Complete | 2026-02-15 |
-| 5. MCP Server | 3/3 | ✓ Complete | 2026-02-15 |
-| 6. CLI + DX + AI Integration | 3/3 | ✓ Complete | 2026-02-15 |
-| 7. VS Code Extension | 4/4 | ✓ Complete | 2026-02-15 |
-| 8. Scalability + Large Diagrams | 3/3 | ✓ Complete | 2026-02-15 |
+| 1. Foundation Refactoring | 0/? | Not Started | - |
+| 2. Graph Model + Parser | 0/? | Not Started | - |
+| 3. Custom Renderer | 0/? | Not Started | - |
+| 4. Server + Browser Integration | 0/? | Not Started | - |
+| 5. Canvas Interactions | 0/? | Not Started | - |
+| 6. Undo/Redo + Edit Actions | 0/? | Not Started | - |
+| 7. AI Breakpoints + Ghost Paths | 0/? | Not Started | - |
+| 8. Heatmap + Session Recording | 0/? | Not Started | - |
