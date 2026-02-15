@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { DiagramService } from '../diagram/service.js';
 import { registerTools } from './tools.js';
+import { registerResources } from './resources.js';
 import { log } from '../utils/logger.js';
 
 /**
@@ -15,8 +16,9 @@ export function createMcpServer(service: DiagramService): McpServer {
   });
 
   registerTools(server, service);
+  registerResources(server, service);
 
-  log.debug('MCP server created with tools registered');
+  log.debug('MCP server created with 4 tools and 2 resources');
 
   return server;
 }
