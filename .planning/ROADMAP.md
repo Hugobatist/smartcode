@@ -14,7 +14,7 @@ v2.0 replaces Mermaid.js as a black-box renderer with a custom interactive SVG p
 
 - [ ] **Phase 9: Foundation Refactoring** - Extract live.html into modules, DOM abstraction layer, event bus
 - [x] **Phase 10: Graph Model + Parser** - Internal graph model types, .mmd parser, serializer, round-trip tests (completed 2026-02-15)
-- [ ] **Phase 11: Custom Renderer** - dagre layout engine, SVG renderer, parallel rendering mode, feature parity gate
+- [x] **Phase 11: Custom Renderer** - dagre layout engine, SVG renderer, parallel rendering mode, feature parity gate (completed 2026-02-15)
 - [ ] **Phase 12: Server + Browser Integration** - Graph API endpoint, WebSocket graph:update, live.html integration, Mermaid fallback
 - [ ] **Phase 13: Canvas Interactions** - Node selection, context menu, inline edit, keyboard shortcuts
 - [ ] **Phase 14: Undo/Redo + Edit Actions** - Command pattern, copy/paste/duplicate, folder management
@@ -138,9 +138,9 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 9. Foundation Refactoring | 0/4 | Planned | - |
-| 10. Graph Model + Parser | 0/3 | Complete    | 2026-02-15 |
-| 11. Custom Renderer | 0/? | Not Started | - |
+| 9. Foundation Refactoring | 4/4 | Complete | 2026-02-15 |
+| 10. Graph Model + Parser | 3/3 | Complete    | 2026-02-15 |
+| 11. Custom Renderer | 4/4 | Complete | 2026-02-15 |
 | 12. Server + Browser Integration | 0/? | Not Started | - |
 | 13. Canvas Interactions | 0/? | Not Started | - |
 | 14. Undo/Redo + Edit Actions | 0/? | Not Started | - |

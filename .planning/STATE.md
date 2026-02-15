@@ -8,12 +8,12 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 
 ## Current Position
 
-Phase: 10-graph-model-parser
-Plan: 03 of 03 complete
-Status: Phase 10 COMPLETE — GraphModel type system, parser, and serializer with round-trip fidelity
-Last activity: 2026-02-15 — Plan 10-03 completed (serializer + round-trip + integration)
+Phase: 11-custom-renderer
+Plan: 04 of 04 complete
+Status: Phase 11 COMPLETE — Custom SVG renderer with dagre layout, API endpoint, and ?renderer=custom toggle
+Last activity: 2026-02-15 — All 4 plans executed (human visual verification pending)
 
-Progress: [██████████] v1.0 100% | Phase 10: [==========] 3/3 plans complete
+Progress: [██████████] v1.0 100% | Phase 11: [==========] 4/4 plans complete
 
 ## v1.0 Performance Metrics
 
@@ -164,12 +164,33 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 ### Test Coverage
 
-- 201 tests passing across 15 test files
-- Key coverage: collapser (42 tests), graph-parser (30), graph-serializer (17), graph-roundtrip (25), annotations (22), service (11), server (9), parser (9)
+- 221 tests passing across 17 test files
+- Key coverage: collapser (42 tests), graph-parser (30), graph-roundtrip (25), annotations (22), graph-serializer (15), viewport-transform (11), service (11), dagre-layout (9), server (9), parser (9)
 - Gaps: no frontend tests, no WebSocket tests, no POST route tests
+
+## Phase 11 Progress
+
+**11-01 (Complete):** Graph API endpoint + dagre-layout.js + viewport-transform.js
+- GET /api/graph/:file endpoint in routes.ts (389 lines) — Maps→plain objects for JSON
+- dagre-layout.js (283 lines): computeLayout with text measurement, shape sizing, subgraph support
+- viewport-transform.js (107 lines): screenToGraph/graphToScreen, zoomToFit
+
+**11-02 (Complete):** SVG shapes + SVG renderer
+- svg-shapes.js (218 lines): all 13 Mermaid node shapes as SVG factories, geometry-only
+- svg-renderer.js (279 lines): createSVG from LayoutResult, data-* attributes, arrow markers, theme
+
+**11-03 (Complete, human verify pending):** Custom renderer orchestrator + integration
+- custom-renderer.js (92 lines): render(graphModel) + fetchAndRender(filePath)
+- live.html (150 lines): dagre CDN + 5 new script tags
+- app-init.js (304 lines): ?renderer=custom toggle, renderWithType wrapper, CUSTOM indicator
+- diagram-dom.js (191 lines): dual renderer support (data-* + Mermaid regex)
+
+**11-04 (Complete):** TDD tests
+- viewport-transform.test.ts (118 lines): 11 tests — inverse proofs at multiple zoom levels
+- dagre-layout.test.ts (164 lines): 9 tests — layout positioning, subgraphs, edge types
 
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 10-03-PLAN.md (serializer + round-trip + integration) -- Phase 10 COMPLETE
-Next action: Next phase planning (Phase 10 deliverables ready for downstream consumption)
+Stopped at: Phase 11 complete — all 4 plans executed, 221 tests passing
+Next action: Phase 12 planning (Server + Browser Integration) — requires human visual verification of Phase 11 first
