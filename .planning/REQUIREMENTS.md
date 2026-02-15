@@ -76,6 +76,9 @@ Requirements for initial release. Each maps to roadmap phases.
 - [ ] **VSC-05**: Webview state persistence via getState()/setState() API
 - [ ] **VSC-06**: Extension published to VS Code Marketplace
 - [ ] **VSC-07**: Status bar indicator showing connection status to server
+- [ ] **VSC-08**: File name/path visible in webview panel header
+- [ ] **VSC-09**: File selector (dropdown or mini file-list) for navigating between .mmd files
+- [ ] **VSC-10**: Project/folder context indicator when monitoring multiple projects
 
 ### Scalability
 
@@ -192,6 +195,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | VSC-05 | Phase 7 | Pending |
 | VSC-06 | Phase 7 | Pending |
 | VSC-07 | Phase 7 | Pending |
+| VSC-08 | Phase 7 | Pending |
+| VSC-09 | Phase 7 | Pending |
+| VSC-10 | Phase 7 | Pending |
 | SCALE-01 | Phase 8 | Pending |
 | SCALE-02 | Phase 8 | Pending |
 | SCALE-03 | Phase 8 | Pending |
@@ -208,8 +214,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AI-04 | Phase 6 | Pending |
 
 **Coverage:**
-- v1 requirements: 63 total
-- Mapped to phases: 63
+- v1 requirements: 66 total
+- Mapped to phases: 66
 - Unmapped: 0
 
 ---

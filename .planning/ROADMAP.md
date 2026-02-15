@@ -138,7 +138,7 @@ Plans:
 - [x] 07-01-PLAN.md — Extension scaffolding (package.json, tsconfig, esbuild), WebviewViewProvider, WebSocket client in extension host
 - [x] 07-02-PLAN.md — Mermaid rendering in webview, click-to-flag interaction, state persistence via getState/setState
 - [x] 07-03-PLAN.md — Status bar connection indicator, README/CHANGELOG, VSIX packaging for marketplace
-- [ ] 07-04-PLAN.md — File name header, file selector dropdown, multi-file navigation in webview panel
+- [x] 07-04-PLAN.md — File name header, file selector dropdown, multi-file navigation in webview panel
 
 ### Phase 8: Scalability + Large Diagrams
 **Goal**: Diagrams with 50+ nodes remain usable through hierarchical collapsing, rendering limits, and focused navigation — preventing the "UML death" problem
@@ -152,9 +152,9 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 08-01: Hierarchical subgraph collapsing with expand/collapse interaction
-- [ ] 08-02: Rendering limit (50 nodes), automatic collapse, breadcrumb navigation
-- [ ] 08-03: Focus mode — selected node context view with surrounding graph
+- [ ] 08-01-PLAN.md — Subgraph parsing, collapse/expand interaction, collapse-ui.js
+- [ ] 08-02-PLAN.md — Node limit (50), auto-collapse, notice UI
+- [ ] 08-03-PLAN.md — Breadcrumb navigation, focus mode (double-click), Escape to exit
 
 ## Progress
 
@@ -170,5 +170,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 4. Interactive Browser UI | 2/2 | ✓ Complete | 2026-02-15 |
 | 5. MCP Server | 3/3 | ✓ Complete | 2026-02-15 |
 | 6. CLI + DX + AI Integration | 3/3 | ✓ Complete | 2026-02-15 |
-| 7. VS Code Extension | 3/4 | In Progress | - |
-| 8. Scalability + Large Diagrams | 0/3 | Not started | - |
+| 7. VS Code Extension | 4/4 | ✓ Complete | 2026-02-15 |
+| 8. Scalability + Large Diagrams | 0/3 | In Progress | - |

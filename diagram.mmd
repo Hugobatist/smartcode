@@ -1,0 +1,9 @@
+flowchart LR
+    A["Entrada de Dados"] --> B["Validacao"]
+    B --> C{"Dados validos?"}
+    C -->|"Sim"| D["Processar"]
+    C -->|"Nao"| E["Rejeitar"]
+    D --> F["Salvar no DB"]
+    F --> G["Notificar usuario"]
+    E --> H["Log de erro"]
+    H --> A
