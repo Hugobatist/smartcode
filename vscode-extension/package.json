@@ -1,0 +1,75 @@
+{
+  "name": "smartb-diagrams-vscode",
+  "displayName": "SmartB Diagrams",
+  "description": "Live AI reasoning diagrams in VS Code sidebar",
+  "version": "0.1.0",
+  "publisher": "smartb",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./dist/extension.js",
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "activationEvents": [],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "smartb-explorer",
+          "title": "SmartB Diagrams",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "smartb-explorer": [
+        {
+          "type": "webview",
+          "id": "smartb.diagramView",
+          "name": "Diagram"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SmartB Diagrams",
+      "properties": {
+        "smartb.serverUrl": {
+          "type": "string",
+          "default": "ws://localhost:3333/ws",
+          "description": "WebSocket URL of the SmartB server"
+        },
+        "smartb.autoConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically connect to SmartB server on startup"
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "smartb.reconnect",
+        "title": "SmartB: Reconnect to Server"
+      },
+      {
+        "command": "smartb.openBrowser",
+        "title": "SmartB: Open in Browser"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@types/ws": "^8.5.0",
+    "esbuild": "^0.24.0",
+    "@vscode/vsce": "^3.2.0"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
