@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 5: MCP Server** - AI tool integration via stdio transport with tools and resources
 - [x] **Phase 6: CLI + Developer Experience + AI Integration** - CLI commands, zero-config MCP setup, AI diagram conventions, flag-to-prompt pipeline
 - [ ] **Phase 7: VS Code Extension** - Sidebar webview panel, WebSocket client, file navigation, marketplace publication
-- [ ] **Phase 8: Scalability + Large Diagrams** - Hierarchical collapsing, rendering limits, breadcrumb navigation, focus mode
+- [x] **Phase 8: Scalability + Large Diagrams** - Hierarchical collapsing, rendering limits, breadcrumb navigation, focus mode
 
 ## Phase Details
 
@@ -149,12 +149,12 @@ Plans:
   2. Diagrams with more than 50 nodes automatically collapse to show only top-level groups with a "show more" affordance for drilling in
   3. A breadcrumb trail at the top of the diagram shows the current hierarchy path and allows navigation back to parent levels
   4. Selecting a node enters focus mode showing that node's subgraph plus one level of surrounding context, filtering out unrelated diagram sections
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 08-01-PLAN.md — Subgraph parsing, collapse/expand interaction, collapse-ui.js
-- [ ] 08-02-PLAN.md — Node limit (50), auto-collapse, notice UI
-- [ ] 08-03-PLAN.md — Breadcrumb navigation, focus mode (double-click), Escape to exit
+- [x] 08-01-PLAN.md — Subgraph parsing, collapse/expand interaction, collapse-ui.js
+- [x] 08-02-PLAN.md — Node limit (50), auto-collapse, notice UI, server integration
+- [x] 08-03-PLAN.md — Breadcrumb navigation, focus mode (double-click), Escape to exit
 
 ## Progress
 
@@ -171,4 +171,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 5. MCP Server | 3/3 | ✓ Complete | 2026-02-15 |
 | 6. CLI + DX + AI Integration | 3/3 | ✓ Complete | 2026-02-15 |
 | 7. VS Code Extension | 4/4 | ✓ Complete | 2026-02-15 |
-| 8. Scalability + Large Diagrams | 0/3 | In Progress | - |
+| 8. Scalability + Large Diagrams | 3/3 | ✓ Complete | 2026-02-15 |

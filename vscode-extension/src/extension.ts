@@ -55,17 +55,48 @@ export function activate(context: vscode.ExtensionContext): void {
       if (wsMsg.type === 'file:changed' && typeof wsMsg.file === 'string' && typeof wsMsg.content === 'string') {
         fileContents.set(wsMsg.file, wsMsg.content);
         currentFile = wsMsg.file;
+        // Relay content update to webview
+        provider.postMessage({ type: 'diagram:update', file: wsMsg.file, content: wsMsg.content });
+      }
+
+      // Handle file:added — fetch its content and relay to webview
+      if (wsMsg.type === 'file:added' && typeof wsMsg.file === 'string') {
+        const addedFile = wsMsg.file;
+        // Add to file list if not already present
+        if (!fileList.includes(addedFile)) {
+          fileList = [...fileList, addedFile];
+          provider.postMessage({ type: 'tree:updated', files: fileList });
+        }
+        // Fetch the new file's content
+        fetchFileContent(addedFile);
+      }
+
+      // Handle file:removed — clean up state and notify webview
+      if (wsMsg.type === 'file:removed' && typeof wsMsg.file === 'string') {
+        const removedFile = wsMsg.file;
+        fileContents.delete(removedFile);
+        fileList = fileList.filter((f) => f !== removedFile);
+        provider.postMessage({ type: 'tree:updated', files: fileList });
+
+        // If the removed file was the current one, select another or show empty state
+        if (currentFile === removedFile) {
+          if (fileList.length > 0) {
+            selectFile(fileList[0]!);
+          } else {
+            currentFile = '';
+            provider.postMessage({
+              type: 'diagram:update',
+              file: '',
+              content: '',
+            });
+          }
+        }
       }
 
       // Handle tree:updated events
       if (wsMsg.type === 'tree:updated' && Array.isArray(wsMsg.files)) {
         fileList = wsMsg.files as string[];
         provider.postMessage({ type: 'tree:updated', files: fileList });
-      }
-
-      // Relay diagram updates to webview
-      if (wsMsg.type === 'file:changed' || wsMsg.type === 'file:added' || wsMsg.type === 'file:removed') {
-        provider.postMessage({ type: 'diagram:update', ...(msg as object) });
       }
     },
     onStatus: (status) => {
@@ -157,8 +188,26 @@ export function activate(context: vscode.ExtensionContext): void {
         file,
         content: parsed.mermaidContent,
       });
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : 'Unknown error';
+      vscode.window.showErrorMessage(`SmartB: Failed to load diagram "${file}" - ${errMsg}`);
+      provider.postMessage({
+        type: 'diagram:update',
+        file,
+        content: '',
+      });
+    }
+  }
+
+  /** Fetch a single file's content from the server and cache it. */
+  async function fetchFileContent(file: string): Promise<void> {
+    try {
+      const httpBaseUrl = getHttpBaseUrl(serverUrl);
+      const contentResp = await httpGet(`${httpBaseUrl}/api/diagrams/${encodeURIComponent(file)}`);
+      const parsed = JSON.parse(contentResp) as { mermaidContent: string };
+      fileContents.set(file, parsed.mermaidContent);
     } catch {
-      // Silent fail — file might not exist
+      // Silently skip — content will be fetched on selection
     }
   }
 
@@ -167,10 +216,10 @@ export function activate(context: vscode.ExtensionContext): void {
     try {
       const httpBaseUrl = getHttpBaseUrl(serverUrl);
 
-      // Fetch file tree first
-      const treeResp = await httpGet(`${httpBaseUrl}/tree.json`);
-      const treeData = JSON.parse(treeResp) as string[];
-      fileList = treeData;
+      // Fetch file list from REST API (returns { files: string[] })
+      const diagResp = await httpGet(`${httpBaseUrl}/api/diagrams`);
+      const diagData = JSON.parse(diagResp) as { files: string[] };
+      fileList = diagData.files;
       provider.postMessage({ type: 'tree:updated', files: fileList });
 
       // Then fetch and display the first valid diagram

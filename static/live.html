@@ -479,6 +479,106 @@
             transition: opacity 0.5s;
         }
         .fit-hint.show { opacity: 1; pointer-events: auto; }
+
+        /* ── Breadcrumb bar ── */
+        .breadcrumb-bar {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 8px 12px;
+            background: rgba(30, 30, 46, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+            color: var(--text-dim);
+            z-index: 5;
+            position: relative;
+        }
+        .breadcrumb-item {
+            cursor: pointer;
+            padding: 2px 6px;
+            border-radius: 3px;
+            transition: background 0.15s;
+        }
+        .breadcrumb-item:hover:not(.current) {
+            background: rgba(255,255,255,0.1);
+            color: var(--text);
+        }
+        .breadcrumb-item.current {
+            color: var(--text);
+            font-weight: 600;
+            cursor: default;
+        }
+        .breadcrumb-separator {
+            color: rgba(255,255,255,0.25);
+            user-select: none;
+        }
+        .breadcrumb-exit {
+            margin-left: auto;
+            padding: 4px 10px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
+            font-family: inherit;
+            transition: background 0.15s;
+        }
+        .breadcrumb-exit:hover {
+            background: rgba(255,255,255,0.15);
+        }
+
+        /* ── Auto-collapse notice ── */
+        .auto-collapse-notice {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: rgba(99, 102, 241, 0.1);
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+            font-size: 12px;
+            color: var(--text-dim);
+            z-index: 5;
+            position: relative;
+        }
+        .notice-icon { font-size: 14px; flex-shrink: 0; }
+        .notice-text { flex: 1; }
+        .notice-expand-all {
+            padding: 3px 10px;
+            background: rgba(255,255,255,0.08);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 5px;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 500;
+            font-family: inherit;
+            transition: background 0.15s;
+        }
+        .notice-expand-all:hover { background: rgba(255,255,255,0.15); }
+        .notice-dismiss {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 4px;
+            border-radius: 3px;
+            transition: background 0.15s;
+        }
+        .notice-dismiss:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+
+        /* ── Focus mode: dim non-focused clusters ── */
+        .diagram-focus-mode .cluster:not(.focused) {
+            opacity: 0.6;
+            transition: opacity 0.2s;
+        }
+        .diagram-focus-mode .cluster.focused {
+            opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -582,6 +682,8 @@
         <div class="help-row"><span><kbd>N</kbd></span><span>Adicionar nodo</span></div>
         <div class="help-row"><span><kbd>A</kbd></span><span>Adicionar seta</span></div>
         <div class="help-row"><span><kbd>F</kbd></span><span>Toggle Flag Mode</span></div>
+        <div class="help-row"><span>Duplo-clique</span><span>Focus no subgraph</span></div>
+        <div class="help-row"><span><kbd>Esc</kbd></span><span>Sair do Focus Mode</span></div>
         <div class="help-row"><span><kbd>?</kbd></span><span>Ajuda</span></div>
         <br>
         <h2>Como funciona</h2>
@@ -635,7 +737,7 @@
             rankSpacing: 80,
             htmlLabels: true,
         },
-        securityLevel: 'loose',
+        securityLevel: 'sandbox',
     });
 
     // ── HTML Escape Helper ──
@@ -1004,10 +1106,9 @@
                 const isOpen = !collapsedFolders.has(n.name);
                 const count = countFiles(n);
                 const pad = 8 + depth * 16;
-                const safeFolderName = escapeHtml(n.name).replace(/'/g, "\\'");
                 return `
                     <div class="tree-folder">
-                        <div class="tree-folder-header" style="padding-left:${pad}px" onclick="toggleFolder('${safeFolderName}')">
+                        <div class="tree-folder-header" style="padding-left:${pad}px" data-action="toggle-folder" data-folder="${escapeHtml(n.name)}">
                             <span class="tree-chevron ${isOpen ? 'open' : ''}">&#x25B6;</span>
                             <span class="tree-folder-icon">${isOpen ? '&#x1F4C2;' : '&#x1F4C1;'}</span>
                             <span class="tree-folder-name">${escapeHtml(prettyFolder(n.name))}</span>
@@ -1019,21 +1120,45 @@
                     </div>`;
             } else {
                 const pad = 8 + depth * 16;
-                const path = n.path;
-                const safePath = escapeHtml(path).replace(/'/g, "\\'");
-                const isActive = path === currentFile;
+                const filePath = n.path;
+                const isActive = filePath === currentFile;
                 return `
-                    <div class="tree-file ${isActive ? 'active' : ''}" style="padding-left:${pad}px" onclick="loadFile('${safePath}')">
+                    <div class="tree-file ${isActive ? 'active' : ''}" style="padding-left:${pad}px" data-action="load-file" data-path="${escapeHtml(filePath)}">
                         <span class="tree-file-icon">&#x25C8;</span>
-                        <span class="tree-file-name" title="${escapeHtml(path)}">${escapeHtml(prettyName(n.name))}</span>
-                        <span class="tree-file-actions" onclick="event.stopPropagation()">
-                            <button class="rename-btn" onclick="renameFile('${safePath}')" title="Renomear">&#x270E;</button>
-                            <button class="delete-btn" onclick="deleteFile('${safePath}')" title="Deletar">&#x2715;</button>
+                        <span class="tree-file-name" title="${escapeHtml(filePath)}">${escapeHtml(prettyName(n.name))}</span>
+                        <span class="tree-file-actions">
+                            <button class="rename-btn" data-action="rename-file" data-path="${escapeHtml(filePath)}" title="Renomear">&#x270E;</button>
+                            <button class="delete-btn" data-action="delete-file" data-path="${escapeHtml(filePath)}" title="Deletar">&#x2715;</button>
                         </span>
                     </div>`;
             }
         }).join('');
     }
+
+    // ── Event delegation for file tree (prevents injection via folder/file names) ──
+    document.getElementById('fileTree').addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target) return;
+        const action = target.dataset.action;
+        const actionPath = target.dataset.path;
+        const folder = target.dataset.folder;
+        switch (action) {
+            case 'toggle-folder':
+                toggleFolder(folder);
+                break;
+            case 'load-file':
+                loadFile(actionPath);
+                break;
+            case 'rename-file':
+                e.stopPropagation();
+                renameFile(actionPath);
+                break;
+            case 'delete-file':
+                e.stopPropagation();
+                deleteFile(actionPath);
+                break;
+        }
+    });
 
     function toggleFolder(name) {
         if (collapsedFolders.has(name)) collapsedFolders.delete(name);
@@ -1181,7 +1306,7 @@
                     rankSpacing: 80,
                     htmlLabels: false,
                 },
-                securityLevel: 'loose',
+                securityLevel: 'sandbox',
             });
 
             // Render a Canvas-safe SVG (no foreignObject)
@@ -1216,7 +1341,7 @@
                     rankSpacing: 80,
                     htmlLabels: true,
                 },
-                securityLevel: 'loose',
+                securityLevel: 'sandbox',
             });
 
             // Parse export SVG to get dimensions
@@ -1278,7 +1403,7 @@
                     rankSpacing: 80,
                     htmlLabels: true,
                 },
-                securityLevel: 'loose',
+                securityLevel: 'sandbox',
             });
             toast('Erro ao exportar PNG — tente SVG');
         }
@@ -1429,6 +1554,24 @@
             await render(editor.value);
         }
 
+        // Fetch collapse metadata for initial auto-collapse
+        if (currentFile && window.SmartBCollapseUI) {
+            try {
+                const apiResp = await fetch('/api/diagrams/' + encodeURIComponent(currentFile));
+                if (apiResp.ok) {
+                    const data = await apiResp.json();
+                    if (data.collapse) {
+                        SmartBCollapseUI.setConfig(data.collapse.config);
+                        if (data.collapse.autoCollapsed && data.collapse.autoCollapsed.length > 0) {
+                            SmartBCollapseUI.setAutoCollapsed(data.collapse.autoCollapsed);
+                            // Re-render with collapsed content
+                            if (data.mermaidContent) await render(data.mermaidContent);
+                        }
+                    }
+                }
+            } catch (e) {}
+        }
+
         // WebSocket real-time sync
         // For multi-project: append project name, e.g., '/ws/my-project'
         const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -1509,6 +1652,7 @@
     });
 </script>
 <script src="ws-client.js"></script>
+<script src="collapse-ui.js"></script>
 <script src="annotations.js"></script>
 <script src="diagram-editor.js"></script>
 <script src="search.js"></script>
@@ -1527,6 +1671,87 @@
     SmartBAnnotations.init(_initHooks);
     MmdEditor.init(_initHooks);
     SmartBSearch.init(_initHooks);
+
+    // ── Init Collapse UI (focus mode + breadcrumb navigation) ──
+    if (window.SmartBCollapseUI) {
+        SmartBCollapseUI.init({
+            onToggle: async function(collapsedIds) {
+                // Send collapsed state to server and re-render
+                try {
+                    const params = new URLSearchParams();
+                    if (collapsedIds.length > 0) {
+                        params.set('collapsed', JSON.stringify(collapsedIds));
+                    }
+                    const url = '/api/diagrams/' + encodeURIComponent(currentFile) + '?' + params.toString();
+                    const resp = await fetch(url);
+                    if (!resp.ok) return;
+                    const data = await resp.json();
+                    // Update auto-collapse notice from server response
+                    if (data.collapse) {
+                        SmartBCollapseUI.setConfig(data.collapse.config);
+                        SmartBCollapseUI.setAutoCollapsed(data.collapse.autoCollapsed || []);
+                    }
+                    if (data.mermaidContent) {
+                        await render(data.mermaidContent);
+                    }
+                } catch (e) {
+                    // Silently fail — diagram keeps current state
+                }
+            }
+        });
+
+        SmartBCollapseUI.initFocusMode({
+            onFocusChange: async function(event) {
+                try {
+                    if (event.action === 'focus') {
+                        const params = new URLSearchParams({ focus: event.nodeId });
+                        const collapsed = SmartBCollapseUI.getCollapsed();
+                        if (collapsed.length > 0) {
+                            params.set('collapsed', JSON.stringify(collapsed));
+                        }
+                        const resp = await fetch('/api/diagrams/' + encodeURIComponent(currentFile) + '?' + params.toString());
+                        if (!resp.ok) return;
+                        const data = await resp.json();
+                        if (data.collapse) {
+                            SmartBCollapseUI.setBreadcrumbs(data.collapse.breadcrumbs, data.collapse.focusedSubgraph);
+                            SmartBCollapseUI.setAutoCollapsed(data.collapse.autoCollapsed || []);
+                            if (data.collapse.manualCollapsed) {
+                                SmartBCollapseUI.setCollapsed(data.collapse.manualCollapsed);
+                            }
+                        }
+                        if (data.mermaidContent) {
+                            await render(data.mermaidContent);
+                            document.getElementById('preview').classList.add('diagram-focus-mode');
+                        }
+                    } else if (event.action === 'navigate') {
+                        const params = new URLSearchParams({ breadcrumb: event.breadcrumbId });
+                        const resp = await fetch('/api/diagrams/' + encodeURIComponent(currentFile) + '?' + params.toString());
+                        if (!resp.ok) return;
+                        const data = await resp.json();
+                        if (data.collapse) {
+                            SmartBCollapseUI.setBreadcrumbs(data.collapse.breadcrumbs, data.collapse.focusedSubgraph);
+                            SmartBCollapseUI.setAutoCollapsed(data.collapse.autoCollapsed || []);
+                        }
+                        if (data.mermaidContent) {
+                            await render(data.mermaidContent);
+                        }
+                    } else if (event.action === 'exit') {
+                        const resp = await fetch('/api/diagrams/' + encodeURIComponent(currentFile));
+                        if (!resp.ok) return;
+                        const data = await resp.json();
+                        SmartBCollapseUI.setBreadcrumbs([], null);
+                        SmartBCollapseUI.setAutoCollapsed(data.collapse?.autoCollapsed || []);
+                        if (data.mermaidContent) {
+                            await render(data.mermaidContent);
+                            document.getElementById('preview').classList.remove('diagram-focus-mode');
+                        }
+                    }
+                } catch (e) {
+                    // Silently fail
+                }
+            }
+        });
+    }
 </script>
 </body>
 </html>

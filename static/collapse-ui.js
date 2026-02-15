@@ -200,24 +200,36 @@
       const notice = document.createElement('div');
       notice.id = 'auto-collapse-notice';
       notice.className = 'auto-collapse-notice';
-      notice.innerHTML = `
-        <span class="notice-icon">📊</span>
-        <span class="notice-text">
-          ${this.autoCollapsed.length} subgraph${this.autoCollapsed.length > 1 ? 's' : ''} 
-          auto-collapsed to fit ${this.config.maxVisibleNodes || 50} node limit
-        </span>
-        <button class="notice-expand-all" title="Expand all">
-          Expand All
-        </button>
-        <button class="notice-dismiss" title="Dismiss">✕</button>
-      `;
 
-      notice.querySelector('.notice-expand-all').addEventListener('click', () => {
+      const icon = document.createElement('span');
+      icon.className = 'notice-icon';
+      icon.textContent = '\uD83D\uDCCA';
+      notice.appendChild(icon);
+
+      const text = document.createElement('span');
+      text.className = 'notice-text';
+      const count = this.autoCollapsed.length;
+      const limit = this.config.maxVisibleNodes || 50;
+      text.textContent = `${count} subgraph${count > 1 ? 's' : ''} auto-collapsed to fit ${limit} node limit`;
+      notice.appendChild(text);
+
+      const expandBtn = document.createElement('button');
+      expandBtn.className = 'notice-expand-all';
+      expandBtn.title = 'Expand all';
+      expandBtn.textContent = 'Expand All';
+      expandBtn.addEventListener('click', () => {
         this.expandAll();
       });
-      notice.querySelector('.notice-dismiss').addEventListener('click', () => {
+      notice.appendChild(expandBtn);
+
+      const dismissBtn = document.createElement('button');
+      dismissBtn.className = 'notice-dismiss';
+      dismissBtn.title = 'Dismiss';
+      dismissBtn.textContent = '\u2715';
+      dismissBtn.addEventListener('click', () => {
         notice.remove();
       });
+      notice.appendChild(dismissBtn);
 
       const container = document.getElementById('preview-container');
       if (container) container.insertBefore(notice, container.firstChild);

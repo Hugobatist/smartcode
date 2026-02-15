@@ -55,15 +55,36 @@ export function sendJson(res: ServerResponse, data: unknown, status = 200): void
   res.end(body);
 }
 
+/** Maximum allowed request body size (1 MB) */
+const MAX_BODY_SIZE = 1 * 1024 * 1024;
+
 /**
  * Read and parse a JSON body from an incoming request.
+ * Enforces a size limit to prevent memory exhaustion (DoS).
+ * Throws an error with message 'Payload too large' if the limit is exceeded.
  */
 export async function readJsonBody<T>(req: IncomingMessage): Promise<T> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(chunk as Buffer);
-  }
-  return JSON.parse(Buffer.concat(chunks).toString('utf-8')) as T;
+  return new Promise<T>((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new Error('Payload too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString('utf-8')) as T);
+      } catch {
+        reject(new Error('Invalid JSON'));
+      }
+    });
+    req.on('error', reject);
+  });
 }
 
 /**

@@ -112,7 +112,7 @@ describe('HTTP Server Integration', { timeout: 10_000 }, () => {
     expect(data.files).toContain('valid-flowchart.mmd');
   });
 
-  it('GET /api/diagrams/:file returns diagram content', async () => {
+  it('GET /api/diagrams/:file returns diagram content with collapse metadata', async () => {
     const res = await httpRequest(port, 'GET', '/api/diagrams/valid-flowchart.mmd');
     expect(res.status).toBe(200);
     const data = JSON.parse(res.body);
@@ -121,6 +121,16 @@ describe('HTTP Server Integration', { timeout: 10_000 }, () => {
     expect(typeof data.flags).toBe('object');
     expect(data.validation).toBeDefined();
     expect(typeof data.validation.valid).toBe('boolean');
+    // Collapse metadata should always be present
+    expect(data.collapse).toBeDefined();
+    expect(typeof data.collapse.visibleNodes).toBe('number');
+    expect(Array.isArray(data.collapse.autoCollapsed)).toBe(true);
+    expect(Array.isArray(data.collapse.manualCollapsed)).toBe(true);
+    expect(data.collapse.config).toBeDefined();
+    expect(typeof data.collapse.config.maxVisibleNodes).toBe('number');
+    expect(Array.isArray(data.collapse.breadcrumbs)).toBe(true);
+    // rawContent should be present
+    expect(typeof data.rawContent).toBe('string');
   });
 
   it('GET /api/diagrams/:file returns 404 for missing file', async () => {

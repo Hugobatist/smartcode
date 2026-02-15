@@ -26,14 +26,6 @@ interface WebviewState {
   fileList: string[];
 }
 
-/** Server WebSocket message types (mirrors server WsMessage). */
-type WsMessage =
-  | { type: 'file:changed'; file: string; content: string }
-  | { type: 'file:added'; file: string }
-  | { type: 'file:removed'; file: string }
-  | { type: 'tree:updated'; files: string[] }
-  | { type: 'connected'; project: string };
-
 /** Messages received from the extension host. */
 interface DiagramUpdateMessage {
   type: 'diagram:update';
@@ -88,7 +80,7 @@ function stripAnnotations(content: string): string {
   mermaid.initialize({
     startOnLoad: false,
     theme: 'dark',
-    securityLevel: 'loose',
+    securityLevel: 'sandbox',
     flowchart: { htmlLabels: true, curve: 'basis' },
   });
 

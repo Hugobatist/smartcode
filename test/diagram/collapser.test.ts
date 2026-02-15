@@ -230,7 +230,7 @@ describe('generateCollapsedView', () => {
     const result = generateCollapsedView(SIMPLE_SUBGRAPH, subgraphs, state, config);
     
     expect(result.content).toContain('__collapsed__Analysis');
-    expect(result.content).toContain('📁 Analysis Phase');
+    expect(result.content).toContain('[+]Analysis Phase');
     expect(result.content).toContain('3 nodes');
     expect(result.manualCollapsed).toContain('Analysis');
   });
@@ -310,9 +310,36 @@ describe('focusOnNode', () => {
   it('returns unchanged state for root-level node', () => {
     const subgraphs = parseSubgraphs(SIMPLE_SUBGRAPH);
     const state = createEmptyState();
-    
+
     const result = focusOnNode('Start', subgraphs, state);
     expect(result).toEqual(state);
+  });
+
+  it('collapses sibling subgraphs not in focus path', () => {
+    const subgraphs = parseSubgraphs(MULTIPLE_SUBGRAPHS);
+    const state = createEmptyState();
+
+    const result = focusOnNode('A1', subgraphs, state);
+
+    expect(result.focusedSubgraph).toBe('GroupA');
+    expect(result.focusPath).toEqual(['GroupA']);
+    // GroupB is a sibling at root level, should be collapsed
+    expect(result.collapsed.has('GroupB')).toBe(true);
+    // GroupA (focused) should NOT be collapsed
+    expect(result.collapsed.has('GroupA')).toBe(false);
+  });
+
+  it('keeps ancestors expanded in nested focus', () => {
+    const subgraphs = parseSubgraphs(NESTED_SUBGRAPH);
+    const state = createEmptyState();
+
+    const result = focusOnNode('I1', subgraphs, state);
+
+    // Outer is ancestor, should NOT be collapsed
+    expect(result.collapsed.has('Outer')).toBe(false);
+    // Inner is the focused subgraph, should NOT be collapsed
+    expect(result.collapsed.has('Inner')).toBe(false);
+    expect(result.focusPath).toEqual(['Outer', 'Inner']);
   });
 });
 
@@ -367,11 +394,26 @@ describe('navigateToBreadcrumb', () => {
       focusPath: ['Outer', 'Inner'],
       focusedSubgraph: 'Inner',
     };
-    
+
     const result = navigateToBreadcrumb('Outer', subgraphs, state);
-    
+
     expect(result.focusPath).toEqual(['Outer']);
     expect(result.focusedSubgraph).toBe('Outer');
+  });
+
+  it('returns unchanged state for unknown breadcrumb ID', () => {
+    const subgraphs = parseSubgraphs(NESTED_SUBGRAPH);
+    const state: CollapseState = {
+      collapsed: new Set(),
+      focusPath: ['Outer', 'Inner'],
+      focusedSubgraph: 'Inner',
+    };
+
+    const result = navigateToBreadcrumb('NonExistent', subgraphs, state);
+
+    // State should be unchanged since the ID is not in focusPath
+    expect(result.focusPath).toEqual(['Outer', 'Inner']);
+    expect(result.focusedSubgraph).toBe('Inner');
   });
 });
 
@@ -382,11 +424,12 @@ describe('exitFocus', () => {
       focusPath: ['Outer', 'Inner'],
       focusedSubgraph: 'Inner',
     };
-    
+
     const result = exitFocus(state);
-    
+
     expect(result.focusPath).toHaveLength(0);
     expect(result.focusedSubgraph).toBeNull();
     expect(result.collapsed.size).toBe(0);
   });
 });
+

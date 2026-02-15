@@ -156,12 +156,13 @@ export function countVisibleNodes(
   
   for (const subgraphId of state.collapsed) {
     const info = subgraphs.get(subgraphId);
-    if (info) {
-      // Subtract nodes in collapsed subgraph
-      total -= countNodesInSubgraph(info, subgraphs);
-      // Add 1 for the summary node
-      total += 1;
-    }
+    if (!info) continue;
+    // Skip if parent is also collapsed (parent's count already includes this)
+    if (info.parent && state.collapsed.has(info.parent)) continue;
+    // Subtract nodes in collapsed subgraph
+    total -= countNodesInSubgraph(info, subgraphs);
+    // Add 1 for the summary node
+    total += 1;
   }
   
   return Math.max(0, total);
@@ -249,6 +250,12 @@ export function toggleSubgraph(
   return { ...state, collapsed: newCollapsed };
 }
 
+// ─── Utilities ───────────────────────────────────────────────────────────────
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // ─── Transformation ──────────────────────────────────────────────────────────
 
 /**
@@ -284,7 +291,7 @@ export function generateCollapsedView(
     
     const nodeCount = countNodesInSubgraph(info, subgraphs);
     const summaryId = `${config.collapsedNodePrefix}${subgraphId}`;
-    summaryNodes.push(`    ${summaryId}["📁 ${info.label} (${nodeCount} nodes)"]`);
+    summaryNodes.push(`    ${summaryId}["[+]${info.label} (${nodeCount} nodes)"]`);
     
     // Redirect edges from nodes inside to summary node
     for (const nodeId of getAllNodesInSubgraph(info, subgraphs)) {
@@ -306,7 +313,7 @@ export function generateCollapsedView(
         const summaryId = `${config.collapsedNodePrefix}${range.id}`;
         const info = subgraphs.get(range.id)!;
         const nodeCount = countNodesInSubgraph(info, subgraphs);
-        result.push(`    ${summaryId}["📁 ${info.label} (${nodeCount} nodes)"]`);
+        result.push(`    ${summaryId}["[+]${info.label} (${nodeCount} nodes)"]`);
       }
       if (i <= skipRanges[skipIndex]!.end) {
         if (i === skipRanges[skipIndex]!.end) skipIndex++;
@@ -317,7 +324,7 @@ export function generateCollapsedView(
     // Redirect edges
     let line = lines[i]!;
     for (const [from, to] of edgeRedirects) {
-      const regex = new RegExp(`\\b${from}\\b`, 'g');
+      const regex = new RegExp(`\\b${escapeRegExp(from)}\\b`, 'g');
       line = line.replace(regex, to);
     }
     
@@ -401,10 +408,14 @@ export function focusOnNode(
   const focusPath = getPathToRoot(containingSubgraph, subgraphs);
   const newCollapsed = new Set<string>();
   
-  // Collapse all subgraphs not in focus path
+  // Collapse all subgraphs not in focus path that are siblings at any level
   for (const info of subgraphs.values()) {
-    if (!focusPath.includes(info.id) && info.parent === focusPath[0]) {
-      newCollapsed.add(info.id);
+    if (!focusPath.includes(info.id)) {
+      // Collapse if parent is in focusPath (sibling at any level)
+      // or if parent is null/undefined (root-level sibling)
+      if (info.parent === null || info.parent === undefined || focusPath.includes(info.parent ?? '')) {
+        newCollapsed.add(info.id);
+      }
     }
   }
   

@@ -47,7 +47,7 @@ export function initFileList(vsCodeApi: { postMessage(msg: unknown): void }): vo
 
 /** Update the file list with available files from the server. */
 export function updateFileList(newFiles: string[]): void {
-  files = newFiles.sort();
+  files = [...newFiles].sort();
   renderFileList();
 }
 

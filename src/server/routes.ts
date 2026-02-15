@@ -5,6 +5,17 @@ import type { DiagramService } from '../diagram/service.js';
 import type { WebSocketManager } from './websocket.js';
 import { resolveProjectPath } from '../utils/paths.js';
 import { sendJson, readJsonBody, type Route } from './server.js';
+import {
+  parseSubgraphs,
+  generateCollapsedView,
+  focusOnNode,
+  navigateToBreadcrumb,
+  getBreadcrumbs,
+  createEmptyState,
+  DEFAULT_CONFIG,
+  type CollapseConfig,
+  type CollapseState,
+} from '../diagram/collapser.js';
 
 /**
  * A node in the file tree returned by /tree.json.
@@ -97,6 +108,7 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
         sendJson(res, { ok: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
+        if (message === 'Payload too large') { sendJson(res, { error: message }, 413); return; }
         const code = (err as NodeJS.ErrnoException)?.code;
         sendJson(res, { error: message }, code === 'ENOENT' ? 404 : 500);
       }
@@ -121,6 +133,7 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
         sendJson(res, { ok: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
+        if (message === 'Payload too large') { sendJson(res, { error: message }, 413); return; }
         const code = (err as NodeJS.ErrnoException)?.code;
         sendJson(res, { error: message }, code === 'ENOENT' ? 404 : 500);
       }
@@ -145,6 +158,7 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
         sendJson(res, { ok: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
+        if (message === 'Payload too large') { sendJson(res, { error: message }, 413); return; }
         sendJson(res, { error: message }, 500);
       }
     },
@@ -170,6 +184,7 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
         sendJson(res, { ok: true });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Unknown error';
+        if (message === 'Payload too large') { sendJson(res, { error: message }, 413); return; }
         const code = (err as NodeJS.ErrnoException)?.code;
         sendJson(res, { error: message }, code === 'ENOENT' ? 404 : 500);
       }
@@ -234,22 +249,79 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
 
   // -------------------------------------------------------
   // 8. GET /api/diagrams/:file -- REST: Get diagram content
+  //    Query params:
+  //      collapsed     - JSON array of manually collapsed subgraph IDs
+  //      collapseConfig - JSON object to override DEFAULT_CONFIG
+  //      focus         - node ID to enter focus mode on
+  //      breadcrumb    - breadcrumb ID to navigate to
   // -------------------------------------------------------
   routes.push({
     method: 'GET',
     pattern: new RegExp('^/api/diagrams/(?<file>.+)$'),
-    handler: async (_req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => {
+    handler: async (req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => {
       try {
         const file = decodeURIComponent(params['file']!);
         const diagram = await service.readDiagram(file);
+
+        // Parse query params for collapse integration
+        const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+        const collapsedParam = url.searchParams.get('collapsed');
+        const configParam = url.searchParams.get('collapseConfig');
+        const focusParam = url.searchParams.get('focus');
+        const breadcrumbParam = url.searchParams.get('breadcrumb');
+
+        // Build collapse config
+        let collapseConfig: CollapseConfig = { ...DEFAULT_CONFIG };
+        if (configParam) {
+          try {
+            const userConfig = JSON.parse(configParam) as Partial<CollapseConfig>;
+            collapseConfig = { ...DEFAULT_CONFIG, ...userConfig };
+          } catch { /* use defaults */ }
+        }
+
+        // Parse subgraphs and build collapse state
+        const subgraphs = parseSubgraphs(diagram.mermaidContent);
+        const userCollapsed: string[] = collapsedParam ? JSON.parse(collapsedParam) as string[] : [];
+        let state: CollapseState = {
+          ...createEmptyState(),
+          collapsed: new Set(userCollapsed),
+        };
+
+        // Handle focus mode
+        if (focusParam) {
+          state = focusOnNode(focusParam, subgraphs, state);
+        } else if (breadcrumbParam) {
+          state = navigateToBreadcrumb(breadcrumbParam, subgraphs, state);
+        }
+
+        // Generate collapsed view (applies auto-collapse if enabled)
+        const result = generateCollapsedView(
+          diagram.mermaidContent,
+          subgraphs,
+          state,
+          collapseConfig,
+        );
+
+        // Build breadcrumbs for current state
+        const breadcrumbs = getBreadcrumbs(state, subgraphs);
+
         sendJson(res, {
           filePath: diagram.filePath,
-          mermaidContent: diagram.mermaidContent,
+          mermaidContent: result.content,
+          rawContent: diagram.mermaidContent,
           flags: Object.fromEntries(diagram.flags),
           validation: {
             valid: diagram.validation.valid,
             errors: diagram.validation.errors,
             diagramType: diagram.validation.diagramType,
+          },
+          collapse: {
+            visibleNodes: result.visibleNodes,
+            autoCollapsed: result.autoCollapsed,
+            manualCollapsed: result.manualCollapsed,
+            config: collapseConfig,
+            breadcrumbs,
+            focusedSubgraph: state.focusedSubgraph,
           },
         });
       } catch (err) {

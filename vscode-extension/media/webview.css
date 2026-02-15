@@ -155,13 +155,11 @@ body {
 }
 
 .connection-status {
-  position: fixed;
-  top: 4px;
-  right: 8px;
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 3px;
-  z-index: 50;
+  flex-shrink: 0;
+  margin-left: 4px;
 }
 
 .connected {

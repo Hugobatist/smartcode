@@ -104,9 +104,9 @@ export class DiagramViewProvider implements vscode.WebviewViewProvider {
       <span id="current-path"></span>
     </div>
     <button id="file-selector-btn" title="Select diagram file">&#9662;</button>
+    <span id="connection-status" class="connection-status disconnected">Disconnected</span>
+    <div id="file-list"></div>
   </div>
-  <div id="file-list"></div>
-  <span id="connection-status" class="connection-status disconnected">Disconnected</span>
   <div id="diagram">
     <p class="status-message">Waiting for SmartB server connection...</p>
   </div>

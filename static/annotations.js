@@ -288,8 +288,8 @@
         }
         let html = '';
         for (const [nodeId, { message }] of state.flags) {
-            html += `<div class="flag-panel-item" data-node-id="${nodeId}">
-                <div class="flag-panel-item-id">${nodeId}</div>
+            html += `<div class="flag-panel-item" data-node-id="${escapeHtml(nodeId)}">
+                <div class="flag-panel-item-id">${escapeHtml(nodeId)}</div>
                 ${message ? `<div class="flag-panel-item-msg">${escapeHtml(message)}</div>` : '<div class="flag-panel-item-msg" style="font-style:italic">(sem nota)</div>'}
             </div>`;
         }

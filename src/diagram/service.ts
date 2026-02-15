@@ -12,6 +12,20 @@ import { discoverMmdFiles } from '../project/discovery.js';
  * Each instance is bound to a project root for path security.
  */
 export class DiagramService {
+  /** Per-file write locks to serialize concurrent write operations */
+  private writeLocks = new Map<string, Promise<void>>();
+
+  /**
+   * Serialize write operations on a given file path.
+   * Each call waits for the previous write on the same file to finish before running.
+   */
+  private async withWriteLock<T>(filePath: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.writeLocks.get(filePath) ?? Promise.resolve();
+    const current = prev.then(fn, fn); // run fn after previous completes (even if it failed)
+    this.writeLocks.set(filePath, current.then(() => {}, () => {})); // swallow errors for the lock chain
+    return current;
+  }
+
   constructor(private readonly projectRoot: string) {}
 
   /**
@@ -75,30 +89,36 @@ export class DiagramService {
 
   /**
    * Set (add or update) a flag on a specific node in a .mmd file.
+   * Uses a per-file write lock to prevent race conditions.
    */
   async setFlag(filePath: string, nodeId: string, message: string): Promise<void> {
-    const resolved = this.resolvePath(filePath);
-    const raw = await readFile(resolved, 'utf-8');
-    const flags = parseFlags(raw);
+    return this.withWriteLock(filePath, async () => {
+      const resolved = this.resolvePath(filePath);
+      const raw = await readFile(resolved, 'utf-8');
+      const flags = parseFlags(raw);
 
-    flags.set(nodeId, { nodeId, message });
+      flags.set(nodeId, { nodeId, message });
 
-    const { mermaidContent } = parseDiagramContent(raw);
-    await this.writeDiagram(filePath, mermaidContent, flags);
+      const { mermaidContent } = parseDiagramContent(raw);
+      await this.writeDiagram(filePath, mermaidContent, flags);
+    });
   }
 
   /**
    * Remove a flag from a specific node in a .mmd file.
+   * Uses a per-file write lock to prevent race conditions.
    */
   async removeFlag(filePath: string, nodeId: string): Promise<void> {
-    const resolved = this.resolvePath(filePath);
-    const raw = await readFile(resolved, 'utf-8');
-    const flags = parseFlags(raw);
+    return this.withWriteLock(filePath, async () => {
+      const resolved = this.resolvePath(filePath);
+      const raw = await readFile(resolved, 'utf-8');
+      const flags = parseFlags(raw);
 
-    flags.delete(nodeId);
+      flags.delete(nodeId);
 
-    const { mermaidContent } = parseDiagramContent(raw);
-    await this.writeDiagram(filePath, mermaidContent, flags);
+      const { mermaidContent } = parseDiagramContent(raw);
+      await this.writeDiagram(filePath, mermaidContent, flags);
+    });
   }
 
   /**
@@ -111,32 +131,38 @@ export class DiagramService {
 
   /**
    * Set (add or update) a status on a specific node in a .mmd file.
+   * Uses a per-file write lock to prevent race conditions.
    */
   async setStatus(filePath: string, nodeId: string, status: NodeStatus): Promise<void> {
-    const resolved = this.resolvePath(filePath);
-    const raw = await readFile(resolved, 'utf-8');
-    const flags = parseFlags(raw);
-    const statuses = parseStatuses(raw);
+    return this.withWriteLock(filePath, async () => {
+      const resolved = this.resolvePath(filePath);
+      const raw = await readFile(resolved, 'utf-8');
+      const flags = parseFlags(raw);
+      const statuses = parseStatuses(raw);
 
-    statuses.set(nodeId, status);
+      statuses.set(nodeId, status);
 
-    const { mermaidContent } = parseDiagramContent(raw);
-    await this.writeDiagram(filePath, mermaidContent, flags, statuses);
+      const { mermaidContent } = parseDiagramContent(raw);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses);
+    });
   }
 
   /**
    * Remove a status from a specific node in a .mmd file.
+   * Uses a per-file write lock to prevent race conditions.
    */
   async removeStatus(filePath: string, nodeId: string): Promise<void> {
-    const resolved = this.resolvePath(filePath);
-    const raw = await readFile(resolved, 'utf-8');
-    const flags = parseFlags(raw);
-    const statuses = parseStatuses(raw);
+    return this.withWriteLock(filePath, async () => {
+      const resolved = this.resolvePath(filePath);
+      const raw = await readFile(resolved, 'utf-8');
+      const flags = parseFlags(raw);
+      const statuses = parseStatuses(raw);
 
-    statuses.delete(nodeId);
+      statuses.delete(nodeId);
 
-    const { mermaidContent } = parseDiagramContent(raw);
-    await this.writeDiagram(filePath, mermaidContent, flags, statuses);
+      const { mermaidContent } = parseDiagramContent(raw);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses);
+    });
   }
 
   /**
