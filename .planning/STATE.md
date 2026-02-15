@@ -9,11 +9,11 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 10-graph-model-parser
-Plan: 02 of 03 complete
-Status: Plan 10-02 complete — parseMermaidToGraph parser implemented with 30 tests
-Last activity: 2026-02-15 — Plan 10-02 completed (multi-pass parser + TDD)
+Plan: 03 of 03 complete
+Status: Phase 10 COMPLETE — GraphModel type system, parser, and serializer with round-trip fidelity
+Last activity: 2026-02-15 — Plan 10-03 completed (serializer + round-trip + integration)
 
-Progress: [██████████] v1.0 100% | Phase 10: [======----] 2/3 plans complete
+Progress: [██████████] v1.0 100% | Phase 10: [==========] 3/3 plans complete
 
 ## v1.0 Performance Metrics
 
@@ -80,6 +80,13 @@ Progress: [██████████] v1.0 100% | Phase 10: [======----] 2/
 - Handles all 13 shapes, 5 edge types, subgraphs, styles, annotations, edge cases
 - Duration: 7 min
 
+**10-03 (Complete):** serializeGraphToMermaid + round-trip fidelity + integration
+- src/diagram/graph-serializer.ts (188 lines): canonical output order, all 13 shapes, 5 edge types
+- Round-trip fidelity proven for all 22 fixtures: parse(serialize(parse(text))) === parse(text)
+- DiagramService.readGraph() method, public API exports in index.ts
+- 40 new tests, all 201 tests pass (161 existing + 40 new)
+- Duration: 4 min
+
 ## Phase 8 Summary
 
 All scalability features implemented:
@@ -126,6 +133,10 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Edge operators ordered by specificity: bidirectional, labeled, simple -- prevents partial matches
 - Implicit nodes get shape 'rect' and label equal to ID
 - Bare ID:::className handled in node-definition pass for inline class assignment
+- Canonical serialization order: direction, classDefs, subgraphs+nodes, root nodes, edges, styles, linkStyles, class assignments
+- Bare ID optimization in serializer: label===id + shape==='rect' emits without brackets
+- SHAPE_BRACKETS reverse map from SHAPE_PATTERNS, first-match-wins for disambiguation
+- Class assignments grouped by class name for compact serializer output
 
 ### Pre-Release Todos Status
 
@@ -153,12 +164,12 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 ### Test Coverage
 
-- 161 tests passing across 13 test files
-- Key coverage: collapser (42 tests), graph-parser (30), annotations (22), service (11), server (9), parser (9)
+- 201 tests passing across 15 test files
+- Key coverage: collapser (42 tests), graph-parser (30), graph-serializer (17), graph-roundtrip (25), annotations (22), service (11), server (9), parser (9)
 - Gaps: no frontend tests, no WebSocket tests, no POST route tests
 
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 10-02-PLAN.md (parseMermaidToGraph multi-pass parser)
-Next action: Execute 10-03-PLAN.md (GraphModel serializer for round-trip support)
+Stopped at: Completed 10-03-PLAN.md (serializer + round-trip + integration) -- Phase 10 COMPLETE
+Next action: Next phase planning (Phase 10 deliverables ready for downstream consumption)
