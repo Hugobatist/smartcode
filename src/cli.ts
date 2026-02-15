@@ -24,6 +24,25 @@ program
   });
 
 program
+  .command('init')
+  .description('Initialize a SmartB Diagrams project')
+  .option('-d, --dir <path>', 'project directory', '.')
+  .option('-f, --force', 'overwrite existing config')
+  .action(async (options: { dir: string; force?: boolean }) => {
+    const { initProject } = await import('./cli/init.js');
+    await initProject(options.dir, options.force);
+  });
+
+program
+  .command('status')
+  .description('Show status of the running SmartB server')
+  .option('-p, --port <number>', 'server port to check', '3333')
+  .action(async (options: { port: string }) => {
+    const { showStatus } = await import('./cli/status.js');
+    await showStatus(parseInt(options.port, 10));
+  });
+
+program
   .command('mcp')
   .description('Start the MCP server for AI tool integration (stdio transport)')
   .option('-d, --dir <path>', 'project directory', '.')
