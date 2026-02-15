@@ -9,11 +9,11 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 10-graph-model-parser
-Plan: 01 of 03 complete
-Status: Plan 10-01 complete — GraphModel types defined, 22 fixture files created
-Last activity: 2026-02-15 — Plan 10-01 completed (graph model types + test fixtures)
+Plan: 02 of 03 complete
+Status: Plan 10-02 complete — parseMermaidToGraph parser implemented with 30 tests
+Last activity: 2026-02-15 — Plan 10-02 completed (multi-pass parser + TDD)
 
-Progress: [██████████] v1.0 100% | Phase 10: [===-------] 1/3 plans complete
+Progress: [██████████] v1.0 100% | Phase 10: [======----] 2/3 plans complete
 
 ## v1.0 Performance Metrics
 
@@ -73,6 +73,13 @@ Progress: [██████████] v1.0 100% | Phase 10: [===-------] 1/
 - Zero new dependencies, typecheck passes, all 131 tests pass
 - Duration: 2 min
 
+**10-02 (Complete):** parseMermaidToGraph multi-pass parser (TDD)
+- src/diagram/graph-parser.ts (350 lines) + src/diagram/graph-edge-parser.ts (230 lines)
+- 7-pass pipeline: preprocessing, direction, styles, subgraphs, nodes, edges, validation
+- 30 new tests across 8 groups, all 161 tests pass (131 existing + 30 new)
+- Handles all 13 shapes, 5 edge types, subgraphs, styles, annotations, edge cases
+- Duration: 7 min
+
 ## Phase 8 Summary
 
 All scalability features implemented:
@@ -115,6 +122,10 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - SHAPE_PATTERNS ordered longest-first for correct parsing precedence
 - Map<K,V> for all GraphModel collections — consistent with DiagramContent.flags pattern
 - Trapezoid vs parallelogram disambiguation via close bracket character
+- Parser split into graph-parser.ts (orchestration) + graph-edge-parser.ts (helpers) for 500-line limit
+- Edge operators ordered by specificity: bidirectional, labeled, simple -- prevents partial matches
+- Implicit nodes get shape 'rect' and label equal to ID
+- Bare ID:::className handled in node-definition pass for inline class assignment
 
 ### Pre-Release Todos Status
 
@@ -142,12 +153,12 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 ### Test Coverage
 
-- 131 tests passing across 12 test files
-- Key coverage: collapser (42 tests), annotations (22), service (11), server (9), parser (9)
+- 161 tests passing across 13 test files
+- Key coverage: collapser (42 tests), graph-parser (30), annotations (22), service (11), server (9), parser (9)
 - Gaps: no frontend tests, no WebSocket tests, no POST route tests
 
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 10-01-PLAN.md (GraphModel types + 22 .mmd fixture files)
-Next action: Execute 10-02-PLAN.md (parseMermaidToGraph with multi-pass pipeline)
+Stopped at: Completed 10-02-PLAN.md (parseMermaidToGraph multi-pass parser)
+Next action: Execute 10-03-PLAN.md (GraphModel serializer for round-trip support)
