@@ -127,9 +127,11 @@
 
 <script src="event-bus.js"></script>
 <script src="diagram-dom.js"></script>
+<script src="renderer.js"></script>
 
 <script>
     // ── State ──
+    // Renderer: see renderer.js (Mermaid init, render, escapeHtml, injectStatusStyles, error panel)
     let currentFile = 'plano-de-acao/plano-acao.mmd';
     let zoom = 1;
     let panX = 0, panY = 0;
@@ -139,233 +141,6 @@
     let isPanning = false;
     let panStartX = 0, panStartY = 0;
     let panStartPanX = 0, panStartPanY = 0;
-    let isInitialRender = true;
-
-    // ── Mermaid init (LIGHT theme, high contrast) ──
-    mermaid.initialize({
-        startOnLoad: false,
-        theme: 'base',
-        themeVariables: {
-            darkMode: false,
-            background: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontSize: '16px',
-            primaryColor: '#6366f1',
-            primaryTextColor: '#1e1b4b',
-            primaryBorderColor: '#4f46e5',
-            secondaryColor: '#e0e7ff',
-            tertiaryColor: '#f0fdf4',
-            lineColor: '#6b7280',
-            mainBkg: '#eef2ff',
-            nodeBorder: '#4f46e5',
-            clusterBkg: '#f8fafc',
-            clusterBorder: '#cbd5e1',
-            titleColor: '#1e293b',
-            edgeLabelBackground: '#ffffff',
-        },
-        flowchart: {
-            curve: 'basis',
-            padding: 24,
-            nodeSpacing: 60,
-            rankSpacing: 80,
-            htmlLabels: true,
-        },
-        securityLevel: 'sandbox',
-    });
-
-    // ── HTML Escape Helper ──
-    function escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = String(text);
-        return div.innerHTML;
-    }
-
-    // ── Status Style Injection ──
-    const STATUS_CLASS_MAP = {
-        'ok': 'ok',
-        'problem': 'problem',
-        'in-progress': 'inProgress',
-        'discarded': 'discarded',
-    };
-
-    function injectStatusStyles(cleanCode) {
-        if (!window.SmartBAnnotations) return cleanCode;
-        const statusMap = SmartBAnnotations.getStatusMap();
-        if (!statusMap || statusMap.size === 0) return cleanCode;
-
-        const classDefs = [
-            'classDef ok fill:#22c55e,stroke:#16a34a,color:#fff;',
-            'classDef problem fill:#ef4444,stroke:#dc2626,color:#fff;',
-            'classDef inProgress fill:#eab308,stroke:#ca8a04,color:#000;',
-            'classDef discarded fill:#9ca3af,stroke:#6b7280,color:#fff;',
-        ];
-
-        const classAssignments = [];
-        for (const [nodeId, statusValue] of statusMap) {
-            const className = STATUS_CLASS_MAP[statusValue];
-            if (className) {
-                classAssignments.push('class ' + nodeId + ' ' + className);
-            }
-        }
-
-        if (classAssignments.length === 0) return cleanCode;
-
-        return cleanCode.trimEnd() + '\n' + classDefs.join('\n') + '\n' + classAssignments.join('\n');
-    }
-
-    // ── Error Icon (SVG via DOM) ──
-    function createErrorIcon() {
-        const ns = 'http://www.w3.org/2000/svg';
-        const svg = document.createElementNS(ns, 'svg');
-        svg.setAttribute('width', '20');
-        svg.setAttribute('height', '20');
-        svg.setAttribute('viewBox', '0 0 20 20');
-        svg.setAttribute('fill', 'none');
-
-        const circle = document.createElementNS(ns, 'circle');
-        circle.setAttribute('cx', '10');
-        circle.setAttribute('cy', '10');
-        circle.setAttribute('r', '9');
-        circle.setAttribute('stroke', '#ef4444');
-        circle.setAttribute('stroke-width', '2');
-        svg.appendChild(circle);
-
-        const line = document.createElementNS(ns, 'path');
-        line.setAttribute('d', 'M10 6v5');
-        line.setAttribute('stroke', '#ef4444');
-        line.setAttribute('stroke-width', '2');
-        line.setAttribute('stroke-linecap', 'round');
-        svg.appendChild(line);
-
-        const dot = document.createElementNS(ns, 'circle');
-        dot.setAttribute('cx', '10');
-        dot.setAttribute('cy', '14');
-        dot.setAttribute('r', '1');
-        dot.setAttribute('fill', '#ef4444');
-        svg.appendChild(dot);
-
-        return svg;
-    }
-
-    // ── Error Panel Builder ──
-    function buildErrorPanel(error, sourceCode) {
-        const container = document.createElement('div');
-        container.style.cssText = 'padding:40px;max-width:700px;font-family:Inter,sans-serif;';
-
-        // Main panel
-        const panel = document.createElement('div');
-        panel.style.cssText = 'background:#fff;border:1px solid #fecaca;border-left:4px solid #ef4444;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);';
-
-        // Header
-        const header = document.createElement('div');
-        header.style.cssText = 'padding:16px 20px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #fef2f2;';
-
-        header.appendChild(createErrorIcon());
-
-        const title = document.createElement('span');
-        title.style.cssText = 'font-size:15px;font-weight:700;color:#991b1b;';
-        title.textContent = 'Mermaid Syntax Error';
-        header.appendChild(title);
-
-        // Parse line number from error message
-        const errorMsg = String(error.message || error);
-        const lineMatch = errorMsg.match(/line\s+(\d+)/i);
-        const errorLine = lineMatch ? parseInt(lineMatch[1], 10) : null;
-
-        if (errorLine !== null) {
-            const badge = document.createElement('span');
-            badge.style.cssText = 'background:#fef2f2;color:#ef4444;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;border:1px solid #fecaca;';
-            badge.textContent = 'Linha ' + errorLine;
-            header.appendChild(badge);
-        }
-
-        panel.appendChild(header);
-
-        // Error message
-        const msgBlock = document.createElement('div');
-        msgBlock.style.cssText = 'padding:16px 20px;';
-
-        const pre = document.createElement('pre');
-        pre.style.cssText = 'white-space:pre-wrap;word-break:break-word;color:#6b7280;font-size:13px;font-family:"JetBrains Mono",monospace;margin:0;line-height:1.6;background:#fef2f2;padding:12px;border-radius:8px;';
-        pre.textContent = errorMsg;
-        msgBlock.appendChild(pre);
-        panel.appendChild(msgBlock);
-
-        // Code snippet with context (if line number available)
-        if (errorLine !== null && sourceCode) {
-            const lines = sourceCode.split('\n');
-            const start = Math.max(0, errorLine - 4); // 3 lines before
-            const end = Math.min(lines.length, errorLine + 2); // 2 lines after
-
-            const snippetBlock = document.createElement('div');
-            snippetBlock.style.cssText = 'padding:0 20px 16px;';
-
-            const snippetLabel = document.createElement('div');
-            snippetLabel.style.cssText = 'font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;';
-            snippetLabel.textContent = 'Codigo fonte';
-            snippetBlock.appendChild(snippetLabel);
-
-            const codeContainer = document.createElement('div');
-            codeContainer.style.cssText = 'background:#1e1e2e;border-radius:8px;overflow:hidden;font-family:"JetBrains Mono",monospace;font-size:12px;line-height:1.7;';
-
-            for (let i = start; i < end; i++) {
-                const lineNum = i + 1;
-                const isError = lineNum === errorLine;
-                const lineDiv = document.createElement('div');
-                lineDiv.style.cssText = isError
-                    ? 'display:flex;background:rgba(239,68,68,0.2);'
-                    : 'display:flex;';
-
-                const numSpan = document.createElement('span');
-                numSpan.style.cssText = 'display:inline-block;width:40px;text-align:right;padding-right:12px;color:' + (isError ? '#ef4444' : '#6b7280') + ';user-select:none;flex-shrink:0;';
-                numSpan.textContent = String(lineNum);
-
-                const codeSpan = document.createElement('span');
-                codeSpan.style.cssText = 'color:' + (isError ? '#fca5a5' : '#cdd6f4') + ';padding-right:12px;';
-                codeSpan.textContent = lines[i] || '';
-
-                lineDiv.appendChild(numSpan);
-                lineDiv.appendChild(codeSpan);
-                codeContainer.appendChild(lineDiv);
-            }
-
-            snippetBlock.appendChild(codeContainer);
-            panel.appendChild(snippetBlock);
-        }
-
-        container.appendChild(panel);
-        return container;
-    }
-
-    // ── Render ──
-    async function render(code) {
-        if (!code || !code.trim()) return;
-        // Strip annotations before rendering (Mermaid doesn't understand %% @flag / @status)
-        const cleanCode = window.SmartBAnnotations
-            ? SmartBAnnotations.getCleanContent(code)
-            : code;
-        // Inject status classDef styles before rendering
-        const styledCode = injectStatusStyles(cleanCode);
-        const preview = document.getElementById('preview');
-        try {
-            const { svg } = await mermaid.render('mermaid-' + Date.now(), styledCode.trim());
-            preview.innerHTML = svg; // Safe: SVG from mermaid.render(), not user input
-            applyTransform();
-            // Apply flag indicators after SVG is in the DOM
-            if (window.SmartBAnnotations) SmartBAnnotations.applyFlagsToSVG();
-            // Only auto-fit on initial render or file navigation; preserve zoom on live updates
-            if (isInitialRender) {
-                requestAnimationFrame(() => zoomFit());
-                isInitialRender = false;
-            } else {
-                applyTransform();
-            }
-        } catch (e) {
-            // Show structured error panel with line numbers using cleanCode (user's source)
-            preview.textContent = '';
-            preview.appendChild(buildErrorPanel(e, cleanCode));
-        }
-    }
 
     function applyTransform() {
         const preview = document.getElementById('preview');
@@ -604,7 +379,7 @@
         currentFile = path;
         document.getElementById('currentFileName').textContent = prettyName(path);
         lastContent = '';
-        isInitialRender = true; // Reset so zoomFit fires for new file
+        SmartBRenderer.setInitialRender(true); // Reset so zoomFit fires for new file
         syncFile();
         renderTree();
     }
