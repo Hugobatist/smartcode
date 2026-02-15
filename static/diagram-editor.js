@@ -2,6 +2,8 @@
  * SmartB Diagrams — Visual Diagram Editor
  * Manipulates .mmd content: add/remove/edit nodes and edges.
  * Exposed as window.MmdEditor
+ *
+ * Dependencies: diagram-dom.js (DiagramDOM), event-bus.js (SmartBEventBus)
  */
 (function () {
     'use strict';
@@ -10,8 +12,8 @@
 
     /** Find insertion point: before first `style` line, or before annotations, or at end */
     function findInsertionLine(lines) {
-        for (let i = 0; i < lines.length; i++) {
-            const t = lines[i].trim();
+        for (var i = 0; i < lines.length; i++) {
+            var t = lines[i].trim();
             if (t.startsWith('style ') || t.startsWith('%% ---')) return i;
         }
         return lines.length;
@@ -19,36 +21,36 @@
 
     /** Add a node definition to .mmd content */
     function addNode(content, nodeId, label) {
-        const lines = content.split('\n');
-        const idx = findInsertionLine(lines);
-        const newLine = `    ${nodeId}["${label}"]`;
+        var lines = content.split('\n');
+        var idx = findInsertionLine(lines);
+        var newLine = '    ' + nodeId + '["' + label + '"]';
         lines.splice(idx, 0, '', newLine);
         return lines.join('\n');
     }
 
     /** Add an edge between two nodes */
     function addEdge(content, fromId, toId, label) {
-        const lines = content.split('\n');
-        const idx = findInsertionLine(lines);
-        const edgeLine = label
-            ? `    ${fromId} -->|"${label}"| ${toId}`
-            : `    ${fromId} --> ${toId}`;
+        var lines = content.split('\n');
+        var idx = findInsertionLine(lines);
+        var edgeLine = label
+            ? '    ' + fromId + ' -->|"' + label + '"| ' + toId
+            : '    ' + fromId + ' --> ' + toId;
         lines.splice(idx, 0, edgeLine);
         return lines.join('\n');
     }
 
     /** Remove a node and all its edges/styles from .mmd content */
     function removeNode(content, nodeId) {
-        const lines = content.split('\n');
-        const escaped = nodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var lines = content.split('\n');
+        var escaped = nodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         // Match: node definitions, edges referencing it, style directives
-        const nodeDefRe = new RegExp(`^\\s*${escaped}[\\s\\[\\(\\{\\>"]`);
-        const edgeFromRe = new RegExp(`\\b${escaped}\\s*(-->|---|-.->|==>)`);
-        const edgeToRe = new RegExp(`(-->|---|-.->|==>)\\s*(\\|[^|]*\\|\\s*)?${escaped}\\b`);
-        const styleRe = new RegExp(`^\\s*style\\s+${escaped}\\b`);
+        var nodeDefRe = new RegExp('^\\s*' + escaped + '[\\s\\[\\(\\{\\>"]');
+        var edgeFromRe = new RegExp('\\b' + escaped + '\\s*(-->|---|-.->|==>)');
+        var edgeToRe = new RegExp('(-->|---|-.->|==>)\\s*(\\|[^|]*\\|\\s*)?' + escaped + '\\b');
+        var styleRe = new RegExp('^\\s*style\\s+' + escaped + '\\b');
 
-        const result = lines.filter(line => {
-            const t = line.trim();
+        var result = lines.filter(function(line) {
+            var t = line.trim();
             if (!t) return true;
             if (nodeDefRe.test(t)) return false;
             if (edgeFromRe.test(t)) return false;
@@ -61,23 +63,23 @@
 
     /** Remove a specific edge line (from --> to) */
     function removeEdge(content, fromId, toId) {
-        const lines = content.split('\n');
-        const escFrom = fromId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const escTo = toId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const re = new RegExp(`\\b${escFrom}\\s*(-->|---|-.->|==>)(\\s*\\|[^|]*\\|)?\\s*${escTo}\\b`);
-        const result = lines.filter(line => !re.test(line.trim()));
+        var lines = content.split('\n');
+        var escFrom = fromId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var escTo = toId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var re = new RegExp('\\b' + escFrom + '\\s*(-->|---|-.->|==>)(\\s*\\|[^|]*\\|)?\\s*' + escTo + '\\b');
+        var result = lines.filter(function(line) { return !re.test(line.trim()); });
         return result.join('\n');
     }
 
     /** Edit a node's label text */
     function editNodeText(content, nodeId, newText) {
-        const lines = content.split('\n');
-        const escaped = nodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var lines = content.split('\n');
+        var escaped = nodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         // Match patterns: ID["text"], ID[text], ID("text"), ID(text), ID{"text"}, etc
-        const re = new RegExp(`(${escaped}\\s*[\\[\\(\\{\\>]+\\"?)([^"\\]\\)\\}]*?)(\\"?[\\]\\)\\}]+)`);
-        for (let i = 0; i < lines.length; i++) {
+        var re = new RegExp('(' + escaped + '\\s*[\\[\\(\\{\\>]+\\"?)([^"\\]\\)\\}]*?)(\\"?[\\]\\)\\}]+)');
+        for (var i = 0; i < lines.length; i++) {
             if (re.test(lines[i])) {
-                lines[i] = lines[i].replace(re, `$1${newText}$3`);
+                lines[i] = lines[i].replace(re, '$1' + newText + '$3');
                 break;
             }
         }
@@ -86,33 +88,33 @@
 
     /** Extract current label text for a node */
     function getNodeText(content, nodeId) {
-        const escaped = nodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const re = new RegExp(`${escaped}\\s*[\\[\\(\\{\\>]+"?([^"\\]\\)\\}]*)"?[\\]\\)\\}]+`);
-        const m = content.match(re);
+        var escaped = nodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        var re = new RegExp(escaped + '\\s*[\\[\\(\\{\\>]+"?([^"\\]\\)\\}]*)"?[\\]\\)\\}]+');
+        var m = content.match(re);
         return m ? m[1] : nodeId;
     }
 
     /** Parse edge info from an SVG edge ID like "L-A-B-0" */
     function parseEdgeId(edgeId) {
         // Edge IDs: L-SOURCE-TARGET-INDEX or L-SOURCE-TARGET
-        const m = edgeId.match(/^L-(.+)-(\d+)$/);
+        var m = edgeId.match(/^L-(.+)-(\d+)$/);
         if (!m) return null;
         // The middle part is SOURCE-TARGET, need to split intelligently
-        const middle = m[1];
+        var middle = m[1];
         // Try known node IDs to split
         return { raw: middle };
     }
 
     /** Find edge source and target from SVG edge element */
     function findEdgeEndpoints(edgeId, content) {
-        const lines = content.split('\n');
-        const edgePatterns = [];
-        for (const line of lines) {
-            const m = line.trim().match(/^(\S+)\s*(-->|---|-.->|==>)(\s*\|[^|]*\|)?\s*(\S+)/);
+        var lines = content.split('\n');
+        var edgePatterns = [];
+        for (var i = 0; i < lines.length; i++) {
+            var m = lines[i].trim().match(/^(\S+)\s*(-->|---|-.->|==>)(\s*\|[^|]*\|)?\s*(\S+)/);
             if (m) {
-                const from = m[1].replace(/[\["'\(\{].*$/, '');
-                const to = m[4].replace(/[\["'\(\{].*$/, '');
-                edgePatterns.push({ from, to, line: line.trim() });
+                var from = m[1].replace(/[\["'\(\{].*$/, '');
+                var to = m[4].replace(/[\["'\(\{].*$/, '');
+                edgePatterns.push({ from: from, to: to, line: lines[i].trim() });
             }
         }
         return edgePatterns;
@@ -120,44 +122,45 @@
 
     /** Get all node IDs from content */
     function getAllNodeIds(content) {
-        const ids = new Set();
-        const lines = content.split('\n');
-        for (const line of lines) {
-            const t = line.trim();
+        var ids = new Set();
+        var lines = content.split('\n');
+        var reserved = ['subgraph', 'style', 'class', 'click', 'flowchart', 'graph', 'end'];
+        for (var i = 0; i < lines.length; i++) {
+            var t = lines[i].trim();
             // Node definitions: ID["text"] or ID[text] etc
-            const defMatch = t.match(/^\s*([A-Za-z_]\w*)\s*[\[\(\{>]/);
-            if (defMatch && !['subgraph', 'style', 'class', 'click', 'flowchart', 'graph', 'end'].includes(defMatch[1])) {
+            var defMatch = t.match(/^\s*([A-Za-z_]\w*)\s*[\[\(\{>]/);
+            if (defMatch && reserved.indexOf(defMatch[1]) === -1) {
                 ids.add(defMatch[1]);
             }
             // Nodes in edges
-            const edgeMatch = t.match(/^\s*([A-Za-z_]\w*)\s*(-->|---|-.->|==>)/);
+            var edgeMatch = t.match(/^\s*([A-Za-z_]\w*)\s*(-->|---|-.->|==>)/);
             if (edgeMatch) ids.add(edgeMatch[1]);
-            const edgeTo = t.match(/(-->|---|-.->|==>)\s*(?:\|[^|]*\|\s*)?([A-Za-z_]\w*)/);
+            var edgeTo = t.match(/(-->|---|-.->|==>)\s*(?:\|[^|]*\|\s*)?([A-Za-z_]\w*)/);
             if (edgeTo) ids.add(edgeTo[2]);
         }
-        return [...ids];
+        return Array.from(ids);
     }
 
     /** Generate a unique node ID */
     function generateNodeId(content) {
-        const existing = getAllNodeIds(content);
-        let i = 1;
-        while (existing.includes('N' + i)) i++;
+        var existing = getAllNodeIds(content);
+        var i = 1;
+        while (existing.indexOf('N' + i) !== -1) i++;
         return 'N' + i;
     }
 
     // ── Visual Editing State ──
 
-    const editorState = {
+    var editorState = {
         mode: null,         // null | 'addNode' | 'addEdge'
         edgeSource: null,   // node ID when in addEdge and source is selected
         pendingAction: null, // { type: 'connectFrom'|'connectTo', nodeId }
     };
 
-    let editorHooks = {
-        getEditor: () => document.getElementById('editor'),
-        getLastContent: () => window.lastContent || '',
-        setLastContent: (v) => { window.lastContent = v; },
+    var editorHooks = {
+        getEditor: function() { return document.getElementById('editor'); },
+        getLastContent: function() { return window.lastContent || ''; },
+        setLastContent: function(v) { window.lastContent = v; },
         saveFile: null,
         renderDiagram: null,
     };
@@ -171,37 +174,37 @@
         if (mode) document.body.classList.add('mode-' + mode);
 
         // Update button states
-        const btnNode = document.getElementById('btnAddNode');
-        const btnEdge = document.getElementById('btnAddEdge');
+        var btnNode = document.getElementById('btnAddNode');
+        var btnEdge = document.getElementById('btnAddEdge');
         if (btnNode) btnNode.classList.toggle('active', mode === 'addNode');
         if (btnEdge) btnEdge.classList.toggle('active', mode === 'addEdge');
 
         // Disable flag mode if entering edit mode
         if (mode && window.SmartBAnnotations) {
-            const s = SmartBAnnotations.getState();
+            var s = SmartBAnnotations.getState();
             if (s.flagMode) SmartBAnnotations.toggleFlagMode();
         }
 
         if (window.toast) {
-            const msgs = {
+            var msgs = {
                 addNode: 'Modo Nodo — clique no espaco vazio do diagrama',
                 addEdge: 'Modo Seta — clique no nodo de ORIGEM',
-                null: 'Modo edicao desativado',
             };
-            window.toast(msgs[mode] || msgs[null]);
+            window.toast(msgs[mode] || 'Modo edicao desativado');
         }
     }
 
     function toggleAddNode() { setMode(editorState.mode === 'addNode' ? null : 'addNode'); }
     function toggleAddEdge() { setMode(editorState.mode === 'addEdge' ? null : 'addEdge'); }
 
-    // ── Click Handlers ──
+    // ── Click Handlers (uses DiagramDOM.extractNodeId) ──
 
     function handleClick(e) {
         if (!editorState.mode) return;
         if (e.target.closest('.zoom-controls') || e.target.closest('.flag-popover') || e.target.closest('.editor-popover')) return;
 
-        const nodeInfo = window.SmartBAnnotations ? SmartBAnnotations.extractNodeId(e.target) : null;
+        // Use DiagramDOM.extractNodeId instead of SmartBAnnotations.extractNodeId
+        var nodeInfo = DiagramDOM.extractNodeId(e.target);
 
         if (editorState.mode === 'addNode') {
             if (nodeInfo) return; // Clicked an existing node, ignore
@@ -216,27 +219,13 @@
             e.stopPropagation();
             if (!editorState.edgeSource) {
                 editorState.edgeSource = nodeInfo.id;
-                highlightNode(nodeInfo.id, true);
+                DiagramDOM.highlightNode(nodeInfo.id, true);
                 if (window.toast) window.toast('Origem: ' + nodeInfo.id + ' — agora clique no DESTINO');
             } else {
-                const from = editorState.edgeSource;
-                const to = nodeInfo.id;
+                var from = editorState.edgeSource;
+                var to = nodeInfo.id;
                 if (from === to) return;
                 showAddEdgePopover(e.clientX, e.clientY, from, to);
-            }
-        }
-    }
-
-    function highlightNode(nodeId, on) {
-        const svg = document.querySelector('#preview svg');
-        if (!svg) return;
-        for (const el of svg.querySelectorAll('[id]')) {
-            const id = el.getAttribute('id');
-            const nm = id && id.match(/^flowchart-(.+)-\d+$/);
-            if (nm && nm[1] === nodeId) {
-                el.style.outline = on ? '3px solid #6366f1' : '';
-                el.style.outlineOffset = on ? '4px' : '';
-                break;
             }
         }
     }
@@ -244,19 +233,19 @@
     // ── Popovers ──
 
     function closeEditorPopover() {
-        const existing = document.querySelector('.editor-popover');
+        var existing = document.querySelector('.editor-popover');
         if (existing) existing.remove();
     }
 
     function createPopover(x, y) {
         closeEditorPopover();
-        const pop = document.createElement('div');
+        var pop = document.createElement('div');
         pop.className = 'flag-popover editor-popover';
         pop.style.left = Math.min(x + 12, window.innerWidth - 360) + 'px';
         pop.style.top = Math.min(y - 20, window.innerHeight - 280) + 'px';
         document.body.appendChild(pop);
 
-        setTimeout(() => {
+        setTimeout(function() {
             function outside(e) {
                 if (pop.contains(e.target)) return;
                 closeEditorPopover();
@@ -269,71 +258,147 @@
     }
 
     function showAddNodePopover(clientX, clientY) {
-        const editor = editorHooks.getEditor();
-        const suggestedId = generateNodeId(editor.value);
-        const pop = createPopover(clientX, clientY);
-        pop.innerHTML = `
-            <div class="flag-popover-title"><span>Novo Nodo</span></div>
-            <label style="font-size:11px;color:var(--text-dim);margin-bottom:2px;display:block">ID (sem espacos)</label>
-            <input class="ep-input" type="text" value="${suggestedId}" style="margin-bottom:8px">
-            <label style="font-size:11px;color:var(--text-dim);margin-bottom:2px;display:block">Texto</label>
-            <input class="ep-input ep-label" type="text" placeholder="Texto do nodo...">
-            <div class="flag-popover-actions" style="margin-top:10px">
-                <button class="btn-flag secondary" data-action="cancel">Cancelar</button>
-                <button class="btn-flag primary" data-action="create" style="background:var(--accent)">Criar Nodo</button>
-            </div>`;
+        var editor = editorHooks.getEditor();
+        var suggestedId = generateNodeId(editor.value);
+        var pop = createPopover(clientX, clientY);
 
-        const idInput = pop.querySelector('.ep-input');
-        const labelInput = pop.querySelector('.ep-label');
+        // Build popover content using DOM methods
+        var titleDiv = document.createElement('div');
+        titleDiv.className = 'flag-popover-title';
+        var titleSpan = document.createElement('span');
+        titleSpan.textContent = 'Novo Nodo';
+        titleDiv.appendChild(titleSpan);
+        pop.appendChild(titleDiv);
+
+        var idLabel = document.createElement('label');
+        idLabel.style.cssText = 'font-size:11px;color:var(--text-dim);margin-bottom:2px;display:block';
+        idLabel.textContent = 'ID (sem espacos)';
+        pop.appendChild(idLabel);
+
+        var idInput = document.createElement('input');
+        idInput.className = 'ep-input';
+        idInput.type = 'text';
+        idInput.value = suggestedId;
+        idInput.style.marginBottom = '8px';
+        pop.appendChild(idInput);
+
+        var labelLabel = document.createElement('label');
+        labelLabel.style.cssText = 'font-size:11px;color:var(--text-dim);margin-bottom:2px;display:block';
+        labelLabel.textContent = 'Texto';
+        pop.appendChild(labelLabel);
+
+        var labelInput = document.createElement('input');
+        labelInput.className = 'ep-input ep-label';
+        labelInput.type = 'text';
+        labelInput.placeholder = 'Texto do nodo...';
+        pop.appendChild(labelInput);
+
+        var actionsDiv = document.createElement('div');
+        actionsDiv.className = 'flag-popover-actions';
+        actionsDiv.style.marginTop = '10px';
+
+        var btnCancel = document.createElement('button');
+        btnCancel.className = 'btn-flag secondary';
+        btnCancel.textContent = 'Cancelar';
+        btnCancel.addEventListener('click', closeEditorPopover);
+        actionsDiv.appendChild(btnCancel);
+
+        var btnCreate = document.createElement('button');
+        btnCreate.className = 'btn-flag primary';
+        btnCreate.style.background = 'var(--accent)';
+        btnCreate.textContent = 'Criar Nodo';
+        actionsDiv.appendChild(btnCreate);
+        pop.appendChild(actionsDiv);
+
         labelInput.focus();
 
         function doCreate() {
-            const id = idInput.value.trim().replace(/\s+/g, '_');
-            const label = labelInput.value.trim();
+            var id = idInput.value.trim().replace(/\s+/g, '_');
+            var label = labelInput.value.trim();
             if (!id || !label) return;
-            applyEdit(c => addNode(c, id, label));
+            applyEdit(function(c) { return addNode(c, id, label); });
             closeEditorPopover();
         }
 
-        labelInput.addEventListener('keydown', e => { if (e.key === 'Enter') doCreate(); if (e.key === 'Escape') closeEditorPopover(); });
-        pop.querySelector('[data-action="create"]').addEventListener('click', doCreate);
-        pop.querySelector('[data-action="cancel"]').addEventListener('click', closeEditorPopover);
+        labelInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') doCreate();
+            if (e.key === 'Escape') closeEditorPopover();
+        });
+        btnCreate.addEventListener('click', doCreate);
     }
 
     function showAddEdgePopover(clientX, clientY, fromId, toId) {
-        const pop = createPopover(clientX, clientY);
-        pop.innerHTML = `
-            <div class="flag-popover-title">
-                <span>Nova Conexao</span>
-                <span class="node-id">${fromId} → ${toId}</span>
-            </div>
-            <label style="font-size:11px;color:var(--text-dim);margin-bottom:2px;display:block">Label (opcional)</label>
-            <input class="ep-input ep-label" type="text" placeholder="Texto da seta...">
-            <div class="flag-popover-actions" style="margin-top:10px">
-                <button class="btn-flag secondary" data-action="cancel">Cancelar</button>
-                <button class="btn-flag primary" data-action="create" style="background:var(--accent)">Criar Seta</button>
-            </div>`;
+        var pop = createPopover(clientX, clientY);
 
-        const labelInput = pop.querySelector('.ep-label');
+        // Build popover content using DOM methods
+        var titleDiv = document.createElement('div');
+        titleDiv.className = 'flag-popover-title';
+        var titleSpan = document.createElement('span');
+        titleSpan.textContent = 'Nova Conexao';
+        titleDiv.appendChild(titleSpan);
+        var edgeIdSpan = document.createElement('span');
+        edgeIdSpan.className = 'node-id';
+        edgeIdSpan.textContent = fromId + ' \u2192 ' + toId;
+        titleDiv.appendChild(edgeIdSpan);
+        pop.appendChild(titleDiv);
+
+        var labelLabel = document.createElement('label');
+        labelLabel.style.cssText = 'font-size:11px;color:var(--text-dim);margin-bottom:2px;display:block';
+        labelLabel.textContent = 'Label (opcional)';
+        pop.appendChild(labelLabel);
+
+        var labelInput = document.createElement('input');
+        labelInput.className = 'ep-input ep-label';
+        labelInput.type = 'text';
+        labelInput.placeholder = 'Texto da seta...';
+        pop.appendChild(labelInput);
+
+        var actionsDiv = document.createElement('div');
+        actionsDiv.className = 'flag-popover-actions';
+        actionsDiv.style.marginTop = '10px';
+
+        var btnCancel = document.createElement('button');
+        btnCancel.className = 'btn-flag secondary';
+        btnCancel.textContent = 'Cancelar';
+        btnCancel.addEventListener('click', function() {
+            closeEditorPopover();
+            DiagramDOM.highlightNode(fromId, false);
+            editorState.edgeSource = null;
+        });
+        actionsDiv.appendChild(btnCancel);
+
+        var btnCreate = document.createElement('button');
+        btnCreate.className = 'btn-flag primary';
+        btnCreate.style.background = 'var(--accent)';
+        btnCreate.textContent = 'Criar Seta';
+        actionsDiv.appendChild(btnCreate);
+        pop.appendChild(actionsDiv);
+
         labelInput.focus();
 
         function doCreate() {
-            const label = labelInput.value.trim();
-            applyEdit(c => addEdge(c, fromId, toId, label || null));
+            var label = labelInput.value.trim();
+            applyEdit(function(c) { return addEdge(c, fromId, toId, label || null); });
             closeEditorPopover();
-            highlightNode(fromId, false);
+            DiagramDOM.highlightNode(fromId, false);
             editorState.edgeSource = null;
         }
 
-        labelInput.addEventListener('keydown', e => { if (e.key === 'Enter') doCreate(); if (e.key === 'Escape') { closeEditorPopover(); highlightNode(fromId, false); editorState.edgeSource = null; } });
-        pop.querySelector('[data-action="create"]').addEventListener('click', doCreate);
-        pop.querySelector('[data-action="cancel"]').addEventListener('click', () => { closeEditorPopover(); highlightNode(fromId, false); editorState.edgeSource = null; });
+        labelInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') doCreate();
+            if (e.key === 'Escape') {
+                closeEditorPopover();
+                DiagramDOM.highlightNode(fromId, false);
+                editorState.edgeSource = null;
+            }
+        });
+        btnCreate.addEventListener('click', doCreate);
     }
 
     // ── Correction Actions (called from flag popover) ──
 
     function doRemoveNode(nodeId) {
-        applyEdit(c => removeNode(c, nodeId));
+        applyEdit(function(c) { return removeNode(c, nodeId); });
         if (window.SmartBAnnotations) {
             SmartBAnnotations.getState().flags.delete(nodeId);
             SmartBAnnotations.renderPanel();
@@ -342,34 +407,34 @@
     }
 
     function doRemoveEdge(fromId, toId) {
-        applyEdit(c => removeEdge(c, fromId, toId));
+        applyEdit(function(c) { return removeEdge(c, fromId, toId); });
     }
 
     function doEditNodeText(nodeId) {
-        const editor = editorHooks.getEditor();
-        const currentText = getNodeText(editor.value, nodeId);
-        const newText = prompt('Novo texto para ' + nodeId + ':', currentText);
+        var editor = editorHooks.getEditor();
+        var currentText = getNodeText(editor.value, nodeId);
+        var newText = prompt('Novo texto para ' + nodeId + ':', currentText);
         if (newText === null || newText === currentText) return;
-        applyEdit(c => editNodeText(c, nodeId, newText));
+        applyEdit(function(c) { return editNodeText(c, nodeId, newText); });
     }
 
     function startConnectFrom(nodeId) {
         if (window.SmartBAnnotations) SmartBAnnotations.closePopover();
         setMode('addEdge');
         editorState.edgeSource = nodeId;
-        highlightNode(nodeId, true);
+        DiagramDOM.highlightNode(nodeId, true);
         if (window.toast) window.toast('Origem: ' + nodeId + ' — clique no DESTINO');
     }
 
     // ── Apply Edit & Re-render ──
 
     async function applyEdit(editFn) {
-        const editor = editorHooks.getEditor();
+        var editor = editorHooks.getEditor();
         if (!editor) return;
         // Strip annotations, apply edit, re-inject annotations
-        const annotations = window.SmartBAnnotations;
-        let content = editor.value;
-        let flags = new Map();
+        var annotations = window.SmartBAnnotations;
+        var content = editor.value;
+        var flags = new Map();
         if (annotations) {
             flags = annotations.getState().flags;
             content = annotations.stripAnnotations(content);
@@ -380,24 +445,41 @@
         editorHooks.setLastContent(content);
         if (editorHooks.saveFile) await editorHooks.saveFile();
         if (editorHooks.renderDiagram) await editorHooks.renderDiagram(content);
+
+        // Emit diagram:edited event via event bus
+        if (window.SmartBEventBus) {
+            SmartBEventBus.emit('diagram:edited', { source: 'diagram-editor' });
+        }
     }
 
     // ── Init ──
 
     function init(options) {
         if (options) Object.assign(editorHooks, options);
-        const container = document.getElementById('preview-container');
+        var container = document.getElementById('preview-container');
         if (container) container.addEventListener('click', handleClick);
+
+        // Subscribe to event bus: re-init after diagram render if needed
+        if (window.SmartBEventBus) {
+            SmartBEventBus.on('diagram:rendered', function() {
+                // Clear edge source highlight after re-render (SVG is replaced)
+                editorState.edgeSource = null;
+            });
+        }
     }
 
     // ── Public API ──
 
     window.MmdEditor = {
-        init, setMode, toggleAddNode, toggleAddEdge,
-        addNode, addEdge, removeNode, removeEdge, editNodeText, getNodeText,
-        getAllNodeIds, generateNodeId, findEdgeEndpoints,
-        doRemoveNode, doRemoveEdge, doEditNodeText, startConnectFrom,
-        getState: () => editorState,
-        closeEditorPopover,
+        init: init, setMode: setMode,
+        toggleAddNode: toggleAddNode, toggleAddEdge: toggleAddEdge,
+        addNode: addNode, addEdge: addEdge, removeNode: removeNode,
+        removeEdge: removeEdge, editNodeText: editNodeText, getNodeText: getNodeText,
+        getAllNodeIds: getAllNodeIds, generateNodeId: generateNodeId,
+        findEdgeEndpoints: findEdgeEndpoints,
+        doRemoveNode: doRemoveNode, doRemoveEdge: doRemoveEdge,
+        doEditNodeText: doEditNodeText, startConnectFrom: startConnectFrom,
+        getState: function() { return editorState; },
+        closeEditorPopover: closeEditorPopover,
     };
 })();

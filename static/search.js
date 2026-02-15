@@ -2,6 +2,8 @@
  * SmartB Diagrams — Node Search (Ctrl+F)
  * Find and highlight matching nodes in the current SVG diagram.
  * Exposed as window.SmartBSearch
+ *
+ * Dependencies: diagram-dom.js (DiagramDOM), event-bus.js (SmartBEventBus)
  */
 (function () {
     'use strict';
@@ -121,7 +123,7 @@
         if (barEl && barEl.parentNode) barEl.parentNode.removeChild(barEl);
     }
 
-    // ── Search Logic ──
+    // ── Search Logic (uses DiagramDOM) ──
 
     function search(query) {
         state.query = query;
@@ -135,11 +137,11 @@
         }
 
         var lowerQuery = query.toLowerCase();
-        var svg = document.querySelector('#preview svg');
-        if (!svg) { updateCount(); return; }
 
-        // Find all nodeLabel elements (Mermaid flowchart labels)
-        var labels = svg.querySelectorAll('.nodeLabel');
+        // Use DiagramDOM.getAllNodeLabels() instead of direct SVG query
+        var labels = DiagramDOM.getAllNodeLabels();
+        if (labels.length === 0) { updateCount(); return; }
+
         var seen = new Set();
 
         for (var i = 0; i < labels.length; i++) {
@@ -147,8 +149,8 @@
             var text = (label.textContent || '').toLowerCase();
             if (text.indexOf(lowerQuery) === -1) continue;
 
-            // Find the parent .node or .cluster group
-            var parent = findMatchParent(label);
+            // Use DiagramDOM.findMatchParent() instead of inline walk-up loop
+            var parent = DiagramDOM.findMatchParent(label);
             if (!parent) continue;
 
             // Deduplicate by element reference
@@ -168,19 +170,11 @@
             setActiveMatch(0);
             scrollToMatch(0);
         }
-    }
 
-    function findMatchParent(el) {
-        var current = el;
-        while (current && current.tagName !== 'svg') {
-            if (current.classList) {
-                if (current.classList.contains('node') || current.classList.contains('cluster')) {
-                    return current;
-                }
-            }
-            current = current.parentElement;
+        // Emit search event via event bus
+        if (window.SmartBEventBus) {
+            SmartBEventBus.emit('search:results', { query: query, matchCount: state.matches.length });
         }
-        return null;
     }
 
     // ── Highlighting ──
@@ -192,7 +186,7 @@
     }
 
     function clearHighlights() {
-        var svg = document.querySelector('#preview svg');
+        var svg = DiagramDOM.getSVG();
         if (!svg) return;
         var matched = svg.querySelectorAll('.search-match, .search-match-active');
         for (var i = 0; i < matched.length; i++) {
@@ -202,7 +196,7 @@
 
     function setActiveMatch(index) {
         // Clear previous active
-        var svg = document.querySelector('#preview svg');
+        var svg = DiagramDOM.getSVG();
         if (!svg) return;
         var prev = svg.querySelectorAll('.search-match-active');
         for (var i = 0; i < prev.length; i++) {
@@ -222,6 +216,10 @@
         setActiveMatch(state.currentIndex);
         scrollToMatch(state.currentIndex);
         updateCount();
+        // Emit match navigation event
+        if (window.SmartBEventBus) {
+            SmartBEventBus.emit('search:match-selected', { index: state.currentIndex });
+        }
     }
 
     function navigatePrev() {
@@ -230,6 +228,10 @@
         setActiveMatch(state.currentIndex);
         scrollToMatch(state.currentIndex);
         updateCount();
+        // Emit match navigation event
+        if (window.SmartBEventBus) {
+            SmartBEventBus.emit('search:match-selected', { index: state.currentIndex });
+        }
     }
 
     // ── Pan to Match ──
@@ -243,9 +245,6 @@
         if (!container) return;
 
         var panState = hooks.getPan();
-        var currentZoom = panState.zoom;
-
-        // Get the match element's bounding rect
         var matchRect = matchEl.getBoundingClientRect();
         var containerRect = container.getBoundingClientRect();
 
@@ -282,6 +281,15 @@
         if (options) {
             if (options.getPan) hooks.getPan = options.getPan;
             if (options.setPan) hooks.setPan = options.setPan;
+        }
+
+        // Subscribe to event bus: refresh search results after diagram re-render
+        if (window.SmartBEventBus) {
+            SmartBEventBus.on('diagram:rendered', function() {
+                if (state.isOpen && state.query) {
+                    search(state.query);
+                }
+            });
         }
     }
 
