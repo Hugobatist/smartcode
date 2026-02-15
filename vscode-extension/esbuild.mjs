@@ -15,6 +15,7 @@ const extensionConfig = {
 };
 
 // Bundle 2: Webview script (browser, IIFE)
+// mermaid is loaded as a separate <script> tag in the webview HTML, not bundled here.
 const webviewConfig = {
   entryPoints: ['src/webview/main.ts'],
   bundle: true,
@@ -23,6 +24,7 @@ const webviewConfig = {
   platform: 'browser',
   sourcemap: true,
   minify: !isWatch,
+  external: ['mermaid'],
 };
 
 if (isWatch) {

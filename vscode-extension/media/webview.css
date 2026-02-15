@@ -13,17 +13,23 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
 #diagram svg {
   max-width: 100%;
   height: auto;
+  overflow: visible;
 }
 
 .status-message {
   text-align: center;
   padding: 20px;
   color: var(--vscode-descriptionForeground);
+}
+
+.status-message.error {
+  color: var(--vscode-errorForeground);
 }
 
 .connection-status {
@@ -33,6 +39,7 @@ body {
   font-size: 11px;
   padding: 2px 6px;
   border-radius: 3px;
+  z-index: 50;
 }
 
 .connected {
@@ -45,4 +52,33 @@ body {
 
 .reconnecting {
   color: var(--vscode-editorWarning-foreground);
+}
+
+/* Node hover feedback - indicates nodes are clickable for flag interaction */
+.node:hover {
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+/* Inline flag input positioned over the diagram */
+.flag-input {
+  position: absolute;
+  z-index: 100;
+  padding: 4px 8px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border);
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: var(--vscode-font-family);
+  min-width: 200px;
+  outline: none;
+}
+
+.flag-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.flag-input::placeholder {
+  color: var(--vscode-input-placeholderForeground);
 }
