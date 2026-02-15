@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { request, type IncomingMessage } from 'node:http';
-import type { Server } from 'node:http';
 import path from 'node:path';
-import { createHttpServer } from '../../src/server/server.js';
+import WebSocket from 'ws';
+import { createHttpServer, type ServerInstance } from '../../src/server/server.js';
 
 const fixturesDir = path.resolve(import.meta.dirname, '../fixtures');
 
@@ -43,23 +43,25 @@ function httpRequest(
 }
 
 describe('HTTP Server Integration', { timeout: 10_000 }, () => {
-  let server: Server;
+  let instance: ServerInstance;
   let port: number;
 
   beforeAll(async () => {
-    server = createHttpServer(fixturesDir);
+    instance = createHttpServer(fixturesDir);
     await new Promise<void>((resolve) => {
-      server.listen(0, () => resolve());
+      instance.httpServer.listen(0, () => resolve());
     });
-    const addr = server.address();
+    const addr = instance.httpServer.address();
     if (typeof addr === 'object' && addr) {
       port = addr.port;
     }
   });
 
   afterAll(async () => {
+    await instance.fileWatcher.close();
+    instance.wsManager.close();
     await new Promise<void>((resolve, reject) => {
-      server.close((err) => (err ? reject(err) : resolve()));
+      instance.httpServer.close((err) => (err ? reject(err) : resolve()));
     });
   });
 
@@ -115,5 +117,24 @@ describe('HTTP Server Integration', { timeout: 10_000 }, () => {
     expect(res.status).toBe(204);
     expect(res.headers['access-control-allow-origin']).toBe('*');
     expect(res.headers['access-control-allow-methods']).toContain('GET');
+  });
+
+  it('WebSocket server accepts connections on /ws', async () => {
+    const ws = new WebSocket(`ws://localhost:${port}/ws`);
+
+    const message = await new Promise<string>((resolve, reject) => {
+      ws.on('message', (data) => resolve(data.toString()));
+      ws.on('error', reject);
+      setTimeout(() => reject(new Error('WebSocket timeout')), 5000);
+    });
+
+    const parsed = JSON.parse(message);
+    expect(parsed).toEqual({ type: 'connected' });
+
+    ws.close();
+    // Wait for close to complete
+    await new Promise<void>((resolve) => {
+      ws.on('close', () => resolve());
+    });
   });
 });

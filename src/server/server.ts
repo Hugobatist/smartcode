@@ -1,4 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { detect } from 'detect-port';
 import open from 'open';
@@ -7,6 +8,8 @@ import { getStaticDir } from '../utils/paths.js';
 import { log } from '../utils/logger.js';
 import { serveStaticFile } from './static.js';
 import { registerRoutes } from './routes.js';
+import { WebSocketManager } from './websocket.js';
+import { FileWatcher } from '../watcher/file-watcher.js';
 
 /** Options for starting the HTTP server */
 export interface ServerOptions {
@@ -121,19 +124,26 @@ function createHandler(
   };
 }
 
+/** The composite server instance returned by createHttpServer */
+export interface ServerInstance {
+  httpServer: ReturnType<typeof createServer>;
+  wsManager: WebSocketManager;
+  fileWatcher: FileWatcher;
+}
+
 /**
  * Create an http.Server instance for the given project directory.
  * Used for integration testing (port 0) and as the core of startServer.
- * Returns the raw http.Server so the caller controls listening and shutdown.
+ * Returns a ServerInstance with httpServer, wsManager, and fileWatcher.
  */
-export function createHttpServer(projectDir: string): ReturnType<typeof createServer> {
+export function createHttpServer(projectDir: string): ServerInstance {
   const resolvedDir = path.resolve(projectDir);
   const service = new DiagramService(resolvedDir);
   const staticDir = getStaticDir();
   const routes = registerRoutes(service, resolvedDir);
   const handler = createHandler(routes, staticDir);
 
-  return createServer((req, res) => {
+  const httpServer = createServer((req, res) => {
     handler(req, res).catch((err) => {
       log.error('Unhandled error:', err);
       if (!res.headersSent) {
@@ -141,6 +151,33 @@ export function createHttpServer(projectDir: string): ReturnType<typeof createSe
       }
     });
   });
+
+  const wsManager = new WebSocketManager(httpServer);
+  const fileWatcher = new FileWatcher(
+    resolvedDir,
+    async (file) => {
+      const content = await readFile(
+        path.join(resolvedDir, file), 'utf-8',
+      ).catch(() => null);
+      if (content !== null) {
+        wsManager.broadcast({ type: 'file:changed', file, content });
+      }
+    },
+    (file) => {
+      wsManager.broadcast({ type: 'file:added', file });
+      service.listFiles().then((files) => {
+        wsManager.broadcast({ type: 'tree:updated', files });
+      });
+    },
+    (file) => {
+      wsManager.broadcast({ type: 'file:removed', file });
+      service.listFiles().then((files) => {
+        wsManager.broadcast({ type: 'tree:updated', files });
+      });
+    },
+  );
+
+  return { httpServer, wsManager, fileWatcher };
 }
 
 /**
@@ -161,9 +198,9 @@ export async function startServer(options: ServerOptions): Promise<void> {
     log.warn(`Port ${options.port} is in use, using port ${actualPort}`);
   }
 
-  const server = createHttpServer(projectDir);
+  const { httpServer, wsManager, fileWatcher } = createHttpServer(projectDir);
 
-  server.listen(actualPort, () => {
+  httpServer.listen(actualPort, () => {
     const url = `http://localhost:${actualPort}`;
     log.info(`Server running at ${url}`);
     log.info(`Serving diagrams from ${projectDir}`);
@@ -177,6 +214,9 @@ export async function startServer(options: ServerOptions): Promise<void> {
   // Graceful shutdown
   process.on('SIGINT', () => {
     log.info('Shutting down...');
-    server.close(() => process.exit(0));
+    fileWatcher.close().then(() => {
+      wsManager.close();
+      httpServer.close(() => process.exit(0));
+    });
   });
 }
