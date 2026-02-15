@@ -84,7 +84,12 @@ Plans:
   3. live.html uses custom renderer for flowchart diagrams, Mermaid fallback for others
   4. All existing interactions (flags, search, collapse, export) work with the custom renderer via DiagramDOM abstraction
   5. Status colors, flag badges, and search highlights render correctly on custom SVG
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 12-01-PLAN.md — WebSocket graph:update message, serializeGraphModel helper, flags/statuses in API
+- [ ] 12-02-PLAN.md — Auto-renderer selection for flowcharts, graph:update browser handler, status colors
+- [ ] 12-03-PLAN.md — Interaction module compatibility (search, collapse, edge flags, export) for custom SVG
 
 #### Phase 13: Canvas Interactions
 **Goal**: Developers can select nodes, right-click for context menu, double-click to edit labels inline, and use keyboard shortcuts for diagram manipulation
