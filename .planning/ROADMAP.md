@@ -129,12 +129,12 @@ Plans:
   3. Developer can click nodes in the VS Code webview to add flag annotations, and flags appear in both the VS Code panel and the browser UI simultaneously
   4. Closing and reopening the sidebar panel restores the previous diagram view state without reconnection errors
   5. A status bar indicator shows whether the extension is connected to the SmartB server
-**Plans**: TBD
+**Plans:** 3 plans
 
 Plans:
-- [ ] 07-01: VS Code extension scaffolding, WebviewViewProvider, WebSocket client connection
-- [ ] 07-02: Live diagram rendering in webview, flag interaction, state persistence
-- [ ] 07-03: Status bar indicator, marketplace packaging and publication
+- [ ] 07-01-PLAN.md — Extension scaffolding (package.json, tsconfig, esbuild), WebviewViewProvider, WebSocket client in extension host
+- [ ] 07-02-PLAN.md — Mermaid rendering in webview, click-to-flag interaction, state persistence via getState/setState
+- [ ] 07-03-PLAN.md — Status bar connection indicator, README/CHANGELOG, VSIX packaging for marketplace
 
 ### Phase 8: Scalability + Large Diagrams
 **Goal**: Diagrams with 50+ nodes remain usable through hierarchical collapsing, rendering limits, and focused navigation — preventing the "UML death" problem
