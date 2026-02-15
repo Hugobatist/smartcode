@@ -9,11 +9,11 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 09-foundation-refactoring
-Plan: 01 complete, 02-04 pending
-Status: Phase 9 in progress — foundation modules extracted
-Last activity: 2026-02-15 — Plan 09-01 completed (EventBus, DiagramDOM, CSS extraction)
+Plan: 01-02 complete, 03-04 pending
+Status: Phase 9 in progress — renderer, pan-zoom, export extracted
+Last activity: 2026-02-15 — Plan 09-02 completed (renderer.js, pan-zoom.js, export.js)
 
-Progress: [██████████] v1.0 100% | Phase 9: [==--------] 1/4 plans
+Progress: [██████████] v1.0 100% | Phase 9: [=====-----] 2/4 plans
 
 ## v1.0 Performance Metrics
 
@@ -41,7 +41,14 @@ Progress: [██████████] v1.0 100% | Phase 9: [==--------] 1/4
 - 3 new files: event-bus.js, diagram-dom.js, main.css
 - All 131 tests pass
 
-**09-02 through 09-04:** Pending (renderer, pan-zoom, file-tree, export, editor, app-init extraction)
+**09-02 (Complete):** Renderer, pan-zoom, export extraction
+- live.html reduced from 1190 to 721 lines (39% reduction, 469 lines removed)
+- 3 new files: renderer.js, pan-zoom.js, export.js
+- Shared MERMAID_CONFIG eliminates triple config duplication in exportPNG
+- EventBus integration: diagram:rendered and diagram:error events
+- All 131 tests pass
+
+**09-03 through 09-04:** Pending (file-tree, editor, app-init extraction)
 
 ## Phase 8 Summary
 
@@ -69,6 +76,9 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - EventBus via native EventTarget API (WeakMap for handler tracking)
 - DiagramDOM abstraction — always re-query SVG, never cache references
 - main.css as first stylesheet to preserve CSS cascade order
+- isInitialRender state in renderer.js (render-related, not pan-zoom)
+- SmartBRenderer.MERMAID_CONFIG shared to eliminate config duplication
+- window.currentFile kept in sync for cross-module access
 
 ### Pre-Release Todos Status
 
@@ -84,11 +94,11 @@ Decisions are logged in PROJECT.md Key Decisions table.
 7. Zero testes para frontend
 8. `KNOWN_DIAGRAM_TYPES` duplicado entre parser.ts e validator.ts
 9. Logica de parsing duplicada entre backend (annotations.ts) e frontend (annotations.js)
-10. `live.html` com 1190 linhas (CSS extracted, JS extraction in progress via Phase 9)
+10. `live.html` com 721 linhas (CSS + renderer/pan-zoom/export extracted, further extraction in 09-03/04)
 11. Watchers de projetos adicionais nunca fechados no shutdown
 12. Static file path traversal check menos rigorosa
 13. Sem testes para rotas POST, WebSocketManager, FileWatcher
-14. Bug no drag & drop — `knownFiles` e `renderFileList` nao existem
+14. ~~Bug no drag & drop — `knownFiles` e `renderFileList` nao existem~~ — Fixed in 09-02 (replaced with refreshFileList)
 15. Deps nao utilizadas: `fast-glob` e `@mermaid-js/parser`
 16. Versao hardcoded em `cli.ts` e `mcp/server.ts`
 17. `refreshFileList` redundante quando dados ja vem via WebSocket
@@ -103,5 +113,5 @@ Decisions are logged in PROJECT.md Key Decisions table.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 09-01-PLAN.md (foundation modules)
-Next action: Execute 09-02-PLAN.md (renderer, pan-zoom extraction from live.html)
+Stopped at: Completed 09-02-PLAN.md (renderer, pan-zoom, export extraction)
+Next action: Execute 09-03-PLAN.md (file-tree, editor extraction from live.html)
