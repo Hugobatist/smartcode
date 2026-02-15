@@ -245,6 +245,14 @@ export async function startServer(options: ServerOptions): Promise<void> {
 
   const { httpServer, wsManager, fileWatcher } = createHttpServer(projectDir);
 
+  // Check for .mmd files and warn if none found
+  const checkService = new DiagramService(projectDir);
+  const mmdFiles = await checkService.listFiles();
+  if (mmdFiles.length === 0) {
+    log.warn('No .mmd files found in ' + projectDir);
+    log.warn("Run 'smartb init' to create a sample diagram, or create a .mmd file manually.");
+  }
+
   httpServer.listen(actualPort, () => {
     const url = `http://localhost:${actualPort}`;
     log.info(`Server running at ${url}`);
