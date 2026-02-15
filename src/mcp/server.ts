@@ -1,11 +1,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { DiagramService } from '../diagram/service.js';
+import { registerTools } from './tools.js';
 import { log } from '../utils/logger.js';
 
 /**
  * Create an MCP server instance configured with the shared DiagramService.
- * Tools and resources are registered in subsequent plans (05-02, 05-03).
+ * Registers all tools and resources on the server.
  */
 export function createMcpServer(service: DiagramService): McpServer {
   const server = new McpServer({
@@ -13,10 +14,9 @@ export function createMcpServer(service: DiagramService): McpServer {
     version: '0.1.0',
   });
 
-  // Tools and resources will be registered in plans 05-02 and 05-03
-  // using server.registerTool() and server.registerResource()
+  registerTools(server, service);
 
-  log.debug('MCP server created (no tools/resources registered yet)');
+  log.debug('MCP server created with tools registered');
 
   return server;
 }
