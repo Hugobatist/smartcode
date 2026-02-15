@@ -27,9 +27,15 @@ program
   .command('mcp')
   .description('Start the MCP server for AI tool integration (stdio transport)')
   .option('-d, --dir <path>', 'project directory', '.')
-  .action(async (options: { dir: string }) => {
+  .option('-s, --serve', 'also start HTTP+WS server for browser viewing')
+  .option('-p, --port <number>', 'HTTP server port (requires --serve)', '3333')
+  .action(async (options: { dir: string; serve?: boolean; port: string }) => {
     const { startMcpServer } = await import('./mcp/server.js');
-    await startMcpServer(options.dir);
+    await startMcpServer({
+      dir: options.dir,
+      serve: options.serve,
+      port: parseInt(options.port, 10),
+    });
   });
 
 program.parse();

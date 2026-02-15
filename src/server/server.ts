@@ -140,9 +140,9 @@ export interface ServerInstance {
  *
  * The default project connects on /ws. Named projects connect on /ws/project-name.
  */
-export function createHttpServer(projectDir: string): ServerInstance {
+export function createHttpServer(projectDir: string, existingService?: DiagramService): ServerInstance {
   const resolvedDir = path.resolve(projectDir);
-  const service = new DiagramService(resolvedDir);
+  const service = existingService ?? new DiagramService(resolvedDir);
   const staticDir = getStaticDir();
   const routes = registerRoutes(service, resolvedDir);
   const handler = createHandler(routes, staticDir);
