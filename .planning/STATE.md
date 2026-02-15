@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Developers can see what their AI is thinking and intervene surgically before it finishes
-**Current focus:** Phase 5 — MCP Server
+**Current focus:** Phase 5 complete — ready for Phase 6
 
 ## Current Position
 
-Phase: 5 of 8 (MCP Server)
-Plan: 2 of 3 in current phase (05-02 complete)
-Status: In Progress
-Last activity: 2026-02-15 — Completed 05-02 (MCP Tools and Resources)
+Phase: 5 of 8 (MCP Server) -- COMPLETE
+Plan: 3 of 3 in current phase (05-03 complete)
+Status: Phase Complete
+Last activity: 2026-02-15 — Completed 05-03 (Shared Process and Graceful Shutdown)
 
-Progress: [████████░░] 79%
+Progress: [████████░░] 83%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 11
-- Average duration: 3.4min
-- Total execution time: 0.6 hours
+- Total plans completed: 12
+- Average duration: 3.3min
+- Total execution time: 0.7 hours
 
 **By Phase:**
 
@@ -31,10 +31,10 @@ Progress: [████████░░] 79%
 | 02-http-server | 2 | 8min | 4min |
 | 03-websocket-real-time-sync | 3 | 8min | 2.7min |
 | 04-interactive-browser-ui | 2 | 4min | 2min |
-| 05-mcp-server | 2 | 6min | 3min |
+| 05-mcp-server | 3 | 8min | 2.7min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 2min, 2min, 4min, 2min
+- Last 5 plans: 2min, 2min, 4min, 2min, 2min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -86,8 +86,95 @@ Recent decisions affecting current work:
 - [05-02]: Tools return isError:true with plain message text on failure, never stack traces (AI agent safety)
 - [05-02]: diagram-content resource uses decodeURIComponent on filePath template variable for special character support
 - [05-02]: Resources return empty contents array on error (MCP resources have no isError mechanism)
+- [05-03]: Optional existingService parameter on createHttpServer() for backward-compatible dependency injection between MCP and HTTP servers
+- [05-03]: Dynamic imports of createHttpServer and detect-port in --serve path for lazy loading
+- [05-03]: Ordered shutdown mirrors existing startServer() pattern: fileWatcher -> wsManager -> httpServer
 
 ### Pending Todos
+
+#### Pre-Release Cleanup (code review findings — resolver antes de npm publish)
+
+**CRÍTICOS — resolver obrigatoriamente antes de qualquer release:**
+
+1. **Mermaid `securityLevel: 'loose'` → trocar pra `'sandbox'` ou `'strict'`**
+   - **Onde:** `static/live.html` linhas 638, 1184, 1219, 1281 (4 ocorrências)
+   - **Problema:** Modo `loose` permite execução de HTML/JS arbitrário dentro dos diagramas. Se um agente de IA gerar um `.mmd` com `click A href "javascript:alert(1)"` via prompt injection, executa no browser.
+   - **Fix:** Trocar para `securityLevel: 'sandbox'` nas 4 ocorrências. Testar se rendering de click handlers legítimos continua funcionando.
+
+2. **`readJsonBody` sem limite de tamanho — vulnerável a DoS**
+   - **Onde:** `src/server/server.ts` linhas 61-67
+   - **Problema:** Acumula chunks sem limite. Payload de gigas estoura memória. Porta pode estar exposta na rede local.
+   - **Fix:** Adicionar `MAX_BODY_SIZE = 1 * 1024 * 1024` (1MB). Abortar com 413 se exceder. Validar shape do JSON com Zod (já é dependência).
+
+**ALTOS — resolver antes de release pública:**
+
+3. **`nodeId` sem escape no innerHTML do flag panel**
+   - **Onde:** `static/annotations.js` linha 291-292
+   - **Problema:** `nodeId` vem do parsing do `.mmd` e é injetado direto no HTML: `data-node-id="${nodeId}"` e `${nodeId}`. Se o node ID contiver HTML malicioso, executa.
+   - **Fix:** Aplicar `escapeHtml(nodeId)` em ambas as ocorrências.
+
+4. **`onclick` inline com string interpolation vulnerável a injection**
+   - **Onde:** `static/live.html` linhas 1007-1031 (renderNodes)
+   - **Problema:** `escapeHtml` não escapa `\` nem newlines. Nome de pasta como `test\');alert(1);//` passa pela sanitização no contexto de atributo onclick.
+   - **Fix:** Substituir onclick inline por `addEventListener` com `data-*` attributes e event delegation. Ou adicionar escape de `\` e newlines na sanitização.
+
+5. **Race condition em `setFlag/removeFlag/setStatus/removeStatus`**
+   - **Onde:** `src/diagram/service.ts` linhas 79-102
+   - **Problema:** Read → modify → write async sem sincronização. Se a IA e o dev salvarem simultaneamente, um sobrescreve o outro. Risco real num produto de observabilidade onde dev e IA escrevem ao mesmo tempo.
+   - **Fix:** Lock simples por arquivo (Map<string, Promise>) que serializa operações de escrita no mesmo `.mmd`.
+
+6. **`addProject` não registra rotas REST para projetos adicionais**
+   - **Onde:** `src/server/server.ts` linhas 191-221
+   - **Problema:** `registerRoutes` só é chamado pro projeto default. Projetos adicionais recebem WebSocket updates mas não podem ser acessados via REST (`/api/diagrams`, `/save`, `/tree.json`).
+   - **Fix:** Chamar `registerRoutes` ou criar routes parametrizadas por projeto no `addProject`.
+
+7. **Zero testes para frontend**
+   - **Problema:** ~1200 linhas de lógica em `annotations.js`, `diagram-editor.js`, `search.js`, `ws-client.js` sem nenhum teste. Funções de parsing/manipulação são puras e testáveis.
+   - **Fix:** Extrair lógica pura pra módulos ES importáveis. Testar com vitest (já configurado) ou test runner de browser.
+
+**MÉDIOS — resolver antes de v1 estável:**
+
+8. **`KNOWN_DIAGRAM_TYPES` duplicado**
+   - **Onde:** `src/diagram/parser.ts` linhas 4-16 (com `as const`) e `src/diagram/validator.ts` linhas 4-16 (sem `as const`)
+   - **Fix:** Exportar de um único lugar (ex: `types.ts`).
+
+9. **Lógica de parsing duplicada entre backend e frontend**
+   - **Onde:** `src/diagram/annotations.ts` (TypeScript) e `static/annotations.js` (JavaScript) — mesmas regexes, mesma lógica
+   - **Fix:** Backend faz o parsing e envia dados prontos via WebSocket, ou compartilhar módulo ES entre ambos.
+
+10. **`live.html` com 1532 linhas**
+    - **Fix:** Extrair JavaScript inline para `app.js`. Extrair config Mermaid (duplicada 4x) para constante.
+
+11. **Watchers de projetos adicionais nunca fechados no shutdown**
+    - **Onde:** `src/server/server.ts` — SIGINT handler só fecha `fileWatcher` default, não os do map `watchers`.
+    - **Fix:** Iterar `watchers.values()` e chamar `.close()` em cada um no shutdown.
+
+12. **Static file path traversal check menos rigorosa**
+    - **Onde:** `src/server/server.ts` linhas 110-115
+    - **Fix:** Usar `+ path.sep` no `startsWith` check, igual ao `resolveProjectPath`.
+
+13. **Sem testes para rotas POST, WebSocketManager, FileWatcher**
+    - **Fix:** Adicionar testes para `/save`, `/delete`, `/mkdir`, `/move`. Testes unitários para broadcast/namespace. Testes de FileWatcher com tmpdir.
+
+**BAIXOS — cleanup quando possível:**
+
+14. **Bug no drag & drop — `knownFiles` e `renderFileList` não existem**
+    - **Onde:** `static/live.html` linhas 1506-1507
+    - **Fix:** Remover ou implementar corretamente. Hoje dá ReferenceError.
+
+15. **Deps não utilizadas: `fast-glob` e `@mermaid-js/parser`**
+    - **Fix:** `npm uninstall fast-glob @mermaid-js/parser`
+
+16. **Versão hardcoded em `cli.ts` e `mcp/server.ts`**
+    - **Fix:** Ler de `package.json` ou constante compartilhada.
+
+17. **`refreshFileList` redundante quando dados já vêm via WebSocket**
+    - **Fix:** Usar dados do evento `tree:updated` direto em vez de fazer fetch adicional.
+
+18. **Mistura de `var`/`let`/`const` no frontend**
+    - **Fix:** Padronizar para `const`/`let` em todos os módulos.
+
+---
 
 #### v2 Feature Ideas (post-milestone completion)
 
@@ -141,5 +228,5 @@ Recent decisions affecting current work:
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 05-02-PLAN.md (MCP Tools and Resources)
+Stopped at: Completed 05-03-PLAN.md (Shared Process and Graceful Shutdown) -- Phase 5 complete
 Resume file: None
