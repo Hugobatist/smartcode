@@ -30,11 +30,13 @@
     "verify-pack": "npm pack --dry-run"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
     "chokidar": "^5.0.0",
     "commander": "^14.0.3",
     "detect-port": "^2.1.0",
     "open": "^11.0.0",
-    "ws": "^8.19.0"
+    "ws": "^8.19.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@mermaid-js/parser": "^0.6.3",

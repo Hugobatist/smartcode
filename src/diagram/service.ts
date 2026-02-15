@@ -1,8 +1,8 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { DiagramContent, Flag, ValidationResult } from './types.js';
+import type { DiagramContent, Flag, NodeStatus, ValidationResult } from './types.js';
 import { parseDiagramContent } from './parser.js';
-import { injectAnnotations, parseFlags } from './annotations.js';
+import { injectAnnotations, parseFlags, parseStatuses } from './annotations.js';
 import { validateMermaidSyntax } from './validator.js';
 import { resolveProjectPath } from '../utils/paths.js';
 import { discoverMmdFiles } from '../project/discovery.js';
@@ -22,6 +22,7 @@ export class DiagramService {
     const resolved = this.resolvePath(filePath);
     const raw = await readFile(resolved, 'utf-8');
     const { mermaidContent, flags, diagramType } = parseDiagramContent(raw);
+    const statuses = parseStatuses(raw);
     const validation = validateMermaidSyntax(mermaidContent);
 
     // Ensure diagramType from parser is reflected in validation result
@@ -33,21 +34,31 @@ export class DiagramService {
       raw,
       mermaidContent,
       flags,
+      statuses,
       validation,
       filePath,
     };
   }
 
   /**
-   * Write a .mmd file. If flags are provided, injects annotation block.
+   * Write a .mmd file. If flags or statuses are provided, injects annotation block.
    * Creates parent directories if they don't exist.
    */
-  async writeDiagram(filePath: string, content: string, flags?: Map<string, Flag>): Promise<void> {
+  async writeDiagram(
+    filePath: string,
+    content: string,
+    flags?: Map<string, Flag>,
+    statuses?: Map<string, NodeStatus>,
+  ): Promise<void> {
     const resolved = this.resolvePath(filePath);
     let output = content;
 
-    if (flags) {
-      output = injectAnnotations(content, flags);
+    if (flags || statuses) {
+      output = injectAnnotations(
+        content,
+        flags ?? new Map(),
+        statuses,
+      );
     }
 
     await mkdir(dirname(resolved), { recursive: true });
@@ -88,6 +99,44 @@ export class DiagramService {
 
     const { mermaidContent } = parseDiagramContent(raw);
     await this.writeDiagram(filePath, mermaidContent, flags);
+  }
+
+  /**
+   * Get all statuses from a .mmd file.
+   */
+  async getStatuses(filePath: string): Promise<Map<string, NodeStatus>> {
+    const diagram = await this.readDiagram(filePath);
+    return diagram.statuses;
+  }
+
+  /**
+   * Set (add or update) a status on a specific node in a .mmd file.
+   */
+  async setStatus(filePath: string, nodeId: string, status: NodeStatus): Promise<void> {
+    const resolved = this.resolvePath(filePath);
+    const raw = await readFile(resolved, 'utf-8');
+    const flags = parseFlags(raw);
+    const statuses = parseStatuses(raw);
+
+    statuses.set(nodeId, status);
+
+    const { mermaidContent } = parseDiagramContent(raw);
+    await this.writeDiagram(filePath, mermaidContent, flags, statuses);
+  }
+
+  /**
+   * Remove a status from a specific node in a .mmd file.
+   */
+  async removeStatus(filePath: string, nodeId: string): Promise<void> {
+    const resolved = this.resolvePath(filePath);
+    const raw = await readFile(resolved, 'utf-8');
+    const flags = parseFlags(raw);
+    const statuses = parseStatuses(raw);
+
+    statuses.delete(nodeId);
+
+    const { mermaidContent } = parseDiagramContent(raw);
+    await this.writeDiagram(filePath, mermaidContent, flags, statuses);
   }
 
   /**

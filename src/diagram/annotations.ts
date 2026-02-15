@@ -1,9 +1,10 @@
-import type { Flag } from './types.js';
+import type { Flag, NodeStatus } from './types.js';
 import { log } from '../utils/logger.js';
 
 export const ANNOTATION_START = '%% --- ANNOTATIONS (auto-managed by SmartB Diagrams) ---';
 export const ANNOTATION_END = '%% --- END ANNOTATIONS ---';
 const FLAG_REGEX = /^%%\s*@flag\s+(\S+)\s+"([^"]*)"$/;
+const STATUS_REGEX = /^%%\s*@status\s+(\S+)\s+(\S+)$/;
 
 /**
  * Parse all `%% @flag` lines from within the annotation block.
@@ -38,12 +39,56 @@ export function parseFlags(content: string): Map<string, Flag> {
       const nodeId = match[1]!;
       const message = match[2]!;
       flags.set(nodeId, { nodeId, message });
-    } else {
+    } else if (!STATUS_REGEX.test(trimmed)) {
       log.debug(`Skipping unrecognized annotation line: ${trimmed}`);
     }
   }
 
   return flags;
+}
+
+const VALID_STATUSES: readonly string[] = ['ok', 'problem', 'in-progress', 'discarded'];
+
+/**
+ * Parse all `%% @status` lines from within the annotation block.
+ * Returns a Map keyed by nodeId with NodeStatus values.
+ */
+export function parseStatuses(content: string): Map<string, NodeStatus> {
+  const statuses = new Map<string, NodeStatus>();
+  const lines = content.split('\n');
+
+  let inBlock = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed === ANNOTATION_START) {
+      inBlock = true;
+      continue;
+    }
+
+    if (trimmed === ANNOTATION_END) {
+      inBlock = false;
+      continue;
+    }
+
+    if (!inBlock) continue;
+
+    if (trimmed === '') continue;
+
+    const match = STATUS_REGEX.exec(trimmed);
+    if (match) {
+      const nodeId = match[1]!;
+      const statusValue = match[2]!;
+      if (VALID_STATUSES.includes(statusValue)) {
+        statuses.set(nodeId, statusValue as NodeStatus);
+      } else {
+        log.debug(`Skipping invalid status value: ${statusValue}`);
+      }
+    }
+    // Non-status lines (flags, etc.) are silently skipped here
+  }
+
+  return statuses;
 }
 
 /**
@@ -84,13 +129,20 @@ export function stripAnnotations(content: string): string {
 
 /**
  * Strip existing annotations, then append a new annotation block at the end.
- * If flags map is empty, returns content with no annotation block.
+ * If both flags and statuses maps are empty, returns content with no annotation block.
  * Escapes double quotes in flag messages by replacing " with ''.
  */
-export function injectAnnotations(content: string, flags: Map<string, Flag>): string {
+export function injectAnnotations(
+  content: string,
+  flags: Map<string, Flag>,
+  statuses?: Map<string, NodeStatus>,
+): string {
   const clean = stripAnnotations(content);
 
-  if (flags.size === 0) {
+  const hasFlags = flags.size > 0;
+  const hasStatuses = statuses !== undefined && statuses.size > 0;
+
+  if (!hasFlags && !hasStatuses) {
     return clean;
   }
 
@@ -102,6 +154,12 @@ export function injectAnnotations(content: string, flags: Map<string, Flag>): st
   for (const [nodeId, flag] of flags) {
     const escapedMessage = flag.message.replace(/"/g, "''");
     lines.push(`%% @flag ${nodeId} "${escapedMessage}"`);
+  }
+
+  if (hasStatuses) {
+    for (const [nodeId, status] of statuses!) {
+      lines.push(`%% @status ${nodeId} ${status}`);
+    }
   }
 
   lines.push(ANNOTATION_END);

@@ -32,6 +32,8 @@ export interface DiagramContent {
   mermaidContent: string;
   /** Parsed flag annotations */
   flags: Map<string, Flag>;
+  /** Parsed status annotations */
+  statuses: Map<string, NodeStatus>;
   /** Validation result for the Mermaid syntax */
   validation: ValidationResult;
   /** Relative file path within the project */

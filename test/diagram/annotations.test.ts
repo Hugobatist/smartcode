@@ -3,12 +3,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   parseFlags,
+  parseStatuses,
   stripAnnotations,
   injectAnnotations,
   ANNOTATION_START,
   ANNOTATION_END,
 } from '../../src/diagram/annotations.js';
-import type { Flag } from '../../src/diagram/types.js';
+import type { Flag, NodeStatus } from '../../src/diagram/types.js';
 
 const fixturesDir = join(import.meta.dirname, '..', 'fixtures');
 const withFlagsContent = readFileSync(join(fixturesDir, 'with-flags.mmd'), 'utf-8');
@@ -144,6 +145,150 @@ describe('round-trip', () => {
       ['B', { nodeId: 'B', message: 'another test' }],
     ]);
     const injected = injectAnnotations(validFlowchartContent, flags);
+    const stripped = stripAnnotations(injected);
+    expect(stripped).toBe(validFlowchartContent);
+  });
+});
+
+describe('parseStatuses', () => {
+  it('extracts status annotations from content', () => {
+    const content = [
+      'flowchart LR',
+      '    A --> B',
+      '',
+      ANNOTATION_START,
+      '%% @status A ok',
+      '%% @status B problem',
+      ANNOTATION_END,
+    ].join('\n');
+
+    const statuses = parseStatuses(content);
+    expect(statuses.size).toBe(2);
+    expect(statuses.get('A')).toBe('ok');
+    expect(statuses.get('B')).toBe('problem');
+  });
+
+  it('returns empty map for content without statuses', () => {
+    const statuses = parseStatuses(validFlowchartContent);
+    expect(statuses.size).toBe(0);
+  });
+
+  it('handles all valid status values', () => {
+    const content = [
+      'flowchart LR',
+      '    A --> B --> C --> D',
+      '',
+      ANNOTATION_START,
+      '%% @status A ok',
+      '%% @status B problem',
+      '%% @status C in-progress',
+      '%% @status D discarded',
+      ANNOTATION_END,
+    ].join('\n');
+
+    const statuses = parseStatuses(content);
+    expect(statuses.size).toBe(4);
+    expect(statuses.get('A')).toBe('ok');
+    expect(statuses.get('B')).toBe('problem');
+    expect(statuses.get('C')).toBe('in-progress');
+    expect(statuses.get('D')).toBe('discarded');
+  });
+
+  it('skips invalid status values', () => {
+    const content = [
+      'flowchart LR',
+      '    A --> B',
+      '',
+      ANNOTATION_START,
+      '%% @status A ok',
+      '%% @status B invalid-status',
+      ANNOTATION_END,
+    ].join('\n');
+
+    const statuses = parseStatuses(content);
+    expect(statuses.size).toBe(1);
+    expect(statuses.get('A')).toBe('ok');
+  });
+
+  it('ignores flag lines (only parses statuses)', () => {
+    const content = [
+      'flowchart LR',
+      '    A --> B',
+      '',
+      ANNOTATION_START,
+      '%% @flag A "some flag"',
+      '%% @status B ok',
+      ANNOTATION_END,
+    ].join('\n');
+
+    const statuses = parseStatuses(content);
+    expect(statuses.size).toBe(1);
+    expect(statuses.get('B')).toBe('ok');
+  });
+});
+
+describe('injectAnnotations with statuses', () => {
+  it('injects both flags and statuses into annotation block', () => {
+    const flags = new Map<string, Flag>([
+      ['A', { nodeId: 'A', message: 'review this' }],
+    ]);
+    const statuses = new Map<string, NodeStatus>([
+      ['B', 'ok'],
+      ['C', 'problem'],
+    ]);
+
+    const result = injectAnnotations(validFlowchartContent, flags, statuses);
+    expect(result).toContain(ANNOTATION_START);
+    expect(result).toContain(ANNOTATION_END);
+    expect(result).toContain('%% @flag A "review this"');
+    expect(result).toContain('%% @status B ok');
+    expect(result).toContain('%% @status C problem');
+  });
+
+  it('injects statuses only when flags map is empty', () => {
+    const flags = new Map<string, Flag>();
+    const statuses = new Map<string, NodeStatus>([
+      ['A', 'in-progress'],
+    ]);
+
+    const result = injectAnnotations(validFlowchartContent, flags, statuses);
+    expect(result).toContain(ANNOTATION_START);
+    expect(result).toContain('%% @status A in-progress');
+    expect(result).not.toContain('@flag');
+  });
+
+  it('returns clean content when both maps are empty', () => {
+    const result = injectAnnotations(
+      validFlowchartContent,
+      new Map(),
+      new Map(),
+    );
+    expect(result).not.toContain(ANNOTATION_START);
+    expect(result).not.toContain(ANNOTATION_END);
+  });
+});
+
+describe('status round-trip', () => {
+  it('inject statuses then parse them back correctly', () => {
+    const flags = new Map<string, Flag>([
+      ['A', { nodeId: 'A', message: 'flag on A' }],
+    ]);
+    const statuses = new Map<string, NodeStatus>([
+      ['B', 'ok'],
+      ['C', 'in-progress'],
+    ]);
+
+    const injected = injectAnnotations(validFlowchartContent, flags, statuses);
+
+    const parsedFlags = parseFlags(injected);
+    expect(parsedFlags.size).toBe(1);
+    expect(parsedFlags.get('A')?.message).toBe('flag on A');
+
+    const parsedStatuses = parseStatuses(injected);
+    expect(parsedStatuses.size).toBe(2);
+    expect(parsedStatuses.get('B')).toBe('ok');
+    expect(parsedStatuses.get('C')).toBe('in-progress');
+
     const stripped = stripAnnotations(injected);
     expect(stripped).toBe(validFlowchartContent);
   });
