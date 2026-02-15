@@ -67,7 +67,13 @@ Plans:
   4. Subgraphs render as background rectangles with labels
   5. A `?renderer=custom` query param toggles between Mermaid and custom renderer
   6. ViewportTransform class correctly converts screen ↔ graph coordinates at all zoom levels
-**Plans:** TBD
+**Plans:** 4 plans
+
+Plans:
+- [ ] 11-01-PLAN.md -- Graph API endpoint + dagre layout + viewport transform
+- [ ] 11-02-PLAN.md -- SVG shapes (13 shapes) + SVG renderer
+- [ ] 11-03-PLAN.md -- Custom renderer orchestrator + live.html integration + toggle + DiagramDOM
+- [ ] 11-04-PLAN.md -- TDD: ViewportTransform + dagre layout tests
 
 #### Phase 12: Server + Browser Integration
 **Goal**: The full data flow works end-to-end: file change → server parses to GraphModel → WebSocket sends graph JSON → browser renders with custom renderer
