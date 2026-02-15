@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Project Bootstrap + Diagram Core** - TypeScript foundation, npm package structure, and diagram parsing/annotation service
 - [x] **Phase 2: HTTP Server** - Serve browser UI, REST endpoints for diagram content, static asset bundling
 - [x] **Phase 3: WebSocket + Real-Time Sync** - File watcher, WebSocket broadcast, live updates replacing polling
-- [ ] **Phase 4: Interactive Browser UI** - Pan/zoom, keyboard shortcuts, flag interactions, export, file tree navigation
+- [x] **Phase 4: Interactive Browser UI** - Pan/zoom, keyboard shortcuts, flag interactions, export, file tree navigation
 - [ ] **Phase 5: MCP Server** - AI tool integration via stdio transport with tools and resources
 - [ ] **Phase 6: CLI + Developer Experience + AI Integration** - CLI commands, zero-config MCP setup, AI diagram conventions, flag-to-prompt pipeline
 - [ ] **Phase 7: VS Code Extension** - Sidebar webview panel, WebSocket client, marketplace publication
@@ -83,8 +83,8 @@ Plans:
 **Plans:** 2 plans
 
 Plans:
-- [ ] 04-01-PLAN.md — Fix PNG export (Canvas taint), XSS-safe file tree rendering, zoom preservation on live updates
-- [ ] 04-02-PLAN.md — Ctrl+F node search with highlight navigation
+- [x] 04-01-PLAN.md — Fix PNG export (Canvas taint), XSS-safe file tree rendering, zoom preservation on live updates
+- [x] 04-02-PLAN.md — Ctrl+F node search with highlight navigation
 
 ### Phase 5: MCP Server
 **Goal**: AI coding tools (Claude Code, Cursor) can connect via MCP to read developer flags, update diagrams, and get diagram context — completing the bidirectional feedback loop
@@ -163,7 +163,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 1. Project Bootstrap + Diagram Core | 2/2 | ✓ Complete | 2026-02-14 |
 | 2. HTTP Server | 2/2 | ✓ Complete | 2026-02-14 |
 | 3. WebSocket + Real-Time Sync | 3/3 | ✓ Complete | 2026-02-15 |
-| 4. Interactive Browser UI | 0/2 | Not started | - |
+| 4. Interactive Browser UI | 2/2 | ✓ Complete | 2026-02-15 |
 | 5. MCP Server | 0/3 | Not started | - |
 | 6. CLI + DX + AI Integration | 0/3 | Not started | - |
 | 7. VS Code Extension | 0/3 | Not started | - |
