@@ -84,6 +84,27 @@ export class WebSocketManager {
     }
   }
 
+  /** Count connected clients with OPEN readyState */
+  getClientCount(namespace?: string): number {
+    if (namespace) {
+      const wss = this.namespaces.get(namespace);
+      if (!wss) return 0;
+      let count = 0;
+      wss.clients.forEach((client) => {
+        if (client.readyState === WsWebSocket.OPEN) count++;
+      });
+      return count;
+    }
+
+    let total = 0;
+    for (const wss of this.namespaces.values()) {
+      wss.clients.forEach((client) => {
+        if (client.readyState === WsWebSocket.OPEN) total++;
+      });
+    }
+    return total;
+  }
+
   /** Close all WebSocketServer instances */
   close(): void {
     for (const wss of this.namespaces.values()) {

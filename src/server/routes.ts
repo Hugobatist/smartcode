@@ -2,6 +2,7 @@ import { readFile, writeFile, mkdir, unlink, rename } from 'node:fs/promises';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { DiagramService } from '../diagram/service.js';
+import type { WebSocketManager } from './websocket.js';
 import { resolveProjectPath } from '../utils/paths.js';
 import { sendJson, readJsonBody, type Route } from './server.js';
 
@@ -56,7 +57,7 @@ function buildFileTree(files: string[]): TreeNode[] {
  * 1. live.html endpoints: tree.json, .mmd serving, /save, /delete, /mkdir, /move
  * 2. REST API endpoints: GET /api/diagrams, GET /api/diagrams/:file
  */
-export function registerRoutes(service: DiagramService, projectDir: string): Route[] {
+export function registerRoutes(service: DiagramService, projectDir: string, wsManager?: WebSocketManager): Route[] {
   const routes: Route[] = [];
 
   // -------------------------------------------------------
@@ -176,7 +177,46 @@ export function registerRoutes(service: DiagramService, projectDir: string): Rou
   });
 
   // -------------------------------------------------------
-  // 6. GET /api/diagrams -- REST: List all diagrams
+  // 6. GET /api/status -- Server diagnostics
+  // -------------------------------------------------------
+  routes.push({
+    method: 'GET',
+    pattern: new RegExp('^/api/status$'),
+    handler: async (_req: IncomingMessage, res: ServerResponse) => {
+      try {
+        const files = await service.listFiles();
+
+        // Collect active flags across all files
+        const activeFlags: Array<{ file: string; nodeId: string; message: string }> = [];
+        for (const file of files) {
+          try {
+            const flags = await service.getFlags(file);
+            for (const flag of flags) {
+              activeFlags.push({ file, nodeId: flag.nodeId, message: flag.message });
+            }
+          } catch {
+            // Skip files that can't be read
+          }
+        }
+
+        sendJson(res, {
+          status: 'running',
+          uptime: process.uptime(),
+          port: null,
+          projectDir,
+          files: files.length,
+          connectedClients: wsManager?.getClientCount() ?? 0,
+          activeFlags,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        sendJson(res, { error: message }, 500);
+      }
+    },
+  });
+
+  // -------------------------------------------------------
+  // 7. GET /api/diagrams -- REST: List all diagrams
   // -------------------------------------------------------
   routes.push({
     method: 'GET',
@@ -193,7 +233,7 @@ export function registerRoutes(service: DiagramService, projectDir: string): Rou
   });
 
   // -------------------------------------------------------
-  // 7. GET /api/diagrams/:file -- REST: Get diagram content
+  // 8. GET /api/diagrams/:file -- REST: Get diagram content
   // -------------------------------------------------------
   routes.push({
     method: 'GET',
@@ -221,7 +261,7 @@ export function registerRoutes(service: DiagramService, projectDir: string): Rou
   });
 
   // -------------------------------------------------------
-  // 8. GET /*.mmd -- Serve raw .mmd file content from project dir
+  // 9. GET /*.mmd -- Serve raw .mmd file content from project dir
   //    (must be registered AFTER /api/diagrams routes to avoid conflicts)
   // -------------------------------------------------------
   routes.push({

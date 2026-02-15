@@ -144,10 +144,14 @@ export function createHttpServer(projectDir: string, existingService?: DiagramSe
   const resolvedDir = path.resolve(projectDir);
   const service = existingService ?? new DiagramService(resolvedDir);
   const staticDir = getStaticDir();
-  const routes = registerRoutes(service, resolvedDir);
+
+  const httpServer = createServer();
+  const wsManager = new WebSocketManager(httpServer);
+
+  const routes = registerRoutes(service, resolvedDir, wsManager);
   const handler = createHandler(routes, staticDir);
 
-  const httpServer = createServer((req, res) => {
+  httpServer.on('request', (req, res) => {
     handler(req, res).catch((err) => {
       log.error('Unhandled error:', err);
       if (!res.headersSent) {
@@ -155,8 +159,6 @@ export function createHttpServer(projectDir: string, existingService?: DiagramSe
       }
     });
   });
-
-  const wsManager = new WebSocketManager(httpServer);
 
   // Track all watchers for cleanup
   const watchers = new Map<string, FileWatcher>();
