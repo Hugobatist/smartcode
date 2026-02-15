@@ -333,8 +333,39 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
   });
 
   // -------------------------------------------------------
-  // 9. GET /*.mmd -- Serve raw .mmd file content from project dir
-  //    (must be registered AFTER /api/diagrams routes to avoid conflicts)
+  // 9. GET /api/graph/:file -- REST: Get graph model (structured layout data)
+  // -------------------------------------------------------
+  routes.push({
+    method: 'GET',
+    pattern: new RegExp('^/api/graph/(?<file>.+)$'),
+    handler: async (_req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => {
+      try {
+        const file = decodeURIComponent(params['file']!);
+        const graph = await service.readGraph(file);
+        const json = {
+          diagramType: graph.diagramType,
+          direction: graph.direction,
+          nodes: Object.fromEntries(graph.nodes),
+          edges: graph.edges,
+          subgraphs: Object.fromEntries(graph.subgraphs),
+          classDefs: Object.fromEntries(graph.classDefs),
+          nodeStyles: Object.fromEntries(graph.nodeStyles),
+          linkStyles: Object.fromEntries(graph.linkStyles),
+          classAssignments: Object.fromEntries(graph.classAssignments),
+          filePath: graph.filePath,
+        };
+        sendJson(res, json);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        const code = (err as NodeJS.ErrnoException)?.code;
+        sendJson(res, { error: message }, code === 'ENOENT' ? 404 : 500);
+      }
+    },
+  });
+
+  // -------------------------------------------------------
+  // 10. GET /*.mmd -- Serve raw .mmd file content from project dir
+  //     (must be registered AFTER /api routes to avoid conflicts)
   // -------------------------------------------------------
   routes.push({
     method: 'GET',

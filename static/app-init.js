@@ -13,6 +13,25 @@
 (function() {
     'use strict';
 
+    // ── Renderer type from query params ──
+    var params = new URLSearchParams(window.location.search);
+    var rendererType = params.get('renderer') || 'mermaid';
+
+    // ── Render with type (custom or mermaid) ──
+    async function renderWithType(text) {
+        if (rendererType === 'custom') {
+            try {
+                var currentFile = SmartBFileTree.getCurrentFile();
+                await SmartBCustomRenderer.fetchAndRender(currentFile);
+            } catch (e) {
+                console.error('Custom renderer failed, falling back to Mermaid:', e);
+                await SmartBRenderer.render(text);
+            }
+        } else {
+            await SmartBRenderer.render(text);
+        }
+    }
+
     // ── Toast ──
     function toast(msg) {
         var el = document.getElementById('toast');
@@ -65,7 +84,7 @@
         getLastContent: function() { return SmartBFileTree.getLastContent(); },
         setLastContent: function(v) { SmartBFileTree.setLastContent(v); },
         saveFile: function() { SmartBFileTree.saveCurrentFile(); },
-        renderDiagram: SmartBRenderer.render,
+        renderDiagram: renderWithType,
         getPan: function() { return SmartBPanZoom.getPan(); },
         setPan: function(px, py) { SmartBPanZoom.setPan(px, py); },
     };
@@ -93,7 +112,7 @@
                         SmartBCollapseUI.setAutoCollapsed(data.collapse.autoCollapsed || []);
                     }
                     if (data.mermaidContent) {
-                        await render(data.mermaidContent);
+                        await renderWithType(data.mermaidContent);
                     }
                 } catch (e) {}
             }
@@ -120,7 +139,7 @@
                             }
                         }
                         if (data.mermaidContent) {
-                            await render(data.mermaidContent);
+                            await renderWithType(data.mermaidContent);
                             document.getElementById('preview').classList.add('diagram-focus-mode');
                         }
                     } else if (event.action === 'navigate') {
@@ -133,7 +152,7 @@
                             SmartBCollapseUI.setAutoCollapsed(navData.collapse.autoCollapsed || []);
                         }
                         if (navData.mermaidContent) {
-                            await render(navData.mermaidContent);
+                            await renderWithType(navData.mermaidContent);
                         }
                     } else if (event.action === 'exit') {
                         var exitResp = await fetch('/api/diagrams/' + encodeURIComponent(currentFile));
@@ -142,7 +161,7 @@
                         SmartBCollapseUI.setBreadcrumbs([], null);
                         SmartBCollapseUI.setAutoCollapsed(exitData.collapse ? exitData.collapse.autoCollapsed || [] : []);
                         if (exitData.mermaidContent) {
-                            await render(exitData.mermaidContent);
+                            await renderWithType(exitData.mermaidContent);
                             document.getElementById('preview').classList.remove('diagram-focus-mode');
                         }
                     }
@@ -167,12 +186,12 @@
                 var text = await resp.text();
                 editor.value = text;
                 SmartBFileTree.setLastContent(text);
-                await render(text);
+                await renderWithType(text);
             }
         } catch (e) {}
 
         if (!SmartBFileTree.getLastContent() && editor.value.trim()) {
-            await render(editor.value);
+            await renderWithType(editor.value);
         }
 
         // Fetch collapse metadata for initial auto-collapse
@@ -185,7 +204,7 @@
                         SmartBCollapseUI.setConfig(data.collapse.config);
                         if (data.collapse.autoCollapsed && data.collapse.autoCollapsed.length > 0) {
                             SmartBCollapseUI.setAutoCollapsed(data.collapse.autoCollapsed);
-                            if (data.mermaidContent) await render(data.mermaidContent);
+                            if (data.mermaidContent) await renderWithType(data.mermaidContent);
                         }
                     }
                 }
@@ -215,7 +234,7 @@
                             }
                             SmartBFileTree.setLastContent(finalText);
                             document.getElementById('editor').value = finalText;
-                            render(finalText);
+                            renderWithType(finalText);
                         }
                     }
                     break;
@@ -243,6 +262,14 @@
                     break;
             }
         });
+
+        // Show CUSTOM indicator in status bar when using custom renderer
+        if (rendererType === 'custom') {
+            var indicator = document.createElement('span');
+            indicator.style.cssText = 'font-size:10px;color:#6366f1;margin-left:8px;font-weight:600;';
+            indicator.textContent = 'CUSTOM';
+            document.querySelector('.topbar .status').appendChild(indicator);
+        }
     })();
 
     SmartBFileTree.refreshFileList();
@@ -263,13 +290,14 @@
         SmartBFileTree.setCurrentFile(file.name);
         document.getElementById('currentFileName').textContent = file.name;
         SmartBFileTree.refreshFileList();
-        render(text);
+        renderWithType(text);
     });
 
     // ── Public API ──
     window.SmartBApp = {
         toast: toast,
         showHelp: showHelp,
+        rendererType: rendererType,
     };
     window.toast = toast;
     window.showHelp = showHelp;

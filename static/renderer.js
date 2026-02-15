@@ -237,7 +237,7 @@
             // Apply flag indicators after SVG is in the DOM
             if (window.SmartBAnnotations) SmartBAnnotations.applyFlagsToSVG();
             // Apply collapse overlays if available
-            if (window.SmartBCollapseUI) SmartBCollapseUI.applyOverlays();
+            if (window.SmartBCollapseUI && SmartBCollapseUI.applyOverlays) SmartBCollapseUI.applyOverlays();
             // Only auto-fit on initial render or file navigation; preserve zoom on live updates
             if (isInitialRender) {
                 requestAnimationFrame(function() {

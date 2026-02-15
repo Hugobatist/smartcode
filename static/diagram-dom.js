@@ -1,13 +1,15 @@
 /**
- * DiagramDOM — abstraction layer for Mermaid SVG DOM queries.
+ * DiagramDOM — abstraction layer for SVG DOM queries.
+ * Supports both Mermaid-rendered SVGs and custom SmartB SVGs.
  * Consolidates SVG element lookups duplicated across annotations.js,
  * collapse-ui.js, search.js, and diagram-editor.js.
  *
- * IMPORTANT: Never cache SVG element references — Mermaid's render()
+ * IMPORTANT: Never cache SVG element references — render()
  * replaces the entire SVG via innerHTML, invalidating all references.
  *
  * Usage:
  *   DiagramDOM.getSVG();
+ *   DiagramDOM.getRendererType();  // 'custom' | 'mermaid'
  *   DiagramDOM.findNodeElement('myNode');
  *   DiagramDOM.extractNodeId(clickedElement);
  */
@@ -20,19 +22,34 @@
 
     var DiagramDOM = {
         /**
-         * Returns the current Mermaid SVG element, or null.
+         * Returns the current SVG element, or null.
          */
         getSVG: function() {
             return document.querySelector('#preview svg');
         },
 
         /**
+         * Detects whether the current SVG is from the custom renderer.
+         * Checks for the `.smartb-diagram` class on the root <g> element.
+         * @returns {'custom'|'mermaid'}
+         */
+        getRendererType: function() {
+            var svg = this.getSVG();
+            if (!svg) return 'mermaid';
+            return svg.querySelector('.smartb-diagram') ? 'custom' : 'mermaid';
+        },
+
+        /**
          * Finds the SVG element for a given node ID.
-         * Iterates [id] elements matching /^flowchart-(.+)-\d+$/.
+         * Tries data-node-id attribute first (custom), then Mermaid regex.
          */
         findNodeElement: function(nodeId) {
             var svg = this.getSVG();
             if (!svg) return null;
+            // Custom renderer: data-node-id attribute
+            var custom = svg.querySelector('[data-node-id="' + nodeId + '"]');
+            if (custom) return custom;
+            // Mermaid: regex on element id attributes
             var elements = svg.querySelectorAll('[id]');
             for (var i = 0; i < elements.length; i++) {
                 var el = elements[i];
@@ -50,6 +67,10 @@
         findSubgraphElement: function(subgraphId) {
             var svg = this.getSVG();
             if (!svg) return null;
+            // Custom renderer: data-subgraph-id attribute
+            var custom = svg.querySelector('[data-subgraph-id="' + subgraphId + '"]');
+            if (custom) return custom;
+            // Mermaid: regex on element id attributes
             var elements = svg.querySelectorAll('[id]');
             for (var i = 0; i < elements.length; i++) {
                 var el = elements[i];
@@ -70,6 +91,16 @@
         extractNodeId: function(element) {
             var el = element;
             while (el && el !== document.body) {
+                // Custom renderer: check data attributes first
+                if (el.getAttribute) {
+                    var dataNodeId = el.getAttribute('data-node-id');
+                    if (dataNodeId) return { type: 'node', id: dataNodeId };
+                    var dataEdgeId = el.getAttribute('data-edge-id');
+                    if (dataEdgeId) return { type: 'edge', id: dataEdgeId };
+                    var dataSubgraphId = el.getAttribute('data-subgraph-id');
+                    if (dataSubgraphId) return { type: 'subgraph', id: dataSubgraphId };
+                }
+                // Mermaid: regex patterns on id attribute
                 var id = el.getAttribute ? el.getAttribute('id') : null;
                 if (id) {
                     var nodeMatch = id.match(NODE_RE);
@@ -99,6 +130,12 @@
         getNodeLabel: function(nodeId) {
             var el = this.findNodeElement(nodeId);
             if (!el) return null;
+            // Custom renderer: direct child <text> element
+            if (el.getAttribute('data-node-id')) {
+                var textEl = el.querySelector('text');
+                return textEl ? textEl.textContent : null;
+            }
+            // Mermaid: .nodeLabel span
             var label = el.querySelector('.nodeLabel');
             return label ? label.textContent : null;
         },
@@ -119,7 +156,10 @@
             var current = element;
             while (current && current.tagName !== 'svg') {
                 if (current.classList &&
-                    (current.classList.contains('node') || current.classList.contains('cluster'))) {
+                    (current.classList.contains('node') ||
+                     current.classList.contains('cluster') ||
+                     current.classList.contains('smartb-node') ||
+                     current.classList.contains('smartb-subgraph'))) {
                     return current;
                 }
                 current = current.parentElement;
