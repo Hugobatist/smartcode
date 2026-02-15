@@ -80,12 +80,11 @@ Plans:
   3. A flag panel lists all active flags and clicking a flag navigates to and highlights the flagged node on the diagram
   4. Developer can export the current diagram view as SVG or PNG
   5. A file tree sidebar lets the developer navigate between multiple .mmd files and the selected diagram loads in the main canvas
-**Plans**: TBD
+**Plans:** 2 plans
 
 Plans:
-- [ ] 04-01: Pan, zoom, fit-to-view controls and keyboard shortcuts (F, Esc, Ctrl+F)
-- [ ] 04-02: Flag mode — node click to annotate, flag panel with navigation
-- [ ] 04-03: SVG/PNG export and file tree sidebar navigation
+- [ ] 04-01-PLAN.md — Fix PNG export (Canvas taint), XSS-safe file tree rendering, zoom preservation on live updates
+- [ ] 04-02-PLAN.md — Ctrl+F node search with highlight navigation
 
 ### Phase 5: MCP Server
 **Goal**: AI coding tools (Claude Code, Cursor) can connect via MCP to read developer flags, update diagrams, and get diagram context — completing the bidirectional feedback loop
@@ -164,7 +163,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8
 | 1. Project Bootstrap + Diagram Core | 2/2 | ✓ Complete | 2026-02-14 |
 | 2. HTTP Server | 2/2 | ✓ Complete | 2026-02-14 |
 | 3. WebSocket + Real-Time Sync | 3/3 | ✓ Complete | 2026-02-15 |
-| 4. Interactive Browser UI | 0/3 | Not started | - |
+| 4. Interactive Browser UI | 0/2 | Not started | - |
 | 5. MCP Server | 0/3 | Not started | - |
 | 6. CLI + DX + AI Integration | 0/3 | Not started | - |
 | 7. VS Code Extension | 0/3 | Not started | - |
