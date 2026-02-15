@@ -10,18 +10,18 @@ See: .planning/PROJECT.md (updated 2026-02-14)
 ## Current Position
 
 Phase: 3 of 8 (WebSocket + Real-Time Sync)
-Plan: 1 of 3 in current phase (03-01 complete)
+Plan: 2 of 3 in current phase (03-02 complete)
 Status: In Progress
-Last activity: 2026-02-15 — Completed 03-01 (WebSocket + File Watcher Infrastructure)
+Last activity: 2026-02-15 — Completed 03-02 (Client-Side WebSocket + Reconnect)
 
-Progress: [████▓░░░░░] 38%
+Progress: [█████▓░░░░] 46%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 5
+- Total plans completed: 6
 - Average duration: 4min
-- Total execution time: 0.3 hours
+- Total execution time: 0.4 hours
 
 **By Phase:**
 
@@ -29,11 +29,11 @@ Progress: [████▓░░░░░] 38%
 |-------|-------|-------|----------|
 | 01-project-bootstrap-diagram-core | 2 | 9min | 4.5min |
 | 02-http-server | 2 | 8min | 4min |
-| 03-websocket-real-time-sync | 1 | 3min | 3min |
+| 03-websocket-real-time-sync | 2 | 5min | 2.5min |
 
 **Recent Trend:**
-- Last 5 plans: 6min, 3min, 5min, 3min
-- Trend: stable
+- Last 5 plans: 6min, 3min, 5min, 3min, 2min
+- Trend: stable/improving
 
 *Updated after each plan completion*
 
@@ -64,6 +64,9 @@ Recent decisions affecting current work:
 - [03-01]: ServerInstance composite return type instead of bare http.Server from createHttpServer
 - [03-01]: chokidar v5 installed (ESM-only, TypeScript-native) -- compatible with project's ESM setup
 - [03-01]: WsMessage discriminated union type for type-safe server-to-client messages
+- [03-02]: Status dot/text driven by WebSocket onStatusChange callback, not autoSync toggle
+- [03-02]: Auto-Sync toggle controls re-render only -- WS connection stays open regardless
+- [03-02]: var declarations in ws-client.js for broadest browser compatibility (no build step)
 
 ### Pending Todos
 
@@ -77,5 +80,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 03-01-PLAN.md (WebSocket + File Watcher Infrastructure)
+Stopped at: Completed 03-02-PLAN.md (Client-Side WebSocket + Reconnect)
 Resume file: None
