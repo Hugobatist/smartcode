@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-14)
 
 **Core value:** Developers can see what their AI is thinking and intervene surgically before it finishes
-**Current focus:** Phase 4 — Interactive Browser UI
+**Current focus:** Phase 5 — MCP Server
 
 ## Current Position
 
-Phase: 4 of 8 (Interactive Browser UI) -- COMPLETE
-Plan: 2 of 2 in current phase (04-02 complete)
-Status: Phase Complete
-Last activity: 2026-02-15 — Completed 04-02 (Ctrl+F Node Search)
+Phase: 5 of 8 (MCP Server)
+Plan: 1 of 3 in current phase (05-01 complete)
+Status: In Progress
+Last activity: 2026-02-15 — Completed 05-01 (MCP Server Foundation)
 
-Progress: [██████░░░░] 64%
+Progress: [███████░░░] 71%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
-- Average duration: 3.4min
-- Total execution time: 0.5 hours
+- Total plans completed: 10
+- Average duration: 3.5min
+- Total execution time: 0.6 hours
 
 **By Phase:**
 
@@ -31,10 +31,11 @@ Progress: [██████░░░░] 64%
 | 02-http-server | 2 | 8min | 4min |
 | 03-websocket-real-time-sync | 3 | 8min | 2.7min |
 | 04-interactive-browser-ui | 2 | 4min | 2min |
+| 05-mcp-server | 1 | 4min | 4min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 2min, 3min, 2min, 2min
-- Trend: stable/improving
+- Last 5 plans: 2min, 3min, 2min, 2min, 4min
+- Trend: stable
 
 *Updated after each plan completion*
 
@@ -78,6 +79,10 @@ Recent decisions affecting current work:
 - [04-02]: IIFE module following same pattern as annotations.js for consistency across all UI modules
 - [04-02]: Substring match on nodeLabel textContent (case-insensitive) for broad search
 - [04-02]: Pan-to-match using existing getPan/setPan hooks instead of new scroll mechanism
+- [05-01]: Raw Zod shapes (not z.object wrapped) for MCP SDK registerTool inputSchema compatibility
+- [05-01]: @status annotation format without quotes (%% @status nodeId statusValue) since status is a constrained enum
+- [05-01]: parseFlags silently skips @status lines to avoid spurious debug warnings for valid annotations
+- [05-01]: Dynamic import of DiagramService in startMcpServer for lazy loading consistency with serve command
 
 ### Pending Todos
 
@@ -127,11 +132,11 @@ Recent decisions affecting current work:
 
 ### Blockers/Concerns
 
-- Research flag: Phase 5 (MCP) needs research on MCP tool/resource schema design for optimal AI agent UX
+- ~~Research flag: Phase 5 (MCP) needs research on MCP tool/resource schema design for optimal AI agent UX~~ (resolved: 05-RESEARCH.md completed)
 - Research flag: Phase 8 (Scalability) needs research on hierarchical diagram navigation UX patterns
 
 ## Session Continuity
 
 Last session: 2026-02-15
-Stopped at: Completed 04-02-PLAN.md (Ctrl+F Node Search) -- Phase 4 complete
+Stopped at: Completed 05-01-PLAN.md (MCP Server Foundation)
 Resume file: None
