@@ -19,7 +19,7 @@ v2.0 replaces Mermaid.js as a black-box renderer with a custom interactive SVG p
 - [x] **Phase 13: Canvas Interactions** - Node selection, context menu, inline edit, keyboard shortcuts (completed 2026-02-15)
 - [x] **Phase 14: Undo/Redo + Edit Actions** - Command pattern, copy/paste/duplicate, folder management (completed 2026-02-16)
 - [x] **Phase 15: AI Breakpoints + Ghost Paths** - Breakpoint annotations, ghost path rendering, MCP tools (completed 2026-02-16)
-- [ ] **Phase 16: Heatmap + Session Recording** - Risk heatmap overlay, session store, session replay UI
+- [x] **Phase 16: Heatmap + Session Recording** - Risk heatmap overlay, session store, session replay UI (completed 2026-02-16)
 
 ### Phase Details
 
@@ -151,7 +151,7 @@ Plans:
   4. MCP tools `start_session`, `record_step`, `end_session` allow AI to record reasoning
   5. Timeline scrubber UI replays diagram evolution at 1x/2x/4x speed
   6. Diff highlighting shows added (green), removed (red), modified (yellow) nodes between frames
-**Plans:** 4 plans
+**Plans:** 4/4 plans complete
 
 Plans:
 - [ ] 16-01-PLAN.md — Backend: @risk annotations, SessionStore JSONL persistence, REST endpoints, WebSocket types
@@ -170,4 +170,4 @@ Plans:
 | 13. Canvas Interactions | 2/2 | Complete | 2026-02-15 |
 | 14. Undo/Redo + Edit Actions | 0/3 | Complete    | 2026-02-16 |
 | 15. AI Breakpoints + Ghost Paths | 0/3 | Complete    | 2026-02-16 |
-| 16. Heatmap + Session Recording | 0/4 | Not Started | - |
+| 16. Heatmap + Session Recording | 0/4 | Complete    | 2026-02-16 |
