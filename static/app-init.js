@@ -96,6 +96,7 @@
     document.addEventListener('keydown', function(e) {
         var editor = document.getElementById('editor');
         if (e.target === editor) return;
+        if (e.target.getAttribute && e.target.getAttribute('contenteditable') === 'true') return;
         if (e.target.closest('.flag-popover')) return;
         if (e.target.closest('.search-bar')) return;
         if (e.key === 'f' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); SmartBSearch.open(); return; }
@@ -117,6 +118,8 @@
             if (window.SmartBInteraction) SmartBInteraction.forceState(MmdEditor.getState().mode === 'addEdge' ? 'add-edge' : 'idle');
             return;
         }
+        if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey) && e.shiftKey) { e.preventDefault(); MmdEditor.redo(); return; }
+        if (e.key === 'y' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); MmdEditor.redo(); return; }
         if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) { e.preventDefault(); MmdEditor.undo(); return; }
         if (e.key === 'Escape') {
             SmartBAnnotations.closePopover(); MmdEditor.closeEditorPopover(); MmdEditor.setMode(null); SmartBSearch.close();
@@ -135,6 +138,28 @@
         if ((e.key === '=' || e.key === '+') && (e.ctrlKey || e.metaKey)) { e.preventDefault(); zoomIn(); }
         if (e.key === '-' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); zoomOut(); }
         if (e.key === '0' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); zoomFit(); }
+        if (e.key === 'c' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+            if (window.SmartBClipboard && SmartBClipboard.copy()) {
+                e.preventDefault();
+                if (window.toast) toast('Nodo copiado');
+            }
+            return;
+        }
+        if (e.key === 'v' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
+            if (window.SmartBClipboard && SmartBClipboard.hasContent()) {
+                e.preventDefault();
+                SmartBClipboard.paste();
+                if (window.toast) toast('Nodo colado');
+            }
+            return;
+        }
+        if (e.key === 'd' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            if (window.SmartBClipboard && SmartBClipboard.duplicate()) {
+                if (window.toast) toast('Nodo duplicado');
+            }
+            return;
+        }
     });
 
     document.addEventListener('keydown', function(e) {

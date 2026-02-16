@@ -154,6 +154,8 @@
 
     // ── File loading ──
     function loadFile(path) {
+        // Clear undo/redo history when switching files
+        if (window.SmartBCommandHistory) SmartBCommandHistory.clear();
         currentFile = path;
         window.currentFile = path;
         document.getElementById('currentFileName').textContent = prettyName(path);
