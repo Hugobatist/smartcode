@@ -17,49 +17,9 @@ import {
   type CollapseState,
 } from '../diagram/collapser.js';
 import { serializeGraphModel } from '../diagram/graph-serializer.js';
-
-/**
- * A node in the file tree returned by /tree.json.
- */
-interface TreeNode {
-  type: 'file' | 'folder';
-  name: string;
-  path?: string;
-  children?: TreeNode[];
-}
-
-/**
- * Convert a flat list of relative file paths into a nested tree structure.
- * Used by /tree.json to match the format expected by live.html sidebar.
- */
-function buildFileTree(files: string[]): TreeNode[] {
-  const root: TreeNode[] = [];
-
-  for (const filePath of files) {
-    const parts = filePath.split('/');
-    let current = root;
-
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i]!;
-      const isFile = i === parts.length - 1;
-
-      if (isFile) {
-        current.push({ type: 'file', name: part, path: filePath });
-      } else {
-        let folder = current.find(
-          (n) => n.type === 'folder' && n.name === part,
-        );
-        if (!folder) {
-          folder = { type: 'folder', name: part, children: [] };
-          current.push(folder);
-        }
-        current = folder.children!;
-      }
-    }
-  }
-
-  return root;
-}
+import { GhostPathStore } from './ghost-store.js';
+import type { GhostPath } from '../diagram/types.js';
+import { buildFileTree } from './file-tree.js';
 
 /**
  * Register all route handlers for the diagram viewer server.
@@ -69,7 +29,13 @@ function buildFileTree(files: string[]): TreeNode[] {
  * 1. live.html endpoints: tree.json, .mmd serving, /save, /delete, /mkdir, /move
  * 2. REST API endpoints: GET /api/diagrams, GET /api/diagrams/:file
  */
-export function registerRoutes(service: DiagramService, projectDir: string, wsManager?: WebSocketManager): Route[] {
+export function registerRoutes(
+  service: DiagramService,
+  projectDir: string,
+  wsManager?: WebSocketManager,
+  ghostStore?: GhostPathStore,
+  breakpointContinueSignals?: Map<string, boolean>,
+): Route[] {
   const routes: Route[] = [];
 
   // -------------------------------------------------------
@@ -378,8 +344,109 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
     },
   });
 
+  // ── Phase 15: Breakpoints + Ghost Paths ──
+
   // -------------------------------------------------------
-  // 11. GET /*.mmd -- Serve raw .mmd file content from project dir
+  // 11. POST /api/breakpoints/:file/continue -- Signal continue past breakpoint
+  //     (must be registered BEFORE the general breakpoints route)
+  // -------------------------------------------------------
+  routes.push({
+    method: 'POST',
+    pattern: new RegExp('^/api/breakpoints/(?<file>.+)/continue$'),
+    handler: async (req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => {
+      try {
+        const file = decodeURIComponent(params['file']!);
+        const body = await readJsonBody<{ nodeId: string }>(req);
+        if (!body.nodeId) {
+          sendJson(res, { error: 'Missing nodeId' }, 400);
+          return;
+        }
+        if (breakpointContinueSignals) {
+          breakpointContinueSignals.set(`${file}:${body.nodeId}`, true);
+        }
+        if (wsManager) {
+          wsManager.broadcastAll({ type: 'breakpoint:continue', file, nodeId: body.nodeId });
+        }
+        sendJson(res, { ok: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        if (message === 'Payload too large') { sendJson(res, { error: message }, 413); return; }
+        sendJson(res, { error: message }, 500);
+      }
+    },
+  });
+
+  // -------------------------------------------------------
+  // 12. GET /api/breakpoints/:file -- Get all breakpoints for a file
+  // -------------------------------------------------------
+  routes.push({
+    method: 'GET',
+    pattern: new RegExp('^/api/breakpoints/(?<file>.+)$'),
+    handler: async (_req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => {
+      try {
+        const file = decodeURIComponent(params['file']!);
+        const breakpoints = await service.getBreakpoints(file);
+        sendJson(res, { breakpoints: Array.from(breakpoints) });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        const code = (err as NodeJS.ErrnoException)?.code;
+        sendJson(res, { error: message }, code === 'ENOENT' ? 404 : 500);
+      }
+    },
+  });
+
+  // -------------------------------------------------------
+  // 13. POST /api/breakpoints/:file -- Set or remove a breakpoint
+  // -------------------------------------------------------
+  routes.push({
+    method: 'POST',
+    pattern: new RegExp('^/api/breakpoints/(?<file>.+)$'),
+    handler: async (req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => {
+      try {
+        const file = decodeURIComponent(params['file']!);
+        const body = await readJsonBody<{ nodeId: string; action: 'set' | 'remove' }>(req);
+        if (!body.nodeId || !body.action) {
+          sendJson(res, { error: 'Missing nodeId or action' }, 400);
+          return;
+        }
+        if (body.action === 'set') {
+          await service.setBreakpoint(file, body.nodeId);
+          if (wsManager) {
+            wsManager.broadcastAll({ type: 'breakpoint:hit', file, nodeId: body.nodeId });
+          }
+        } else {
+          await service.removeBreakpoint(file, body.nodeId);
+        }
+        sendJson(res, { ok: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        if (message === 'Payload too large') { sendJson(res, { error: message }, 413); return; }
+        const code = (err as NodeJS.ErrnoException)?.code;
+        sendJson(res, { error: message }, code === 'ENOENT' ? 404 : 500);
+      }
+    },
+  });
+
+  // -------------------------------------------------------
+  // 14. GET /api/ghost-paths/:file -- Get ghost paths for a file
+  // -------------------------------------------------------
+  routes.push({
+    method: 'GET',
+    pattern: new RegExp('^/api/ghost-paths/(?<file>.+)$'),
+    handler: async (_req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => {
+      try {
+        const file = decodeURIComponent(params['file']!);
+        const ghosts: GhostPath[] = ghostStore ? ghostStore.get(file) : [];
+        sendJson(res, { ghostPaths: ghosts });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        sendJson(res, { error: message }, 500);
+      }
+    },
+  });
+
+  // -------------------------------------------------------
+  // 15. GET /*.mmd -- Serve raw .mmd file content from project dir
   //     (must be registered AFTER /api routes to avoid conflicts)
   // -------------------------------------------------------
   routes.push({

@@ -10,7 +10,11 @@ export type WsMessage =
   | { type: 'file:removed'; file: string }
   | { type: 'tree:updated'; files: string[] }
   | { type: 'connected'; project: string }
-  | { type: 'graph:update'; file: string; graph: Record<string, unknown> };
+  | { type: 'graph:update'; file: string; graph: Record<string, unknown> }
+  // Phase 15: Breakpoints + Ghost Paths
+  | { type: 'breakpoint:hit'; file: string; nodeId: string }
+  | { type: 'breakpoint:continue'; file: string; nodeId: string }
+  | { type: 'ghost:update'; file: string; ghostPaths: Array<{ fromNodeId: string; toNodeId: string; label?: string }> };
 
 /**
  * Manages WebSocket servers using noServer mode for multi-project namespacing.
