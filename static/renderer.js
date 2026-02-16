@@ -38,9 +38,9 @@
         },
         flowchart: {
             curve: 'basis',
-            padding: 24,
-            nodeSpacing: 60,
-            rankSpacing: 80,
+            padding: 32,
+            nodeSpacing: 80,
+            rankSpacing: 100,
             htmlLabels: true,
         },
         securityLevel: 'sandbox',

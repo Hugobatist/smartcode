@@ -124,24 +124,78 @@ body {
   opacity: 0.7;
 }
 
-/* Diagram container */
-#diagram {
+/* ═══════════════════════════════════════
+   Diagram Container + Pan/Zoom
+   ═══════════════════════════════════════ */
+
+#diagram-container {
   flex: 1;
   width: 100%;
-  min-height: 200px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   position: relative;
-  overflow: auto;
-  padding: 8px;
-  box-sizing: border-box;
+  overflow: hidden;
+  cursor: grab;
+}
+
+#diagram-container.grabbing {
+  cursor: grabbing;
+}
+
+#diagram {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  padding: 40px;
+  min-width: 100%;
+  min-height: 100%;
 }
 
 #diagram svg {
-  max-width: 100%;
-  height: auto;
+  max-width: none !important;
+  height: auto !important;
   overflow: visible;
+}
+
+/* Zoom Controls */
+#zoom-controls {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--vscode-sideBar-background);
+  border: 1px solid var(--vscode-panel-border, rgba(255,255,255,0.1));
+  border-radius: 6px;
+  padding: 2px 4px;
+  z-index: 50;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.zoom-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--vscode-editor-foreground);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--vscode-font-family);
+  min-width: 28px;
+  text-align: center;
+}
+
+.zoom-btn:hover {
+  background: var(--vscode-toolbar-hoverBackground, rgba(255,255,255,0.1));
+}
+
+#zoom-label {
+  font-size: 11px;
+  color: var(--vscode-descriptionForeground);
+  min-width: 36px;
+  text-align: center;
+  user-select: none;
 }
 
 .status-message {
@@ -154,6 +208,7 @@ body {
   color: var(--vscode-errorForeground);
 }
 
+/* Connection status */
 .connection-status {
   font-size: 11px;
   padding: 2px 6px;

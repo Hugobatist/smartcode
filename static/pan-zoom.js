@@ -60,7 +60,22 @@
     // ── Mouse drag pan (disabled in flag mode, editor mode, and FSM blocking states) ──
     container.addEventListener('mousedown', function(e) {
         if (e.button !== 0) return;
-        // Check FSM blocking states (editing, context-menu, dragging)
+
+        // Auto-recover: if FSM says we're in a blocking state but no actual overlay exists, reset
+        if (window.SmartBInteraction) {
+            var fsmState = SmartBInteraction.getState();
+            if (fsmState === 'editing' && !(window.SmartBInlineEdit && SmartBInlineEdit.isActive())) {
+                SmartBInteraction.forceState('idle');
+            }
+            if (fsmState === 'context-menu' && !document.querySelector('.context-menu')) {
+                SmartBInteraction.forceState('idle');
+            }
+            if (fsmState === 'dragging' && !(window.SmartBNodeDrag && SmartBNodeDrag.isDragging())) {
+                SmartBInteraction.forceState('idle');
+            }
+        }
+
+        // Check FSM blocking states (editing, context-menu)
         if (window.SmartBInteraction && SmartBInteraction.isBlocking()) return;
         if (window.SmartBInteraction && SmartBInteraction.getState() === 'dragging') return;
         // Don't pan if clicking on a selected node (node-drag handles this)

@@ -27,13 +27,14 @@
     // ── Transition Table ──
     var TRANSITIONS = {
         idle:           { click_node: 'selected', click_edge: 'selected', right_click: 'context-menu', dbl_click: 'editing', flag_toggle: 'flagging', add_node_toggle: 'add-node', add_edge_toggle: 'add-edge', pan_start: 'panning' },
-        selected:       { click_empty: 'idle', click_node: 'selected', click_edge: 'selected', right_click: 'context-menu', dbl_click: 'editing', escape: 'idle', delete_node: 'idle', flag_toggle: 'flagging', pan_start: 'panning' },
+        selected:       { click_empty: 'idle', click_node: 'selected', click_edge: 'selected', right_click: 'context-menu', dbl_click: 'editing', escape: 'idle', delete_node: 'idle', flag_toggle: 'flagging', pan_start: 'panning', drag_start: 'dragging' },
         editing:        { confirm: 'idle', cancel: 'idle' },
         'context-menu': { action: 'idle', close: 'idle', edit_action: 'editing' },
         flagging:       { flag_toggle: 'idle', escape: 'idle' },
         'add-node':     { add_node_toggle: 'idle', escape: 'idle' },
         'add-edge':     { add_edge_toggle: 'idle', escape: 'idle' },
         panning:        { pan_end: 'idle', pan_end_selected: 'selected' },
+        dragging:       { drag_end: 'selected', escape: 'idle' },
     };
 
     // ── Internal State ──

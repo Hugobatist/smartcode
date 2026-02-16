@@ -139,22 +139,38 @@
         const bbox = element.getBBox ? element.getBBox() : null;
         if (!bbox) return;
         const ns = 'http://www.w3.org/2000/svg';
+
+        // Account for transform="translate(x,y)" on custom renderer nodes
+        var tx = 0, ty = 0;
+        var transform = element.getAttribute('transform');
+        if (transform) {
+            var m = transform.match(/translate\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/);
+            if (m) { tx = parseFloat(m[1]); ty = parseFloat(m[2]); }
+        }
+
         const g = svgEl(ns, 'g', { 'class': 'flag-badge' });
-        const cx = bbox.x + bbox.width - 2, cy = bbox.y + 2;
+        const cx = tx + bbox.x + bbox.width - 2, cy = ty + bbox.y + 2;
 
         g.appendChild(svgEl(ns, 'circle', { cx: cx, cy: cy, r: 12, fill: '#ef4444', stroke: '#fff', 'stroke-width': 2 }));
         var bang = svgEl(ns, 'text', { x: cx, y: cy + 1, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#fff', 'font-size': 13, 'font-weight': 700, 'font-family': 'Inter, sans-serif' });
         bang.textContent = '!';
         g.appendChild(bang);
 
-        // Flag message label + tooltip
+        // Flag message label with measured background
         var flagData = nodeId ? state.flags.get(nodeId) : null;
         if (flagData && flagData.message) {
-            var msg = flagData.message.length > 30 ? flagData.message.substring(0, 30) + '...' : flagData.message;
-            var tw = msg.length * 6 + 12;
-            g.appendChild(svgEl(ns, 'rect', { x: cx - tw / 2, y: cy + 14, width: tw, height: 16, rx: 8, fill: '#ef4444', opacity: '0.95' }));
-            var label = svgEl(ns, 'text', { x: cx, y: cy + 22, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#fff', 'font-size': 10, 'font-weight': 600, 'font-family': 'Inter, sans-serif' });
+            var msg = flagData.message.length > 35 ? flagData.message.substring(0, 34) + '\u2026' : flagData.message;
+            var label = svgEl(ns, 'text', { x: cx, y: cy + 24, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#fff', 'font-size': 10, 'font-weight': 600, 'font-family': "'JetBrains Mono', Inter, sans-serif" });
             label.textContent = msg;
+            // Measure text by temporarily appending
+            g.appendChild(label);
+            svg.appendChild(g);
+            var tBox = label.getBBox();
+            svg.removeChild(g);
+            g.removeChild(label);
+            // Background pill
+            var padX = 8, padY = 3;
+            g.appendChild(svgEl(ns, 'rect', { x: tBox.x - padX, y: tBox.y - padY, width: tBox.width + padX * 2, height: tBox.height + padY * 2, rx: 8, fill: '#ef4444', opacity: '0.95' }));
             g.appendChild(label);
             var title = document.createElementNS(ns, 'title');
             title.textContent = 'Flag: ' + flagData.message;

@@ -24,7 +24,6 @@ flowchart TB
         OV["Overview\nAll sectors\nwith color alerts"]
         DET["Monthly Detail\nby violation type\nwith counters"]
         RANK["Employee Ranking\nby total violations\nwith repeat offenders"]
-        TREND["Yearly Trends\nmonth-to-month\nevolution"]
         QUAL["Quality Indicator\nsectors with\nmissing data"]
     end
 
@@ -44,21 +43,16 @@ flowchart TB
     STORE --> OV
     STORE --> DET
     STORE --> RANK
-    STORE --> TREND
     STORE --> QUAL
     OV --> THAIS
     DET --> THAIS
     RANK --> THAIS
-    TREND --> THAIS
     QUAL --> THAIS
     THAIS --> XLSX
 
-    TREND -->|"dashborad"| RANK
     style SYSTEM fill:#e7e9eb,stroke:#6c757d
     style UPLOAD fill:#d4edda,stroke:#28a745
     style ENGINE fill:#d4edda,stroke:#28a745
-    style BI fill:#e3f2fd,stroke:#1565c0
-    style EXPORTAR fill:#e3f2fd,stroke:#1565c0
     style DECISION fill:#d4edda,stroke:#28a745
 
 %% --- ANNOTATIONS (auto-managed by SmartB Diagrams) ---

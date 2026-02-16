@@ -123,7 +123,7 @@
         // Wait for fonts so text measurement is accurate
         await document.fonts.ready;
 
-        // Compute layout via dagre
+        // Compute layout via dagre — throws if NaN detected
         var layout = SmartBDagreLayout.computeLayout(graphModel);
 
         // Build SVG DOM

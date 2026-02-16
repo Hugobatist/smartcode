@@ -206,6 +206,19 @@
     padding: 6px 0;
 }
 
+.flag-panel-file {
+    padding: 6px 14px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .flag-panel-item {
     padding: 10px 14px;
     cursor: pointer;
@@ -216,12 +229,36 @@
     background: rgba(255,255,255,0.04);
 }
 
+.flag-panel-item-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 3px;
+}
+
 .flag-panel-item-id {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     font-weight: 600;
     color: var(--accent-red);
-    margin-bottom: 3px;
+}
+
+.flag-panel-item-delete {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 2px;
+    opacity: 0;
+    transition: opacity 0.15s, color 0.15s;
+}
+.flag-panel-item:hover .flag-panel-item-delete {
+    opacity: 1;
+}
+.flag-panel-item-delete:hover {
+    color: var(--accent-red);
 }
 
 .flag-panel-item-msg {

@@ -66,19 +66,27 @@
     // ── Edge path construction ──
     function edgePointsToPath(points) {
         if (!points || points.length === 0) return '';
-        var d = 'M ' + points[0].x + ' ' + points[0].y;
-        if (points.length === 2) {
-            d += ' L ' + points[1].x + ' ' + points[1].y;
-        } else if (points.length >= 3) {
+        // Filter out points with NaN coordinates (defensive against dagre bugs)
+        var valid = [];
+        for (var vi = 0; vi < points.length; vi++) {
+            if (isFinite(points[vi].x) && isFinite(points[vi].y)) {
+                valid.push(points[vi]);
+            }
+        }
+        if (valid.length === 0) return '';
+        var d = 'M ' + valid[0].x + ' ' + valid[0].y;
+        if (valid.length === 2) {
+            d += ' L ' + valid[1].x + ' ' + valid[1].y;
+        } else if (valid.length >= 3) {
             var idx = 1;
-            while (idx + 2 < points.length) {
-                d += ' C ' + points[idx].x + ' ' + points[idx].y
-                    + ', ' + points[idx + 1].x + ' ' + points[idx + 1].y
-                    + ', ' + points[idx + 2].x + ' ' + points[idx + 2].y;
+            while (idx + 2 < valid.length) {
+                d += ' C ' + valid[idx].x + ' ' + valid[idx].y
+                    + ', ' + valid[idx + 1].x + ' ' + valid[idx + 1].y
+                    + ', ' + valid[idx + 2].x + ' ' + valid[idx + 2].y;
                 idx += 3;
             }
-            while (idx < points.length) {
-                d += ' L ' + points[idx].x + ' ' + points[idx].y;
+            while (idx < valid.length) {
+                d += ' L ' + valid[idx].x + ' ' + valid[idx].y;
                 idx++;
             }
         }
@@ -129,7 +137,9 @@
         var g = el('g');
         g.setAttribute('data-node-id', node.id);
         g.setAttribute('class', 'smartb-node');
-        g.setAttribute('transform', 'translate(' + node.x + ',' + node.y + ')');
+        var nx = isFinite(node.x) ? node.x : 0;
+        var ny = isFinite(node.y) ? node.y : 0;
+        g.setAttribute('transform', 'translate(' + nx + ',' + ny + ')');
 
         var shapeEl = window.SmartBSvgShapes.render(node.shape, node.width, node.height);
         attrs(shapeEl, { fill: THEME.nodeFill, stroke: THEME.nodeStroke, 'stroke-width': THEME.nodeStrokeWidth });
@@ -234,16 +244,22 @@
         g.setAttribute('data-subgraph-id', sg.id);
         g.setAttribute('class', 'smartb-subgraph');
 
+        // Guard against NaN/undefined positions from dagre compound layout
+        var sx = isFinite(sg.x) ? sg.x : 0;
+        var sy = isFinite(sg.y) ? sg.y : 0;
+        var sw = sg.width > 0 ? sg.width : 100;
+        var sh = sg.height > 0 ? sg.height : 60;
+
         g.appendChild(attrs(el('rect'), {
-            x: sg.x - sg.width / 2, y: sg.y - sg.height / 2,
-            width: sg.width, height: sg.height, rx: 8,
+            x: sx - sw / 2, y: sy - sh / 2,
+            width: sw, height: sh, rx: 8,
             fill: THEME.subgraphFill, stroke: THEME.subgraphStroke,
             'stroke-width': THEME.subgraphStrokeWidth
         }));
 
         var text = el('text');
         attrs(text, {
-            x: sg.x, y: sg.y - sg.height / 2 + 20,
+            x: sx, y: sy - sh / 2 + 20,
             'text-anchor': 'middle', 'dominant-baseline': 'central',
             fill: THEME.subgraphLabelColor, 'font-family': THEME.nodeFontFamily,
             'font-size': THEME.subgraphLabelFontSize, 'font-weight': THEME.subgraphLabelFontWeight

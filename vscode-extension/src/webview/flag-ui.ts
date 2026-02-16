@@ -84,7 +84,7 @@ function showFlagInput(node: SVGGElement, nodeId: string): void {
   // Remove any existing input
   hideFlagInput();
 
-  const container = document.getElementById('diagram');
+  const container = document.getElementById('diagram-container') || document.getElementById('diagram');
   if (!container) return;
 
   // Get node position relative to the diagram container

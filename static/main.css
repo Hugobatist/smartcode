@@ -304,27 +304,16 @@ body {
     height: auto !important;
 }
 
-/* High-contrast mermaid overrides for light background */
+/* High-contrast mermaid overrides for light background.
+ * IMPORTANT: Do NOT override font-size or font-weight here — Mermaid calculates
+ * node box sizes based on its own font metrics. CSS overrides applied after layout
+ * cause text to overflow the allocated space, producing overlap artifacts.
+ * Font configuration must be done in MERMAID_CONFIG (renderer.js themeVariables). */
 #preview .node rect,
 #preview .node circle,
 #preview .node polygon,
 #preview .node .label-container {
     stroke-width: 2px !important;
-}
-#preview .nodeLabel,
-#preview .label {
-    font-family: 'Inter', sans-serif !important;
-    font-weight: 600 !important;
-    font-size: 15px !important;
-}
-#preview .edgeLabel {
-    font-family: 'Inter', sans-serif !important;
-    font-weight: 500 !important;
-    font-size: 13px !important;
-}
-#preview .cluster-label .nodeLabel {
-    font-size: 17px !important;
-    font-weight: 700 !important;
 }
 
 /* -- Zoom controls (glass pill) -- */

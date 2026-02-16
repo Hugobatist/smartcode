@@ -1,0 +1,67 @@
+flowchart TD
+    CLI[CLI Entry Point] --> SRV[HTTP Server]
+    CLI --> MCP[MCP Server]
+    CLI --> WATCH[File Watcher]
+
+    SRV --> ROUTES[REST Routes]
+    SRV --> WS[WebSocket Manager]
+    SRV --> STATIC[Static Assets]
+    SRV --> SROUTES[Session Routes]
+
+    MCP --> TOOLS[MCP Tools]
+    MCP --> STOOLS[Session Tools]
+    MCP --> SCHEMAS[Schemas]
+    MCP --> RES[Resources]
+
+    TOOLS --> GHOST[Ghost Store]
+    STOOLS --> SESS[Session Store]
+    GHOST --> WS
+    SESS --> WS
+
+    ROUTES --> DIAG[Diagram Service]
+    ROUTES --> GHOST
+    SROUTES --> SESS
+
+    DIAG --> PARSER[Graph Parser]
+    DIAG --> ANNOT[Annotations]
+    DIAG --> VALID[Validator]
+    DIAG --> COLLAPSE[Collapser]
+    PARSER --> EDGES[Edge Parser]
+    PARSER --> SERIAL[Serializer]
+
+    WATCH --> DIAG
+    WATCH --> WS
+
+    PROJ[Project Manager] --> DISC[Discovery]
+
+    WS --> BROWSER[Browser UI]
+    STATIC --> BROWSER
+
+    BROWSER --> REND[Renderer + SVG]
+    BROWSER --> PANUI[Pan/Zoom + Interaction]
+    BROWSER --> EDITUI[Editor + Inline Edit]
+    BROWSER --> GHOSTUI[Ghost Paths UI]
+    BROWSER --> HEATUI[Heatmap UI]
+    BROWSER --> SESSUI[Session Player]
+    BROWSER --> TREEUI[File Tree]
+
+%% --- ANNOTATIONS (auto-managed by SmartB Diagrams) ---
+%% @status CLI ok
+%% @status SRV ok
+%% @status MCP ok
+%% @status ROUTES problem
+%% @status WS ok
+%% @status DIAG ok
+%% @status TOOLS ok
+%% @status PARSER ok
+%% @status BROWSER problem
+%% @status REND ok
+%% @status GHOSTUI ok
+%% @status HEATUI ok
+%% @status SESSUI ok
+%% @status PANUI ok
+%% @status EDITUI ok
+%% @status TREEUI ok
+%% @status WATCH ok
+%% @status PROJ ok
+%% --- END ANNOTATIONS ---
