@@ -9,11 +9,11 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 15-ai-breakpoints-ghost-paths
-Plan: 02 of 03 complete
-Status: Plan 02 complete -- MCP tools for breakpoints and ghost paths
-Last activity: 2026-02-16 -- Plan 02 executed (2 tasks, 3min), 238 tests passing
+Plan: 03 of 03 complete
+Status: Phase 15 complete -- AI breakpoints and ghost paths fully implemented
+Last activity: 2026-02-16 -- Plan 03 executed (2 tasks, 4min), 238 tests passing
 
-Progress: [██████████] v1.0 100% | Phase 15: [======----] 2/3 plans complete
+Progress: [██████████] v1.0 100% | Phase 15: [==========] 3/3 plans complete
 
 ## v1.0 Performance Metrics
 
@@ -176,6 +176,12 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - createMcpServer deferred after HTTP server init when --serve so deps are available
 - broadcastAll for breakpoint/ghost messages (cross-cutting, not project-scoped)
 - Tests exercise DiagramService/GhostPathStore directly (not MCP protocol integration)
+- Breakpoint indicators: SVG circle overlay at (bbox.x - 4, bbox.y + bbox.height/2) with pointer-events:none
+- Notification bar via createElement (not innerHTML) for XSS safety
+- B key (no modifier) toggles breakpoint on selected node; Ctrl+B preserved for sidebar toggle
+- Ghost path visibility persisted in localStorage key 'smartb-ghost-paths-visible'
+- Ghost paths render as dashed lines at 30% opacity inserted before first real edge for z-order
+- annotations.js parses breakpoints and forwards to SmartBBreakpoints.updateBreakpoints()
 
 ### Pre-Release Todos Status
 
@@ -312,8 +318,18 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 13 new tests: 6 breakpoint annotation tests, 7 breakpoint/ghost store tests
 - Duration: 3 min, 238 tests pass
 
+**15-03 (Complete):** Frontend UI for breakpoints and ghost paths
+- breakpoints.js (189 lines): SmartBBreakpoints with SVG red circle indicators, notification bar, REST toggle/continue/remove
+- ghost-paths.js (167 lines): SmartBGhostPaths with dashed translucent edge rendering, toggle with localStorage, count badge
+- breakpoints.css (94 lines): indicator, notification bar, ghost-count-badge styles
+- annotations.js (495 lines): BREAKPOINT_REGEX, breakpoints Set in state, forwarding to SmartBBreakpoints
+- context-menu.js (242 lines): Toggle Breakpoint menu item for nodes
+- app-init.js (457 lines): module init, WS handlers for breakpoint:hit/continue/ghost:update, B key shortcut, ghost path fetch
+- live.html (173 lines): breakpoints.css link, Ghost toggle button, script tags, help rows
+- Duration: 4 min, 238 tests pass
+
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 15-02-PLAN.md (MCP tools for breakpoints and ghost paths)
-Next action: Execute 15-03-PLAN.md (frontend UI for breakpoints and ghost paths)
+Stopped at: Completed 15-03-PLAN.md (frontend UI for breakpoints and ghost paths) -- Phase 15 complete
+Next action: Phase 15 complete. All 3 plans executed (backend infra, MCP tools, frontend UI).
