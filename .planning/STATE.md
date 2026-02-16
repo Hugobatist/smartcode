@@ -9,11 +9,11 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 15-ai-breakpoints-ghost-paths
-Plan: 01 of 03 complete
-Status: Plan 01 complete -- backend infrastructure for breakpoints and ghost paths
-Last activity: 2026-02-16 -- Plan 01 executed (2 tasks, 4min), 225 tests passing
+Plan: 02 of 03 complete
+Status: Plan 02 complete -- MCP tools for breakpoints and ghost paths
+Last activity: 2026-02-16 -- Plan 02 executed (2 tasks, 3min), 238 tests passing
 
-Progress: [██████████] v1.0 100% | Phase 15: [===-------] 1/3 plans complete
+Progress: [██████████] v1.0 100% | Phase 15: [======----] 2/3 plans complete
 
 ## v1.0 Performance Metrics
 
@@ -172,6 +172,10 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - POST /api/breakpoints/:file/continue registered BEFORE general breakpoints route for pattern specificity
 - Ghost paths stored in-memory per file (no disk persistence -- session-scoped data)
 - Breakpoint annotation format: %% @breakpoint NodeId (alongside existing @flag and @status)
+- Optional deps pattern for registerTools: ghostStore/wsManager/continueSignals via options object
+- createMcpServer deferred after HTTP server init when --serve so deps are available
+- broadcastAll for breakpoint/ghost messages (cross-cutting, not project-scoped)
+- Tests exercise DiagramService/GhostPathStore directly (not MCP protocol integration)
 
 ### Pre-Release Todos Status
 
@@ -199,8 +203,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 ### Test Coverage
 
-- 225 tests passing across 17 test files
-- Key coverage: collapser (42 tests), graph-parser (30), graph-roundtrip (25), annotations (22), graph-serializer (15), server (13), viewport-transform (11), service (11), dagre-layout (9), parser (9)
+- 238 tests passing across 18 test files
+- Key coverage: collapser (42 tests), graph-parser (30), annotations (28), graph-roundtrip (25), graph-serializer (15), server (13), viewport-transform (11), service (11), dagre-layout (9), parser (9), breakpoint-tools (7)
 - Gaps: no frontend tests, no POST route tests
 
 ## Phase 11 Progress
@@ -300,8 +304,16 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - buildFileTree extracted to file-tree.ts (routes.ts 471 lines)
 - Duration: 4 min, 225 tests pass
 
+**15-02 (Complete):** MCP tools for breakpoints and ghost paths
+- check_breakpoints tool: returns 'pause' or 'continue' based on breakpoint state and continue signals
+- record_ghost_path tool: stores ghost paths via GhostPathStore, broadcasts via WebSocket
+- Both tools gracefully degrade in MCP-only mode (without --serve)
+- McpToolDependencies interface, createMcpServer deferred in startMcpServer
+- 13 new tests: 6 breakpoint annotation tests, 7 breakpoint/ghost store tests
+- Duration: 3 min, 238 tests pass
+
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 15-01-PLAN.md (backend infrastructure for breakpoints and ghost paths)
-Next action: Execute 15-02-PLAN.md (MCP tools for breakpoints and ghost paths)
+Stopped at: Completed 15-02-PLAN.md (MCP tools for breakpoints and ghost paths)
+Next action: Execute 15-03-PLAN.md (frontend UI for breakpoints and ghost paths)
