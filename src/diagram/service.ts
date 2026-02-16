@@ -1,9 +1,9 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import type { DiagramContent, Flag, NodeStatus, ValidationResult } from './types.js';
+import type { DiagramContent, Flag, NodeStatus, RiskAnnotation, RiskLevel, ValidationResult } from './types.js';
 import type { GraphModel } from './graph-types.js';
 import { parseDiagramContent } from './parser.js';
-import { injectAnnotations, parseFlags, parseStatuses, parseBreakpoints } from './annotations.js';
+import { injectAnnotations, parseFlags, parseStatuses, parseBreakpoints, parseRisks } from './annotations.js';
 import { validateMermaidSyntax } from './validator.js';
 import { parseMermaidToGraph } from './graph-parser.js';
 import { resolveProjectPath } from '../utils/paths.js';
@@ -76,16 +76,18 @@ export class DiagramService {
     flags?: Map<string, Flag>,
     statuses?: Map<string, NodeStatus>,
     breakpoints?: Set<string>,
+    risks?: Map<string, RiskAnnotation>,
   ): Promise<void> {
     const resolved = this.resolvePath(filePath);
     let output = content;
 
-    if (flags || statuses || breakpoints) {
+    if (flags || statuses || breakpoints || risks) {
       output = injectAnnotations(
         content,
         flags ?? new Map(),
         statuses,
         breakpoints,
+        risks,
       );
     }
 
@@ -112,11 +114,12 @@ export class DiagramService {
       const flags = parseFlags(raw);
       const statuses = parseStatuses(raw);
       const breakpoints = parseBreakpoints(raw);
+      const risks = parseRisks(raw);
 
       flags.set(nodeId, { nodeId, message });
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -131,11 +134,12 @@ export class DiagramService {
       const flags = parseFlags(raw);
       const statuses = parseStatuses(raw);
       const breakpoints = parseBreakpoints(raw);
+      const risks = parseRisks(raw);
 
       flags.delete(nodeId);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -158,11 +162,12 @@ export class DiagramService {
       const flags = parseFlags(raw);
       const statuses = parseStatuses(raw);
       const breakpoints = parseBreakpoints(raw);
+      const risks = parseRisks(raw);
 
       statuses.set(nodeId, status);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -177,11 +182,12 @@ export class DiagramService {
       const flags = parseFlags(raw);
       const statuses = parseStatuses(raw);
       const breakpoints = parseBreakpoints(raw);
+      const risks = parseRisks(raw);
 
       statuses.delete(nodeId);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -205,11 +211,12 @@ export class DiagramService {
       const flags = parseFlags(raw);
       const statuses = parseStatuses(raw);
       const breakpoints = parseBreakpoints(raw);
+      const risks = parseRisks(raw);
 
       breakpoints.add(nodeId);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -224,11 +231,61 @@ export class DiagramService {
       const flags = parseFlags(raw);
       const statuses = parseStatuses(raw);
       const breakpoints = parseBreakpoints(raw);
+      const risks = parseRisks(raw);
 
       breakpoints.delete(nodeId);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
+    });
+  }
+
+  /**
+   * Get all risk annotations from a .mmd file.
+   */
+  async getRisks(filePath: string): Promise<Map<string, RiskAnnotation>> {
+    const resolved = this.resolvePath(filePath);
+    const raw = await readFile(resolved, 'utf-8');
+    return parseRisks(raw);
+  }
+
+  /**
+   * Set (add or update) a risk annotation on a specific node in a .mmd file.
+   * Uses a per-file write lock to prevent race conditions.
+   */
+  async setRisk(filePath: string, nodeId: string, level: RiskLevel, reason: string): Promise<void> {
+    return this.withWriteLock(filePath, async () => {
+      const resolved = this.resolvePath(filePath);
+      const raw = await readFile(resolved, 'utf-8');
+      const flags = parseFlags(raw);
+      const statuses = parseStatuses(raw);
+      const breakpoints = parseBreakpoints(raw);
+      const risks = parseRisks(raw);
+
+      risks.set(nodeId, { nodeId, level, reason });
+
+      const { mermaidContent } = parseDiagramContent(raw);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
+    });
+  }
+
+  /**
+   * Remove a risk annotation from a specific node in a .mmd file.
+   * Uses a per-file write lock to prevent race conditions.
+   */
+  async removeRisk(filePath: string, nodeId: string): Promise<void> {
+    return this.withWriteLock(filePath, async () => {
+      const resolved = this.resolvePath(filePath);
+      const raw = await readFile(resolved, 'utf-8');
+      const flags = parseFlags(raw);
+      const statuses = parseStatuses(raw);
+      const breakpoints = parseBreakpoints(raw);
+      const risks = parseRisks(raw);
+
+      risks.delete(nodeId);
+
+      const { mermaidContent } = parseDiagramContent(raw);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 

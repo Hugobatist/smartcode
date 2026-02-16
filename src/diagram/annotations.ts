@@ -1,4 +1,4 @@
-import type { Flag, NodeStatus } from './types.js';
+import type { Flag, NodeStatus, RiskAnnotation, RiskLevel } from './types.js';
 import { log } from '../utils/logger.js';
 
 export const ANNOTATION_START = '%% --- ANNOTATIONS (auto-managed by SmartB Diagrams) ---';
@@ -6,6 +6,7 @@ export const ANNOTATION_END = '%% --- END ANNOTATIONS ---';
 const FLAG_REGEX = /^%%\s*@flag\s+(\S+)\s+"([^"]*)"$/;
 const STATUS_REGEX = /^%%\s*@status\s+(\S+)\s+(\S+)$/;
 export const BREAKPOINT_REGEX = /^%%\s*@breakpoint\s+(\S+)$/;
+export const RISK_REGEX = /^%%\s*@risk\s+(\S+)\s+(high|medium|low)\s+"([^"]*)"$/;
 
 /**
  * Parse all `%% @flag` lines from within the annotation block.
@@ -40,7 +41,7 @@ export function parseFlags(content: string): Map<string, Flag> {
       const nodeId = match[1]!;
       const message = match[2]!;
       flags.set(nodeId, { nodeId, message });
-    } else if (!STATUS_REGEX.test(trimmed) && !BREAKPOINT_REGEX.test(trimmed)) {
+    } else if (!STATUS_REGEX.test(trimmed) && !BREAKPOINT_REGEX.test(trimmed) && !RISK_REGEX.test(trimmed)) {
       log.debug(`Skipping unrecognized annotation line: ${trimmed}`);
     }
   }
@@ -128,6 +129,44 @@ export function parseBreakpoints(content: string): Set<string> {
 }
 
 /**
+ * Parse all `%% @risk` lines from within the annotation block.
+ * Returns a Map keyed by nodeId with RiskAnnotation values.
+ */
+export function parseRisks(content: string): Map<string, RiskAnnotation> {
+  const risks = new Map<string, RiskAnnotation>();
+  const lines = content.split('\n');
+
+  let inBlock = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed === ANNOTATION_START) {
+      inBlock = true;
+      continue;
+    }
+
+    if (trimmed === ANNOTATION_END) {
+      inBlock = false;
+      continue;
+    }
+
+    if (!inBlock) continue;
+
+    if (trimmed === '') continue;
+
+    const match = RISK_REGEX.exec(trimmed);
+    if (match) {
+      const nodeId = match[1]!;
+      const level = match[2]! as RiskLevel;
+      const reason = match[3]!;
+      risks.set(nodeId, { nodeId, level, reason });
+    }
+  }
+
+  return risks;
+}
+
+/**
  * Remove the entire annotation block (from ANNOTATION_START to ANNOTATION_END inclusive)
  * and any trailing blank lines. Returns pure Mermaid content.
  */
@@ -173,14 +212,16 @@ export function injectAnnotations(
   flags: Map<string, Flag>,
   statuses?: Map<string, NodeStatus>,
   breakpoints?: Set<string>,
+  risks?: Map<string, RiskAnnotation>,
 ): string {
   const clean = stripAnnotations(content);
 
   const hasFlags = flags.size > 0;
   const hasStatuses = statuses !== undefined && statuses.size > 0;
   const hasBreakpoints = breakpoints !== undefined && breakpoints.size > 0;
+  const hasRisks = risks !== undefined && risks.size > 0;
 
-  if (!hasFlags && !hasStatuses && !hasBreakpoints) {
+  if (!hasFlags && !hasStatuses && !hasBreakpoints && !hasRisks) {
     return clean;
   }
 
@@ -203,6 +244,13 @@ export function injectAnnotations(
   if (hasBreakpoints) {
     for (const nodeId of breakpoints!) {
       lines.push(`%% @breakpoint ${nodeId}`);
+    }
+  }
+
+  if (hasRisks) {
+    for (const [nodeId, risk] of risks!) {
+      const escapedReason = risk.reason.replace(/"/g, "''");
+      lines.push(`%% @risk ${nodeId} ${risk.level} "${escapedReason}"`);
     }
   }
 

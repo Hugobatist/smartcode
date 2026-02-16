@@ -54,6 +54,16 @@ export interface ValidationError {
   column?: number;
 }
 
+/** Risk level for a node annotation */
+export type RiskLevel = 'high' | 'medium' | 'low';
+
+/** A risk annotation on a diagram node */
+export interface RiskAnnotation {
+  nodeId: string;
+  level: RiskLevel;
+  reason: string;
+}
+
 /** A ghost path suggested by AI for alternative diagram flow */
 export interface GhostPath {
   fromNodeId: string;
