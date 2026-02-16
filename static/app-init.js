@@ -160,6 +160,14 @@
             }
             return;
         }
+        if (e.key === 'b' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (window.SmartBBreakpoints && window.SmartBSelection) {
+                var sel = SmartBSelection.getSelected();
+                if (sel && sel.type === 'node') {
+                    SmartBBreakpoints.toggleBreakpoint(sel.id);
+                }
+            }
+        }
     });
 
     document.addEventListener('keydown', function(e) {
@@ -189,6 +197,10 @@
     if (window.SmartBSelection) SmartBSelection.init();
     if (window.SmartBContextMenu) SmartBContextMenu.init();
     if (window.SmartBInlineEdit) SmartBInlineEdit.init();
+
+    // ── Init Phase 15: Breakpoints & Ghost Paths ──
+    if (window.SmartBBreakpoints) SmartBBreakpoints.init();
+    if (window.SmartBGhostPaths) SmartBGhostPaths.init();
 
     // ── Init Collapse UI ──
     if (window.SmartBCollapseUI) {
@@ -317,6 +329,17 @@
                     }
                 }
             } catch (e) { /* keep Mermaid as fallback */ }
+
+            // Fetch ghost paths for initial file
+            if (window.SmartBGhostPaths) {
+                try {
+                    var gpResp = await fetch('/api/ghost-paths/' + encodeURIComponent(currentFile));
+                    if (gpResp.ok) {
+                        var gpData = await gpResp.json();
+                        SmartBGhostPaths.updateGhostPaths(gpData.ghostPaths || []);
+                    }
+                } catch (e) {}
+            }
         }
 
         // WebSocket real-time sync
@@ -348,6 +371,8 @@
                                 var incoming = SmartBAnnotations.parseAnnotations(wsText);
                                 SmartBAnnotations.getState().flags = incoming.flags;
                                 SmartBAnnotations.getState().statuses = incoming.statuses;
+                                SmartBAnnotations.getState().breakpoints = incoming.breakpoints;
+                                if (window.SmartBBreakpoints) SmartBBreakpoints.updateBreakpoints(incoming.breakpoints);
                                 SmartBAnnotations.renderPanel();
                                 SmartBAnnotations.updateBadge();
                             }
@@ -360,6 +385,15 @@
                             }
                         }
                     }
+                    break;
+                case 'breakpoint:hit':
+                    if (window.SmartBBreakpoints) SmartBBreakpoints.showNotification(msg.nodeId);
+                    break;
+                case 'breakpoint:continue':
+                    if (window.SmartBBreakpoints) SmartBBreakpoints.hideNotification();
+                    break;
+                case 'ghost:update':
+                    if (window.SmartBGhostPaths) SmartBGhostPaths.updateGhostPaths(msg.ghostPaths);
                     break;
                 case 'file:added':
                 case 'file:removed':

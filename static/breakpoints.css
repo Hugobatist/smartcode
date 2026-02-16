@@ -60,3 +60,35 @@
 .btn-breakpoint-action.primary:hover {
     background: #16a34a;
 }
+
+/* ── Ghost Paths Toggle Button ── */
+#btnGhostPaths {
+    position: relative;
+}
+#btnGhostPaths.active {
+    background: rgba(156, 163, 175, 0.2) !important;
+    color: #9ca3af !important;
+    border-color: rgba(156, 163, 175, 0.3) !important;
+}
+
+.ghost-count-badge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #9ca3af;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    box-shadow: 0 1px 4px rgba(156,163,175,0.4);
+}
+.ghost-count-badge:empty,
+.ghost-count-badge[data-count="0"] {
+    display: none;
+}

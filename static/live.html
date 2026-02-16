@@ -10,6 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
     <link rel="stylesheet" href="main.css">
     <link rel="stylesheet" href="annotations.css">
+    <link rel="stylesheet" href="breakpoints.css">
     <link rel="stylesheet" href="search.css">
 </head>
 <body>
@@ -31,6 +32,7 @@
     <button class="btn btn-edit" id="btnAddEdge" onclick="MmdEditor.toggleAddEdge()">+ Seta</button>
     <button class="btn btn-flags" id="btnFlags" onclick="SmartBAnnotations.toggleFlagMode()">Flags <span class="flag-count-badge" id="flagCountBadge" data-count="0"></span></button>
     <button class="btn" id="toggleFlagPanel" onclick="SmartBAnnotations.togglePanel()">Painel</button>
+    <button class="btn" id="btnGhostPaths" onclick="SmartBGhostPaths.toggle()">Ghost <span class="ghost-count-badge" id="ghostCountBadge" data-count="0"></span></button>
     <button class="btn" onclick="showHelp()">?</button>
     <div class="status">
         <div class="status-dot" id="statusDot"></div>
@@ -124,6 +126,9 @@
         <div class="help-row"><span><kbd>Del</kbd> / <kbd>Backspace</kbd></span><span>Deletar selecionado</span></div>
         <div class="help-row"><span>Duplo-clique</span><span>Focus no subgraph</span></div>
         <div class="help-row"><span><kbd>Esc</kbd></span><span>Sair do Focus Mode</span></div>
+        <div class="help-row"><span><kbd>B</kbd></span><span>Toggle Breakpoint (nodo selecionado)</span></div>
+        <div class="help-row"><span>Right-click > Toggle Breakpoint</span><span>Toggle Breakpoint</span></div>
+        <div class="help-row"><span>Ghost button</span><span>Toggle ghost path visibility</span></div>
         <div class="help-row"><span><kbd>?</kbd></span><span>Ajuda</span></div>
         <br>
         <h2>Como funciona</h2>
@@ -160,6 +165,8 @@
 <script src="svg-shapes.js"></script>
 <script src="svg-renderer.js"></script>
 <script src="custom-renderer.js"></script>
+<script src="breakpoints.js"></script>
+<script src="ghost-paths.js"></script>
 <script src="app-init.js"></script>
 
 </body>

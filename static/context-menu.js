@@ -118,6 +118,10 @@
                 doFlag();
             }));
 
+            menu.appendChild(createMenuItem('Toggle Breakpoint', '', function() {
+                if (window.SmartBBreakpoints) SmartBBreakpoints.toggleBreakpoint(nodeInfo.id);
+            }));
+
             menu.appendChild(createMenuItem('Nova Seta', '', function() {
                 if (window.MmdEditor) MmdEditor.startConnectFrom(nodeInfo.id);
             }));
