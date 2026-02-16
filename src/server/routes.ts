@@ -1,4 +1,4 @@
-import { readFile, writeFile, mkdir, unlink, rename } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, unlink, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { DiagramService } from '../diagram/service.js';
@@ -193,7 +193,32 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
   });
 
   // -------------------------------------------------------
-  // 6. GET /api/status -- Server diagnostics
+  // 6. POST /rmdir -- Delete directory recursively
+  // -------------------------------------------------------
+  routes.push({
+    method: 'POST',
+    pattern: new RegExp('^/rmdir$'),
+    handler: async (req: IncomingMessage, res: ServerResponse) => {
+      try {
+        const body = await readJsonBody<{ folder: string }>(req);
+        if (!body.folder) {
+          sendJson(res, { error: 'Missing folder' }, 400);
+          return;
+        }
+        const resolved = resolveProjectPath(projectDir, body.folder);
+        await rm(resolved, { recursive: true });
+        sendJson(res, { ok: true });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        if (message === 'Payload too large') { sendJson(res, { error: message }, 413); return; }
+        const code = (err as NodeJS.ErrnoException)?.code;
+        sendJson(res, { error: message }, code === 'ENOENT' ? 404 : 500);
+      }
+    },
+  });
+
+  // -------------------------------------------------------
+  // 7. GET /api/status -- Server diagnostics
   // -------------------------------------------------------
   routes.push({
     method: 'GET',
@@ -232,7 +257,7 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
   });
 
   // -------------------------------------------------------
-  // 7. GET /api/diagrams -- REST: List all diagrams
+  // 8. GET /api/diagrams -- REST: List all diagrams
   // -------------------------------------------------------
   routes.push({
     method: 'GET',
@@ -249,7 +274,7 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
   });
 
   // -------------------------------------------------------
-  // 8. GET /api/diagrams/:file -- REST: Get diagram content
+  // 9. GET /api/diagrams/:file -- REST: Get diagram content
   //    Query params:
   //      collapsed     - JSON array of manually collapsed subgraph IDs
   //      collapseConfig - JSON object to override DEFAULT_CONFIG
@@ -334,7 +359,7 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
   });
 
   // -------------------------------------------------------
-  // 9. GET /api/graph/:file -- REST: Get graph model (structured layout data)
+  // 10. GET /api/graph/:file -- REST: Get graph model (structured layout data)
   // -------------------------------------------------------
   routes.push({
     method: 'GET',
@@ -354,7 +379,7 @@ export function registerRoutes(service: DiagramService, projectDir: string, wsMa
   });
 
   // -------------------------------------------------------
-  // 10. GET /*.mmd -- Serve raw .mmd file content from project dir
+  // 11. GET /*.mmd -- Serve raw .mmd file content from project dir
   //     (must be registered AFTER /api routes to avoid conflicts)
   // -------------------------------------------------------
   routes.push({
