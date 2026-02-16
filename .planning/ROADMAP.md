@@ -18,7 +18,7 @@ v2.0 replaces Mermaid.js as a black-box renderer with a custom interactive SVG p
 - [x] **Phase 12: Server + Browser Integration** - Graph API endpoint, WebSocket graph:update, live.html integration, Mermaid fallback (completed 2026-02-15)
 - [x] **Phase 13: Canvas Interactions** - Node selection, context menu, inline edit, keyboard shortcuts (completed 2026-02-15)
 - [x] **Phase 14: Undo/Redo + Edit Actions** - Command pattern, copy/paste/duplicate, folder management (completed 2026-02-16)
-- [ ] **Phase 15: AI Breakpoints + Ghost Paths** - Breakpoint annotations, ghost path rendering, MCP tools
+- [x] **Phase 15: AI Breakpoints + Ghost Paths** - Breakpoint annotations, ghost path rendering, MCP tools (completed 2026-02-16)
 - [ ] **Phase 16: Heatmap + Session Recording** - Risk heatmap overlay, session store, session replay UI
 
 ### Phase Details
@@ -134,7 +134,7 @@ Plans:
   4. Ghost paths (discarded reasoning branches) render as dashed edges at 30% opacity
   5. A toggle button shows/hides ghost paths
   6. MCP tool `record_ghost_path()` allows AI to log abandoned paths
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 15-01-PLAN.md — Backend: breakpoint annotations, DiagramService CRUD, ghost store, WS types, REST endpoints
@@ -163,5 +163,5 @@ Plans:
 | 12. Server + Browser Integration | 3/3 | Complete | 2026-02-15 |
 | 13. Canvas Interactions | 2/2 | Complete | 2026-02-15 |
 | 14. Undo/Redo + Edit Actions | 0/3 | Complete    | 2026-02-16 |
-| 15. AI Breakpoints + Ghost Paths | 0/3 | Planned | - |
+| 15. AI Breakpoints + Ghost Paths | 0/3 | Complete    | 2026-02-16 |
 | 16. Heatmap + Session Recording | 0/? | Not Started | - |
