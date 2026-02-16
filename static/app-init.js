@@ -41,20 +41,43 @@
         }
     }
 
+    // ── Detect diagram type from mermaid source ──
+    function detectDiagramType(text) {
+        if (!text) return null;
+        var first = text.trim().split(/\s/)[0].toLowerCase();
+        if (first === 'flowchart' || first === 'graph') return first;
+        return first; // sequence, classDiagram, etc.
+    }
+
     // ── Render with type (custom or mermaid) ──
     async function renderWithType(text) {
+        // Auto-detect renderer from diagram source on every render
+        var diagramType = detectDiagramType(text);
+        if (diagramType) {
+            effectiveRendererType = selectRendererType(diagramType);
+            updateRendererIndicator();
+        }
+
         if (effectiveRendererType === 'custom') {
             try {
                 var currentFile = SmartBFileTree.getCurrentFile();
+                // Render Mermaid first for immediate visual feedback
+                await SmartBRenderer.render(text);
+                // Then upgrade to custom renderer once server has processed the file.
+                // The WebSocket graph:update will also re-render, but fetching here
+                // avoids a visible flash on file navigation (non-edit scenarios).
                 await SmartBCustomRenderer.fetchAndRender(currentFile);
             } catch (e) {
-                console.error('Custom renderer failed, falling back to Mermaid:', e);
-                await SmartBRenderer.render(text);
+                // Custom failed — Mermaid already rendered above, so user sees content
+                console.warn('Custom renderer failed, keeping Mermaid render:', e.message);
             }
         } else {
             await SmartBRenderer.render(text);
         }
     }
+
+    // Override global render so file-tree and other modules use smart routing
+    window.render = renderWithType;
 
     // ── Toast ──
     function toast(msg) {
@@ -116,6 +139,7 @@
     SmartBAnnotations.init(_initHooks);
     MmdEditor.init(_initHooks);
     SmartBSearch.init(_initHooks);
+    if (window.SmartBSelection) SmartBSelection.init();
 
     // ── Init Collapse UI ──
     if (window.SmartBCollapseUI) {

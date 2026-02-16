@@ -2,7 +2,7 @@
  * SmartB Pan/Zoom -- viewport transformation, scroll zoom, drag pan.
  * Extracted from live.html (Phase 9 Plan 02).
  *
- * Dependencies: none (standalone)
+ * Dependencies: interaction-state.js (SmartBInteraction, optional)
  * Dependents: renderer.js (calls zoomFit/applyTransform via window globals)
  *
  * Usage:
@@ -19,8 +19,12 @@
     var zoom = 1;
     var panX = 0, panY = 0;
     var isPanning = false;
+    var panStarted = false; // true once movement exceeds threshold
     var panStartX = 0, panStartY = 0;
     var panStartPanX = 0, panStartPanY = 0;
+
+    // ── Movement threshold to prevent false pans on click ──
+    var PAN_THRESHOLD = 3; // pixels
 
     // ── DOM refs (queried once at load time -- these elements are static) ──
     var previewPanel = document.getElementById('previewPanel');
@@ -53,29 +57,53 @@
         document.getElementById('zoomLabel').textContent = Math.round(zoom * 100) + '%';
     }, { passive: false });
 
-    // ── Mouse drag pan (disabled in flag mode and editor mode) ──
+    // ── Mouse drag pan (disabled in flag mode, editor mode, and FSM blocking states) ──
     container.addEventListener('mousedown', function(e) {
         if (e.button !== 0) return;
+        // Check FSM blocking states (editing, context-menu)
+        if (window.SmartBInteraction && SmartBInteraction.isBlocking()) return;
+        // Keep existing checks for backward compat without FSM
         if (window.SmartBAnnotations && SmartBAnnotations.getState().flagMode) return;
         if (window.MmdEditor && MmdEditor.getState().mode) return;
         isPanning = true;
+        panStarted = false;
         panStartX = e.clientX;
         panStartY = e.clientY;
         panStartPanX = panX;
         panStartPanY = panY;
-        previewPanel.classList.add('grabbing');
     });
 
     document.addEventListener('mousemove', function(e) {
         if (!isPanning) return;
+
+        // Movement threshold: only start actual panning after PAN_THRESHOLD pixels
+        if (!panStarted) {
+            var dx = Math.abs(e.clientX - panStartX);
+            var dy = Math.abs(e.clientY - panStartY);
+            if (dx <= PAN_THRESHOLD && dy <= PAN_THRESHOLD) return;
+            // Threshold crossed: pan starts now
+            panStarted = true;
+            previewPanel.classList.add('grabbing');
+            // Notify FSM
+            if (window.SmartBInteraction) SmartBInteraction.transition('pan_start');
+        }
+
         panX = panStartPanX + (e.clientX - panStartX);
         panY = panStartPanY + (e.clientY - panStartY);
         applyTransform();
     });
 
     document.addEventListener('mouseup', function() {
+        if (isPanning && panStarted) {
+            // Notify FSM that pan ended
+            if (window.SmartBInteraction) {
+                var sel = SmartBInteraction.getSelection();
+                SmartBInteraction.transition(sel.id ? 'pan_end_selected' : 'pan_end');
+            }
+            previewPanel.classList.remove('grabbing');
+        }
         isPanning = false;
-        previewPanel.classList.remove('grabbing');
+        panStarted = false;
     });
 
     // ── Zoom Fit ──
