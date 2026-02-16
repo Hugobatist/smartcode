@@ -12,6 +12,7 @@ import { WebSocketManager } from './websocket.js';
 import { FileWatcher } from '../watcher/file-watcher.js';
 import { serializeGraphModel } from '../diagram/graph-serializer.js';
 import { GhostPathStore } from './ghost-store.js';
+import { SessionStore } from '../session/session-store.js';
 
 /** Options for starting the HTTP server */
 export interface ServerOptions {
@@ -154,6 +155,7 @@ export interface ServerInstance {
   fileWatcher: FileWatcher;
   ghostStore: GhostPathStore;
   breakpointContinueSignals: Map<string, boolean>;
+  sessionStore: SessionStore;
   /** Add a new project directory with its own FileWatcher and WebSocket namespace */
   addProject: (name: string, dir: string) => void;
 }
@@ -174,8 +176,9 @@ export function createHttpServer(projectDir: string, existingService?: DiagramSe
   const wsManager = new WebSocketManager(httpServer);
   const ghostStore = new GhostPathStore();
   const breakpointContinueSignals = new Map<string, boolean>();
+  const sessionStore = new SessionStore(resolvedDir);
 
-  const routes = registerRoutes(service, resolvedDir, wsManager, ghostStore, breakpointContinueSignals);
+  const routes = registerRoutes(service, resolvedDir, wsManager, ghostStore, breakpointContinueSignals, sessionStore);
   const handler = createHandler(routes, staticDir);
 
   httpServer.on('request', (req, res) => {
@@ -263,7 +266,7 @@ export function createHttpServer(projectDir: string, existingService?: DiagramSe
     watchers.set(name, watcher);
   }
 
-  return { httpServer, wsManager, fileWatcher, ghostStore, breakpointContinueSignals, addProject };
+  return { httpServer, wsManager, fileWatcher, ghostStore, breakpointContinueSignals, sessionStore, addProject };
 }
 
 /**

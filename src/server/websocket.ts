@@ -14,7 +14,10 @@ export type WsMessage =
   // Phase 15: Breakpoints + Ghost Paths
   | { type: 'breakpoint:hit'; file: string; nodeId: string }
   | { type: 'breakpoint:continue'; file: string; nodeId: string }
-  | { type: 'ghost:update'; file: string; ghostPaths: Array<{ fromNodeId: string; toNodeId: string; label?: string }> };
+  | { type: 'ghost:update'; file: string; ghostPaths: Array<{ fromNodeId: string; toNodeId: string; label?: string }> }
+  // Phase 16: Heatmap + Session Recording
+  | { type: 'session:event'; sessionId: string; event: Record<string, unknown> }
+  | { type: 'heatmap:update'; file: string; data: Record<string, number> };
 
 /**
  * Manages WebSocket servers using noServer mode for multi-project namespacing.

@@ -20,6 +20,8 @@ import { serializeGraphModel } from '../diagram/graph-serializer.js';
 import { GhostPathStore } from './ghost-store.js';
 import type { GhostPath } from '../diagram/types.js';
 import { buildFileTree } from './file-tree.js';
+import type { SessionStore } from '../session/session-store.js';
+import { registerSessionRoutes } from './session-routes.js';
 
 /**
  * Register all route handlers for the diagram viewer server.
@@ -35,6 +37,7 @@ export function registerRoutes(
   wsManager?: WebSocketManager,
   ghostStore?: GhostPathStore,
   breakpointContinueSignals?: Map<string, boolean>,
+  sessionStore?: SessionStore,
 ): Route[] {
   const routes: Route[] = [];
 
@@ -444,6 +447,12 @@ export function registerRoutes(
       }
     },
   });
+
+  // ── Phase 16: Session + Heatmap ──
+
+  if (sessionStore) {
+    registerSessionRoutes(routes, sessionStore);
+  }
 
   // -------------------------------------------------------
   // 15. GET /*.mmd -- Serve raw .mmd file content from project dir
