@@ -54,6 +54,14 @@ export interface ValidationError {
   column?: number;
 }
 
+/** A ghost path suggested by AI for alternative diagram flow */
+export interface GhostPath {
+  fromNodeId: string;
+  toNodeId: string;
+  label?: string;
+  timestamp: number;
+}
+
 /** A project containing .mmd files */
 export interface Project {
   /** Absolute path to the project root directory */

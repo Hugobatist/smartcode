@@ -57,15 +57,37 @@
      * Select a node by ID. Creates blue dashed border + 4 corner handles.
      * @param {string} nodeId
      */
+    /**
+     * Get the absolute position of an SVG element by walking its CTM.
+     * Returns { x, y, width, height } in SVG root coordinates.
+     */
+    function getAbsoluteBBox(el, svg) {
+        var bbox = el.getBBox();
+        // Use getCTM to transform local bbox to SVG root coordinates
+        var ctm = el.getCTM();
+        var svgCtm = svg.getCTM();
+        if (ctm && svgCtm) {
+            var transform = svgCtm.inverse().multiply(ctm);
+            return {
+                x: transform.a * bbox.x + transform.e,
+                y: transform.d * bbox.y + transform.f,
+                width: bbox.width * transform.a,
+                height: bbox.height * transform.d
+            };
+        }
+        return bbox;
+    }
+
     function selectNode(nodeId) {
         clearIndicator();
 
         var el = DiagramDOM.findNodeElement(nodeId);
         if (!el) return;
 
-        var bbox = el.getBBox();
         var svg = DiagramDOM.getSVG();
         if (!svg) return;
+
+        var bbox = getAbsoluteBBox(el, svg);
 
         // Create selection indicator group
         var g = document.createElementNS(SVG_NS, 'g');
@@ -86,10 +108,10 @@
 
         // Four corner handles (8x8 px)
         var corners = [
-            [bbox.x - 8, bbox.y - 8],                         // top-left
-            [bbox.x + bbox.width, bbox.y - 8],                 // top-right
-            [bbox.x - 8, bbox.y + bbox.height],                // bottom-left
-            [bbox.x + bbox.width, bbox.y + bbox.height],       // bottom-right
+            [bbox.x - 8, bbox.y - 8],
+            [bbox.x + bbox.width, bbox.y - 8],
+            [bbox.x - 8, bbox.y + bbox.height],
+            [bbox.x + bbox.width, bbox.y + bbox.height],
         ];
         for (var i = 0; i < corners.length; i++) {
             var handle = document.createElementNS(SVG_NS, 'rect');

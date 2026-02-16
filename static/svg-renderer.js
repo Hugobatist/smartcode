@@ -150,11 +150,24 @@
 
         var text = el('text');
         attrs(text, {
-            'text-anchor': 'middle', 'dominant-baseline': 'central',
+            'text-anchor': 'middle',
             fill: THEME.nodeTextColor, 'font-family': THEME.nodeFontFamily,
             'font-size': THEME.nodeFontSize, 'font-weight': THEME.nodeFontWeight
         });
-        text.textContent = node.label;
+        // Handle multiline labels: split on \n and use <tspan> per line
+        var labelStr = (node.label || '').replace(/\\n/g, '\n');
+        var lines = labelStr.split('\n');
+        var lineHeight = parseFloat(THEME.nodeFontSize) * 1.3;
+        var totalHeight = lines.length * lineHeight;
+        var startY = -(totalHeight - lineHeight) / 2;
+        for (var li = 0; li < lines.length; li++) {
+            var tspan = el('tspan');
+            tspan.setAttribute('x', '0');
+            tspan.setAttribute('dy', li === 0 ? String(startY) : String(lineHeight));
+            tspan.setAttribute('dominant-baseline', 'central');
+            tspan.textContent = lines[li];
+            text.appendChild(tspan);
+        }
         g.appendChild(text);
         return g;
     }
@@ -242,7 +255,12 @@
 
     // ── Main: create complete SVG from LayoutResult ──
     function createSVG(layout) {
-        var svg = attrs(el('svg'), { xmlns: NS, width: layout.width, height: layout.height });
+        var svg = attrs(el('svg'), {
+            xmlns: NS,
+            width: '100%',
+            height: '100%',
+            viewBox: '0 0 ' + layout.width + ' ' + layout.height
+        });
 
         var defs = el('defs');
         createArrowMarkers(defs);

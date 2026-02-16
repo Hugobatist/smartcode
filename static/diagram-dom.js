@@ -195,8 +195,23 @@
         highlightNode: function(nodeId, on) {
             var el = this.findNodeElement(nodeId);
             if (!el) return;
-            el.style.outline = on ? '3px solid #6366f1' : '';
-            el.style.outlineOffset = on ? '4px' : '';
+            // SVG elements don't support CSS outline — modify shape stroke instead
+            var shape = el.querySelector('rect, circle, polygon, path, ellipse');
+            if (!shape) {
+                var childG = el.querySelector('g');
+                if (childG) shape = childG.querySelector('rect, circle, polygon, path, ellipse');
+            }
+            if (shape) {
+                if (on) {
+                    shape.setAttribute('data-prev-stroke', shape.getAttribute('stroke') || '');
+                    shape.setAttribute('data-prev-stroke-width', shape.getAttribute('stroke-width') || '');
+                    shape.setAttribute('stroke', '#6366f1');
+                    shape.setAttribute('stroke-width', '3');
+                } else {
+                    shape.setAttribute('stroke', shape.getAttribute('data-prev-stroke') || '');
+                    shape.setAttribute('stroke-width', shape.getAttribute('data-prev-stroke-width') || '');
+                }
+            }
         },
 
         /**

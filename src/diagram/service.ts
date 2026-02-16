@@ -3,7 +3,7 @@ import { dirname } from 'node:path';
 import type { DiagramContent, Flag, NodeStatus, ValidationResult } from './types.js';
 import type { GraphModel } from './graph-types.js';
 import { parseDiagramContent } from './parser.js';
-import { injectAnnotations, parseFlags, parseStatuses } from './annotations.js';
+import { injectAnnotations, parseFlags, parseStatuses, parseBreakpoints } from './annotations.js';
 import { validateMermaidSyntax } from './validator.js';
 import { parseMermaidToGraph } from './graph-parser.js';
 import { resolveProjectPath } from '../utils/paths.js';
@@ -75,15 +75,17 @@ export class DiagramService {
     content: string,
     flags?: Map<string, Flag>,
     statuses?: Map<string, NodeStatus>,
+    breakpoints?: Set<string>,
   ): Promise<void> {
     const resolved = this.resolvePath(filePath);
     let output = content;
 
-    if (flags || statuses) {
+    if (flags || statuses || breakpoints) {
       output = injectAnnotations(
         content,
         flags ?? new Map(),
         statuses,
+        breakpoints,
       );
     }
 
@@ -108,11 +110,13 @@ export class DiagramService {
       const resolved = this.resolvePath(filePath);
       const raw = await readFile(resolved, 'utf-8');
       const flags = parseFlags(raw);
+      const statuses = parseStatuses(raw);
+      const breakpoints = parseBreakpoints(raw);
 
       flags.set(nodeId, { nodeId, message });
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
     });
   }
 
@@ -125,11 +129,13 @@ export class DiagramService {
       const resolved = this.resolvePath(filePath);
       const raw = await readFile(resolved, 'utf-8');
       const flags = parseFlags(raw);
+      const statuses = parseStatuses(raw);
+      const breakpoints = parseBreakpoints(raw);
 
       flags.delete(nodeId);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
     });
   }
 
@@ -151,11 +157,12 @@ export class DiagramService {
       const raw = await readFile(resolved, 'utf-8');
       const flags = parseFlags(raw);
       const statuses = parseStatuses(raw);
+      const breakpoints = parseBreakpoints(raw);
 
       statuses.set(nodeId, status);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
     });
   }
 
@@ -169,11 +176,59 @@ export class DiagramService {
       const raw = await readFile(resolved, 'utf-8');
       const flags = parseFlags(raw);
       const statuses = parseStatuses(raw);
+      const breakpoints = parseBreakpoints(raw);
 
       statuses.delete(nodeId);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
+    });
+  }
+
+  /**
+   * Get all breakpoints from a .mmd file.
+   */
+  async getBreakpoints(filePath: string): Promise<Set<string>> {
+    const resolved = this.resolvePath(filePath);
+    const raw = await readFile(resolved, 'utf-8');
+    return parseBreakpoints(raw);
+  }
+
+  /**
+   * Set (add) a breakpoint on a specific node in a .mmd file.
+   * Uses a per-file write lock to prevent race conditions.
+   */
+  async setBreakpoint(filePath: string, nodeId: string): Promise<void> {
+    return this.withWriteLock(filePath, async () => {
+      const resolved = this.resolvePath(filePath);
+      const raw = await readFile(resolved, 'utf-8');
+      const flags = parseFlags(raw);
+      const statuses = parseStatuses(raw);
+      const breakpoints = parseBreakpoints(raw);
+
+      breakpoints.add(nodeId);
+
+      const { mermaidContent } = parseDiagramContent(raw);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
+    });
+  }
+
+  /**
+   * Remove a breakpoint from a specific node in a .mmd file.
+   * Uses a per-file write lock to prevent race conditions.
+   */
+  async removeBreakpoint(filePath: string, nodeId: string): Promise<void> {
+    return this.withWriteLock(filePath, async () => {
+      const resolved = this.resolvePath(filePath);
+      const raw = await readFile(resolved, 'utf-8');
+      const flags = parseFlags(raw);
+      const statuses = parseStatuses(raw);
+      const breakpoints = parseBreakpoints(raw);
+
+      breakpoints.delete(nodeId);
+
+      const { mermaidContent } = parseDiagramContent(raw);
+      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints);
     });
   }
 

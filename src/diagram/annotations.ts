@@ -5,6 +5,7 @@ export const ANNOTATION_START = '%% --- ANNOTATIONS (auto-managed by SmartB Diag
 export const ANNOTATION_END = '%% --- END ANNOTATIONS ---';
 const FLAG_REGEX = /^%%\s*@flag\s+(\S+)\s+"([^"]*)"$/;
 const STATUS_REGEX = /^%%\s*@status\s+(\S+)\s+(\S+)$/;
+export const BREAKPOINT_REGEX = /^%%\s*@breakpoint\s+(\S+)$/;
 
 /**
  * Parse all `%% @flag` lines from within the annotation block.
@@ -39,7 +40,7 @@ export function parseFlags(content: string): Map<string, Flag> {
       const nodeId = match[1]!;
       const message = match[2]!;
       flags.set(nodeId, { nodeId, message });
-    } else if (!STATUS_REGEX.test(trimmed)) {
+    } else if (!STATUS_REGEX.test(trimmed) && !BREAKPOINT_REGEX.test(trimmed)) {
       log.debug(`Skipping unrecognized annotation line: ${trimmed}`);
     }
   }
@@ -92,6 +93,41 @@ export function parseStatuses(content: string): Map<string, NodeStatus> {
 }
 
 /**
+ * Parse all `%% @breakpoint` lines from within the annotation block.
+ * Returns a Set of nodeIds that have breakpoints.
+ */
+export function parseBreakpoints(content: string): Set<string> {
+  const breakpoints = new Set<string>();
+  const lines = content.split('\n');
+
+  let inBlock = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (trimmed === ANNOTATION_START) {
+      inBlock = true;
+      continue;
+    }
+
+    if (trimmed === ANNOTATION_END) {
+      inBlock = false;
+      continue;
+    }
+
+    if (!inBlock) continue;
+
+    if (trimmed === '') continue;
+
+    const match = BREAKPOINT_REGEX.exec(trimmed);
+    if (match) {
+      breakpoints.add(match[1]!);
+    }
+  }
+
+  return breakpoints;
+}
+
+/**
  * Remove the entire annotation block (from ANNOTATION_START to ANNOTATION_END inclusive)
  * and any trailing blank lines. Returns pure Mermaid content.
  */
@@ -136,13 +172,15 @@ export function injectAnnotations(
   content: string,
   flags: Map<string, Flag>,
   statuses?: Map<string, NodeStatus>,
+  breakpoints?: Set<string>,
 ): string {
   const clean = stripAnnotations(content);
 
   const hasFlags = flags.size > 0;
   const hasStatuses = statuses !== undefined && statuses.size > 0;
+  const hasBreakpoints = breakpoints !== undefined && breakpoints.size > 0;
 
-  if (!hasFlags && !hasStatuses) {
+  if (!hasFlags && !hasStatuses && !hasBreakpoints) {
     return clean;
   }
 
@@ -159,6 +197,12 @@ export function injectAnnotations(
   if (hasStatuses) {
     for (const [nodeId, status] of statuses!) {
       lines.push(`%% @status ${nodeId} ${status}`);
+    }
+  }
+
+  if (hasBreakpoints) {
+    for (const nodeId of breakpoints!) {
+      lines.push(`%% @breakpoint ${nodeId}`);
     }
   }
 

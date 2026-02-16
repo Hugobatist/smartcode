@@ -58,6 +58,58 @@
     }
 
     /**
+     * Parse a Mermaid-style inline style string into a key-value map.
+     * E.g. "fill:#e3f2fd,stroke:#1565c0" → { fill: '#e3f2fd', stroke: '#1565c0' }
+     */
+    function parseStyleString(styleStr) {
+        var result = {};
+        if (!styleStr) return result;
+        var parts = styleStr.split(',');
+        for (var i = 0; i < parts.length; i++) {
+            var kv = parts[i].split(':');
+            if (kv.length >= 2) {
+                result[kv[0].trim()] = kv.slice(1).join(':').trim();
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Apply nodeStyles from the graph model to matching SVG elements.
+     * Targets both nodes (data-node-id) and subgraphs (data-subgraph-id).
+     */
+    function applyNodeStyles(graphModel) {
+        if (!graphModel || !graphModel.nodeStyles) return;
+        var svg = document.querySelector('#preview svg');
+        if (!svg) return;
+        var styles = graphModel.nodeStyles;
+        for (var targetId in styles) {
+            if (!styles.hasOwnProperty(targetId)) continue;
+            var parsed = parseStyleString(styles[targetId]);
+            // Try subgraph first (more common for style directives)
+            var el = svg.querySelector('[data-subgraph-id="' + targetId + '"]')
+                  || svg.querySelector('[data-node-id="' + targetId + '"]');
+            if (!el) continue;
+            var shape = el.querySelector('rect, circle, polygon, path, ellipse');
+            if (!shape) {
+                var childG = el.querySelector('g');
+                if (childG) shape = childG.querySelector('rect, circle, polygon, path, ellipse');
+            }
+            if (shape) {
+                if (parsed.fill) shape.setAttribute('fill', parsed.fill);
+                if (parsed.stroke) shape.setAttribute('stroke', parsed.stroke);
+                if (parsed['stroke-width']) shape.setAttribute('stroke-width', parsed['stroke-width']);
+                if (parsed['stroke-dasharray']) shape.setAttribute('stroke-dasharray', parsed['stroke-dasharray']);
+            }
+            // Apply text color if specified
+            if (parsed.color) {
+                var textEl = el.querySelector('text');
+                if (textEl) textEl.setAttribute('fill', parsed.color);
+            }
+        }
+    }
+
+    /**
      * Render a graph model into the preview container.
      * Runs dagre layout, builds SVG, inserts into DOM, applies pan-zoom.
      * @param {Object} graphModel - Graph model JSON (nodes, edges, subgraphs).
@@ -82,6 +134,9 @@
         preview.textContent = '';
         preview.appendChild(svg);
 
+        // Apply inline styles from .mmd source (fill, stroke, etc.)
+        applyNodeStyles(graphModel);
+
         // Apply current pan-zoom transform
         if (window.applyTransform) window.applyTransform();
 
@@ -98,7 +153,7 @@
         // Apply flag indicators after SVG is in the DOM
         if (window.SmartBAnnotations) SmartBAnnotations.applyFlagsToSVG();
 
-        // Apply status colors from graph model
+        // Apply status colors from graph model (overrides nodeStyles for flagged nodes)
         applyStatusColors(graphModel);
 
         // Apply collapse overlays if available

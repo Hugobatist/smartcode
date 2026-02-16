@@ -44,12 +44,20 @@
      * @returns {{ width: number, height: number }}
      */
     function measureNodeDimensions(label, shape) {
-        var textW = measureTextWidth(label);
+        // Handle multiline labels: measure widest line, stack lines vertically
+        var labelStr = (label || '').replace(/\\n/g, '\n');
+        var lines = labelStr.split('\n');
+        var maxLineW = 0;
+        for (var li = 0; li < lines.length; li++) {
+            var lw = measureTextWidth(lines[li]);
+            if (lw > maxLineW) maxLineW = lw;
+        }
+        var textW = maxLineW;
         var hPad = 32;
         var lineH = 24;
         var vPad = 24;
         var w = textW + hPad;
-        var h = lineH + vPad;
+        var h = lineH * lines.length + vPad;
 
         switch (shape) {
             case 'circle':

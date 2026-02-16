@@ -18,12 +18,14 @@
 
 /* ── Edges easier to click in flag mode ── */
 .flag-mode #preview .edgePath path.flowchart-link,
-.flag-mode #preview path.flowchart-link {
+.flag-mode #preview path.flowchart-link,
+.flag-mode #preview .smartb-edge path {
     stroke-width: 6px !important;
     transition: stroke 0.15s;
 }
 .flag-mode #preview .edgePath:hover path.flowchart-link,
-.flag-mode #preview path.flowchart-link:hover {
+.flag-mode #preview path.flowchart-link:hover,
+.flag-mode #preview .smartb-edge:hover path {
     stroke: #ef4444 !important;
     cursor: crosshair;
 }
@@ -322,7 +324,10 @@
 /* ── Node hover highlight in addEdge mode ── */
 .mode-addEdge #preview .node:hover rect,
 .mode-addEdge #preview .node:hover circle,
-.mode-addEdge #preview .node:hover polygon {
+.mode-addEdge #preview .node:hover polygon,
+.mode-addEdge #preview .smartb-node:hover rect,
+.mode-addEdge #preview .smartb-node:hover circle,
+.mode-addEdge #preview .smartb-node:hover polygon {
     stroke: var(--accent) !important;
     stroke-width: 3px !important;
     filter: drop-shadow(0 0 6px rgba(99,102,241,0.4));
