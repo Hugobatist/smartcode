@@ -160,6 +160,17 @@
             }
             return;
         }
+        if (e.key === ' ' && window.SmartBSessionPlayer && SmartBSessionPlayer.isVisible()) {
+            e.preventDefault();
+            SmartBSessionPlayer.isPlaying() ? SmartBSessionPlayer.pause() : SmartBSessionPlayer.play();
+            return;
+        }
+        if (e.key === 'ArrowLeft' && window.SmartBSessionPlayer && SmartBSessionPlayer.isVisible()) {
+            e.preventDefault(); SmartBSessionPlayer.seekTo(SmartBSessionPlayer.getIndex() - 1); return;
+        }
+        if (e.key === 'ArrowRight' && window.SmartBSessionPlayer && SmartBSessionPlayer.isVisible()) {
+            e.preventDefault(); SmartBSessionPlayer.seekTo(SmartBSessionPlayer.getIndex() + 1); return;
+        }
         if (e.key === 'h' && !e.ctrlKey && !e.metaKey && !e.altKey) {
             if (window.SmartBHeatmap) SmartBHeatmap.toggle();
             return;
@@ -206,8 +217,9 @@
     if (window.SmartBBreakpoints) SmartBBreakpoints.init();
     if (window.SmartBGhostPaths) SmartBGhostPaths.init();
 
-    // ── Init Phase 16: Heatmap ──
+    // ── Init Phase 16: Heatmap & Session Player ──
     if (window.SmartBHeatmap) SmartBHeatmap.init();
+    if (window.SmartBSessionPlayer) SmartBSessionPlayer.init();
 
     // ── Init Collapse UI ──
     if (window.SmartBCollapseUI) {
@@ -355,6 +367,9 @@
                     .then(function(data) { if (data) SmartBHeatmap.updateVisitCounts(data); })
                     .catch(function() {});
             }
+
+            // Fetch session list for initial file
+            if (window.SmartBSessionPlayer) SmartBSessionPlayer.fetchSessionList(currentFile);
         }
 
         // WebSocket real-time sync
@@ -414,6 +429,9 @@
                     break;
                 case 'heatmap:update':
                     if (window.SmartBHeatmap) SmartBHeatmap.updateVisitCounts(msg.data);
+                    break;
+                case 'session:event':
+                    if (window.SmartBSessionPlayer) SmartBSessionPlayer.handleSessionEvent(msg.sessionId, msg.event);
                     break;
                 case 'file:added':
                 case 'file:removed':

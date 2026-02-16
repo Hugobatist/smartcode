@@ -402,6 +402,8 @@ var SmartBSessionPlayer = (function() {
         show: show,
         close: close,
         isVisible: function() { return state.visible; },
+        isPlaying: function() { return state.playing; },
+        getIndex: function() { return state.currentIndex; },
         play: play,
         pause: pause,
         seekTo: seekTo,

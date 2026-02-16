@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="annotations.css">
     <link rel="stylesheet" href="breakpoints.css">
     <link rel="stylesheet" href="heatmap.css">
+    <link rel="stylesheet" href="session-player.css">
     <link rel="stylesheet" href="search.css">
 </head>
 <body>
@@ -35,6 +36,10 @@
     <button class="btn" id="toggleFlagPanel" onclick="SmartBAnnotations.togglePanel()">Painel</button>
     <button class="btn" id="btnGhostPaths" onclick="SmartBGhostPaths.toggle()">Ghost <span class="ghost-count-badge" id="ghostCountBadge" data-count="0"></span></button>
     <button class="btn" id="btnHeatmap" onclick="SmartBHeatmap.toggle()">Heatmap</button>
+    <span style="position:relative">
+        <button class="btn" id="btnSessions">Sessions</button>
+        <div class="session-dropdown hidden" id="sessionDropdown"><div id="sessionList"></div></div>
+    </span>
     <button class="btn" onclick="showHelp()">?</button>
     <div class="status">
         <div class="status-dot" id="statusDot"></div>
@@ -77,6 +82,17 @@
         <div class="preview-panel" id="previewPanel">
             <div id="preview-container">
                 <div id="preview"></div>
+            </div>
+            <div class="session-player hidden" id="sessionPlayer">
+                <button class="sp-btn" id="spPlayPause" title="Play/Pause">Play</button>
+                <input type="range" class="sp-scrubber" id="spScrubber" min="0" max="0" value="0">
+                <span class="sp-time" id="spTime">0 / 0</span>
+                <select class="sp-speed" id="spSpeed">
+                    <option value="1">1x</option>
+                    <option value="2">2x</option>
+                    <option value="4">4x</option>
+                </select>
+                <button class="sp-btn" id="spClose" title="Close replay">Close</button>
             </div>
             <div class="fit-hint" id="fitHint">Scroll para zoom | Arraste para mover</div>
             <div class="zoom-controls">
@@ -132,6 +148,8 @@
         <div class="help-row"><span>Right-click > Toggle Breakpoint</span><span>Toggle Breakpoint</span></div>
         <div class="help-row"><span>Ghost button</span><span>Toggle ghost path visibility</span></div>
         <div class="help-row"><span><kbd>H</kbd></span><span>Toggle heatmap</span></div>
+        <div class="help-row"><span><kbd>Space</kbd></span><span>Play/pause replay (session player)</span></div>
+        <div class="help-row"><span><kbd>Left</kbd> / <kbd>Right</kbd></span><span>Step frame (session player)</span></div>
         <div class="help-row"><span><kbd>?</kbd></span><span>Ajuda</span></div>
         <br>
         <h2>Como funciona</h2>
@@ -171,6 +189,7 @@
 <script src="breakpoints.js"></script>
 <script src="ghost-paths.js"></script>
 <script src="heatmap.js"></script>
+<script src="session-player.js"></script>
 <script src="app-init.js"></script>
 
 </body>
