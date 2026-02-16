@@ -1,15 +1,19 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DiagramService } from '../diagram/service.js';
+import type { GhostPathStore } from '../server/ghost-store.js';
+import type { WebSocketManager } from '../server/websocket.js';
 import {
   UpdateDiagramInput,
   ReadFlagsInput,
   GetDiagramContextInput,
   UpdateNodeStatusInput,
   GetCorrectionContextInput,
+  CheckBreakpointsInput,
+  RecordGhostPathInput,
 } from './schemas.js';
 
 /**
- * Register all 5 MCP tools on the server, backed by DiagramService.
+ * Register all 7 MCP tools on the server, backed by DiagramService.
  *
  * Tools:
  * - update_diagram: Create or update a .mmd file
@@ -17,10 +21,17 @@ import {
  * - get_diagram_context: Get full diagram state (content, flags, statuses, validation)
  * - update_node_status: Set node status (ok, problem, in-progress, discarded)
  * - get_correction_context: Get structured correction context for a flagged node
+ * - check_breakpoints: Check if a node has a breakpoint, returns 'pause' or 'continue'
+ * - record_ghost_path: Record a discarded reasoning branch as a ghost path
  */
 export function registerTools(
   server: McpServer,
   service: DiagramService,
+  options?: {
+    ghostStore?: GhostPathStore;
+    wsManager?: WebSocketManager;
+    breakpointContinueSignals?: Map<string, boolean>;
+  },
 ): void {
   // Tool 1: update_diagram (MCP-02)
   server.registerTool(
@@ -207,6 +218,128 @@ export function registerTools(
             {
               type: 'text' as const,
               text: JSON.stringify(context, null, 2),
+            },
+          ],
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown error';
+        return {
+          content: [{ type: 'text' as const, text: message }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool 6: check_breakpoints (Phase 15)
+  server.registerTool(
+    'check_breakpoints',
+    {
+      description:
+        'Check if the current node has a breakpoint set. Returns "pause" if a breakpoint exists and no continue signal is pending, "continue" otherwise. The AI should respect the pause signal by waiting and re-checking.',
+      inputSchema: CheckBreakpointsInput,
+    },
+    async ({ filePath, currentNodeId }) => {
+      try {
+        const breakpoints = await service.getBreakpoints(filePath);
+
+        if (breakpoints.has(currentNodeId)) {
+          const signalKey = `${filePath}:${currentNodeId}`;
+          const continueSignals = options?.breakpointContinueSignals;
+
+          if (continueSignals && continueSignals.has(signalKey)) {
+            // One-time consumption of continue signal
+            continueSignals.delete(signalKey);
+            if (options?.wsManager) {
+              options.wsManager.broadcastAll({
+                type: 'breakpoint:continue',
+                file: filePath,
+                nodeId: currentNodeId,
+              });
+            }
+            return {
+              content: [{ type: 'text' as const, text: 'continue' }],
+            };
+          }
+
+          // Breakpoint exists, no continue signal
+          if (options?.wsManager) {
+            options.wsManager.broadcastAll({
+              type: 'breakpoint:hit',
+              file: filePath,
+              nodeId: currentNodeId,
+            });
+          }
+          return {
+            content: [{ type: 'text' as const, text: 'pause' }],
+          };
+        }
+
+        // No breakpoint on this node
+        return {
+          content: [{ type: 'text' as const, text: 'continue' }],
+        };
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Unknown error';
+        return {
+          content: [{ type: 'text' as const, text: message }],
+          isError: true,
+        };
+      }
+    },
+  );
+
+  // Tool 7: record_ghost_path (Phase 15)
+  server.registerTool(
+    'record_ghost_path',
+    {
+      description:
+        'Record a discarded reasoning branch as a ghost path. Ghost paths are displayed as dashed translucent edges in the browser viewer.',
+      inputSchema: RecordGhostPathInput,
+    },
+    async ({ filePath, fromNodeId, toNodeId, label }) => {
+      try {
+        const ghostStore = options?.ghostStore;
+
+        if (ghostStore) {
+          ghostStore.add(filePath, {
+            fromNodeId,
+            toNodeId,
+            label,
+            timestamp: Date.now(),
+          });
+
+          if (options?.wsManager) {
+            const allPaths = ghostStore.get(filePath);
+            options.wsManager.broadcastAll({
+              type: 'ghost:update',
+              file: filePath,
+              ghostPaths: allPaths.map((p) => ({
+                fromNodeId: p.fromNodeId,
+                toNodeId: p.toNodeId,
+                label: p.label,
+              })),
+            });
+          }
+
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: `Ghost path recorded: ${fromNodeId} -> ${toNodeId}`,
+              },
+            ],
+          };
+        }
+
+        // MCP-only mode without --serve
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: `Ghost path recorded: ${fromNodeId} -> ${toNodeId} (browser visualization unavailable without --serve mode)`,
             },
           ],
         };

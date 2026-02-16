@@ -53,3 +53,28 @@ export const GetCorrectionContextInput = {
     .string()
     .describe('ID of the flagged node to get correction context for'),
 };
+
+export const CheckBreakpointsInput = {
+  filePath: z
+    .string()
+    .describe('Relative path to the .mmd file'),
+  currentNodeId: z
+    .string()
+    .describe('Node ID the AI is currently processing'),
+};
+
+export const RecordGhostPathInput = {
+  filePath: z
+    .string()
+    .describe('Relative path to the .mmd file'),
+  fromNodeId: z
+    .string()
+    .describe('Source node of the discarded path'),
+  toNodeId: z
+    .string()
+    .describe('Target node of the discarded path'),
+  label: z
+    .string()
+    .optional()
+    .describe('Optional reason for discarding this path'),
+};

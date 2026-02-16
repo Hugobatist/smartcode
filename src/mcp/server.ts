@@ -1,6 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import type { DiagramService } from '../diagram/service.js';
+import type { GhostPathStore } from '../server/ghost-store.js';
+import type { WebSocketManager } from '../server/websocket.js';
 import { registerTools } from './tools.js';
 import { registerResources } from './resources.js';
 import { log } from '../utils/logger.js';
@@ -12,20 +14,31 @@ export interface McpServerOptions {
   port?: number;
 }
 
+/** Optional dependencies for breakpoint/ghost path features */
+export interface McpToolDependencies {
+  ghostStore?: GhostPathStore;
+  wsManager?: WebSocketManager;
+  breakpointContinueSignals?: Map<string, boolean>;
+}
+
 /**
  * Create an MCP server instance configured with the shared DiagramService.
  * Registers all tools and resources on the server.
+ * When deps are provided, breakpoint and ghost path tools get full functionality.
  */
-export function createMcpServer(service: DiagramService): McpServer {
+export function createMcpServer(
+  service: DiagramService,
+  deps?: McpToolDependencies,
+): McpServer {
   const server = new McpServer({
     name: 'smartb-diagrams',
     version: '0.1.0',
   });
 
-  registerTools(server, service);
+  registerTools(server, service, deps);
   registerResources(server, service);
 
-  log.debug('MCP server created with 5 tools and 2 resources');
+  log.debug('MCP server created with 7 tools and 2 resources');
 
   return server;
 }
@@ -47,11 +60,11 @@ export async function startMcpServer(options: McpServerOptions): Promise<void> {
 
   const resolvedDir = resolve(options.dir);
   const service = new DiagramService(resolvedDir);
-  const server = createMcpServer(service);
   const transport = new StdioServerTransport();
 
   // Track HTTP server instance for cleanup (only when --serve)
   let httpCleanup: (() => Promise<void>) | undefined;
+  let deps: McpToolDependencies | undefined;
 
   if (options.serve) {
     const { createHttpServer } = await import('../server/server.js');
@@ -64,7 +77,10 @@ export async function startMcpServer(options: McpServerOptions): Promise<void> {
     }
 
     // Share the SAME DiagramService between MCP and HTTP servers
-    const { httpServer, wsManager, fileWatcher } = createHttpServer(resolvedDir, service);
+    const { httpServer, wsManager, fileWatcher, ghostStore, breakpointContinueSignals } =
+      createHttpServer(resolvedDir, service);
+
+    deps = { ghostStore, wsManager, breakpointContinueSignals };
 
     await new Promise<void>((resolvePromise) => {
       httpServer.listen(actualPort, () => {
@@ -82,6 +98,8 @@ export async function startMcpServer(options: McpServerOptions): Promise<void> {
       });
     };
   }
+
+  const server = createMcpServer(service, deps);
 
   await server.connect(transport);
   log.info(`MCP server running on stdio (project: ${resolvedDir})`);
