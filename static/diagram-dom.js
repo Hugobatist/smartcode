@@ -215,6 +215,19 @@
         },
 
         /**
+         * Returns all node elements from the SVG.
+         * Custom: .smartb-node elements; Mermaid: .node elements
+         */
+        getAllNodeElements: function() {
+            var svg = this.getSVG();
+            if (!svg) return [];
+            if (this.getRendererType() === 'custom') {
+                return Array.from(svg.querySelectorAll('.smartb-node'));
+            }
+            return Array.from(svg.querySelectorAll('.node'));
+        },
+
+        /**
          * Returns SVG viewBox baseVal, or null.
          */
         getViewBox: function() {

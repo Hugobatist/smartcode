@@ -1,0 +1,74 @@
+/* ===================================================
+   SmartB Diagrams -- Heatmap Toggle & Legend Styles
+   =================================================== */
+
+/* Heatmap toggle button active state */
+#btnHeatmap {
+    position: relative;
+}
+#btnHeatmap.active {
+    background: rgba(239, 68, 68, 0.2) !important;
+    color: #ef4444 !important;
+    border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+/* Legend container -- bottom-right of preview area */
+.heatmap-legend {
+    position: absolute;
+    bottom: 60px;
+    right: 16px;
+    z-index: 50;
+    background: var(--panel-bg, #1e1e2e);
+    border: 1px solid var(--border, #313244);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    color: var(--text, #cdd6f4);
+    min-width: 80px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.heatmap-legend-title {
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim, #a6adc8);
+    margin-bottom: 6px;
+}
+
+/* Risk mode legend items */
+.heatmap-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+}
+
+.heatmap-legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+/* Frequency mode gradient bar */
+.heatmap-legend-gradient {
+    width: 100%;
+    height: 10px;
+    border-radius: 4px;
+    background: linear-gradient(to right,
+        rgb(66, 133, 244),
+        rgb(160, 106, 122),
+        rgb(255, 80, 0)
+    );
+    margin: 4px 0;
+}
+
+.heatmap-legend-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 9px;
+    color: var(--text-dim, #a6adc8);
+}
