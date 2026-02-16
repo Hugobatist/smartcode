@@ -17,7 +17,7 @@ v2.0 replaces Mermaid.js as a black-box renderer with a custom interactive SVG p
 - [x] **Phase 11: Custom Renderer** - dagre layout engine, SVG renderer, parallel rendering mode, feature parity gate (completed 2026-02-15)
 - [x] **Phase 12: Server + Browser Integration** - Graph API endpoint, WebSocket graph:update, live.html integration, Mermaid fallback (completed 2026-02-15)
 - [x] **Phase 13: Canvas Interactions** - Node selection, context menu, inline edit, keyboard shortcuts (completed 2026-02-15)
-- [ ] **Phase 14: Undo/Redo + Edit Actions** - Command pattern, copy/paste/duplicate, folder management
+- [x] **Phase 14: Undo/Redo + Edit Actions** - Command pattern, copy/paste/duplicate, folder management (completed 2026-02-16)
 - [ ] **Phase 15: AI Breakpoints + Ghost Paths** - Breakpoint annotations, ghost path rendering, MCP tools
 - [ ] **Phase 16: Heatmap + Session Recording** - Risk heatmap overlay, session store, session replay UI
 
@@ -117,7 +117,7 @@ Plans:
   4. Ctrl+D duplicates selected node(s) in place
   5. Folder rename and delete work from file tree context menu
   6. Command history is capped at 100 entries
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
 Plans:
 - [ ] 14-01-PLAN.md -- Command history module, popover extraction, diagram-editor refactor
@@ -157,6 +157,6 @@ Plans:
 | 11. Custom Renderer | 4/4 | Complete | 2026-02-15 |
 | 12. Server + Browser Integration | 3/3 | Complete | 2026-02-15 |
 | 13. Canvas Interactions | 2/2 | Complete | 2026-02-15 |
-| 14. Undo/Redo + Edit Actions | 0/3 | Planned | - |
+| 14. Undo/Redo + Edit Actions | 0/3 | Complete    | 2026-02-16 |
 | 15. AI Breakpoints + Ghost Paths | 0/? | Not Started | - |
 | 16. Heatmap + Session Recording | 0/? | Not Started | - |
