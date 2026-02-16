@@ -2,6 +2,7 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { DiagramService } from '../diagram/service.js';
 import type { GhostPathStore } from '../server/ghost-store.js';
 import type { WebSocketManager } from '../server/websocket.js';
+import type { SessionStore } from '../session/session-store.js';
 import {
   UpdateDiagramInput,
   ReadFlagsInput,
@@ -11,11 +12,12 @@ import {
   CheckBreakpointsInput,
   RecordGhostPathInput,
 } from './schemas.js';
+import { registerSessionTools } from './session-tools.js';
 
 /**
- * Register all 7 MCP tools on the server, backed by DiagramService.
+ * Register all 11 MCP tools on the server, backed by DiagramService.
  *
- * Tools:
+ * Tools 1-7 (Phase 5/15):
  * - update_diagram: Create or update a .mmd file
  * - read_flags: Read all active developer flags from a diagram
  * - get_diagram_context: Get full diagram state (content, flags, statuses, validation)
@@ -23,6 +25,12 @@ import {
  * - get_correction_context: Get structured correction context for a flagged node
  * - check_breakpoints: Check if a node has a breakpoint, returns 'pause' or 'continue'
  * - record_ghost_path: Record a discarded reasoning branch as a ghost path
+ *
+ * Tools 8-11 (Phase 16, registered via session-tools.ts):
+ * - start_session: Start a new JSONL recording session
+ * - record_step: Record a node visit event in a session
+ * - end_session: Close a session and return summary
+ * - set_risk_level: Set @risk annotation on a node
  */
 export function registerTools(
   server: McpServer,
@@ -31,6 +39,7 @@ export function registerTools(
     ghostStore?: GhostPathStore;
     wsManager?: WebSocketManager;
     breakpointContinueSignals?: Map<string, boolean>;
+    sessionStore?: SessionStore;
   },
 ): void {
   // Tool 1: update_diagram (MCP-02)
@@ -353,4 +362,10 @@ export function registerTools(
       }
     },
   );
+
+  // Tools 8-11: Session recording + risk annotation (Phase 16)
+  registerSessionTools(server, service, {
+    sessionStore: options?.sessionStore,
+    wsManager: options?.wsManager,
+  });
 }
