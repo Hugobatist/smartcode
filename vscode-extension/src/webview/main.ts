@@ -80,7 +80,7 @@ function stripAnnotations(content: string): string {
   mermaid.initialize({
     startOnLoad: false,
     theme: 'dark',
-    securityLevel: 'sandbox',
+    securityLevel: 'loose',
     flowchart: { htmlLabels: true, curve: 'basis' },
   });
 
@@ -185,4 +185,7 @@ function stripAnnotations(content: string): string {
   if (state.lastContent) {
     renderDiagram(state.lastContent, state.currentFile);
   }
+
+  // Notify extension host that webview scripts are loaded and ready
+  vscode.postMessage({ type: 'webview:ready' });
 })();

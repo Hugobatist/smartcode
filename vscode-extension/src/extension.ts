@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { DiagramViewProvider } from './diagram-provider.js';
+import { DiagramPanelManager } from './diagram-provider.js';
 import { getHttpBaseUrl, httpGet, httpPost } from './http-client.js';
 import { StatusBarManager } from './status-bar.js';
 import { SmartBWsClient } from './ws-client.js';
@@ -10,10 +10,24 @@ export function activate(context: vscode.ExtensionContext): void {
   let fileList: string[] = [];
   const fileContents = new Map<string, string>();
 
-  // 1. Create and register the sidebar webview provider
-  const provider = new DiagramViewProvider(context.extensionUri);
+  // 1. Create the panel manager
+  const provider = new DiagramPanelManager(context.extensionUri);
+  context.subscriptions.push(provider);
+
+  // Register command to show the diagram panel
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(DiagramViewProvider.viewType, provider),
+    vscode.commands.registerCommand('smartb.showDiagram', () => {
+      provider.show(vscode.ViewColumn.Beside);
+    }),
+  );
+
+  // Register serializer for panel restore on reload
+  context.subscriptions.push(
+    vscode.window.registerWebviewPanelSerializer(DiagramPanelManager.viewType, {
+      async deserializeWebviewPanel(panel: vscode.WebviewPanel, _state: unknown) {
+        provider.restore(panel);
+      },
+    }),
   );
 
   // 2. Create and register the status bar indicator
@@ -105,6 +119,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
       // Fetch initial diagram data and file tree when connected
       if (status === 'connected') {
+        provider.show(vscode.ViewColumn.Beside);
         fetchInitialData();
       }
     },

@@ -1,82 +1,112 @@
 import * as vscode from 'vscode';
 
 /**
- * WebviewViewProvider for the SmartB Diagrams sidebar panel.
- * Renders a webview that displays Mermaid diagrams and connection status.
- * Communicates with the extension host via postMessage.
+ * Manages a singleton WebviewPanel (editor tab) for rendering Mermaid diagrams.
+ * Replaces the old WebviewViewProvider (sidebar) approach.
  */
-export class DiagramViewProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'smartb.diagramView';
+export class DiagramPanelManager {
+  public static readonly viewType = 'smartb.diagramPanel';
 
-  private view?: vscode.WebviewView;
+  private panel?: vscode.WebviewPanel;
+  private disposables: vscode.Disposable[] = [];
 
   /** Optional callback for messages received from the webview. */
   public onWebviewMessage?: (msg: unknown) => void;
 
-  /** Optional callback invoked when the webview becomes visible (resolveWebviewView). */
+  /** Optional callback invoked when the webview scripts have loaded (ready handshake). */
   public onWebviewReady?: () => void;
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
-  resolveWebviewView(
-    webviewView: vscode.WebviewView,
-    _context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken,
-  ): void {
-    this.view = webviewView;
+  /** Show the diagram panel, creating it if it doesn't exist. */
+  show(column?: vscode.ViewColumn): void {
+    if (this.panel) {
+      this.panel.reveal(column);
+      return;
+    }
 
-    webviewView.webview.options = {
+    const panel = vscode.window.createWebviewPanel(
+      DiagramPanelManager.viewType,
+      'SmartB Diagrams',
+      column ?? vscode.ViewColumn.Beside,
+      {
+        enableScripts: true,
+        retainContextWhenHidden: true,
+        localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')],
+      },
+    );
+
+    this.initPanel(panel);
+  }
+
+  /** Restore a previously serialized panel (called by WebviewPanelSerializer). */
+  restore(existingPanel: vscode.WebviewPanel): void {
+    existingPanel.webview.options = {
       enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.extensionUri, 'media'),
-      ],
+      localResourceRoots: [vscode.Uri.joinPath(this.extensionUri, 'media')],
     };
-
-    webviewView.webview.html = this.getHtmlForWebview(webviewView.webview);
-
-    webviewView.webview.onDidReceiveMessage((msg) => {
-      this.onWebviewMessage?.(msg);
-    });
-
-    webviewView.onDidDispose(() => {
-      this.view = undefined;
-    });
-
-    // Notify extension host that the webview is ready for initial state
-    this.onWebviewReady?.();
+    this.initPanel(existingPanel);
   }
 
   /** Send a message to the webview. */
   postMessage(message: unknown): void {
-    this.view?.webview.postMessage(message);
+    this.panel?.webview.postMessage(message);
   }
 
   /** Send the current diagram state to the webview (e.g., on reconnect/reshow). */
   sendCurrentState(file: string, content: string): void {
-    this.postMessage({
-      type: 'diagram:update',
-      file,
-      content,
-    });
+    this.postMessage({ type: 'diagram:update', file, content });
   }
 
-  /** Whether the webview is currently visible. */
+  /** Whether the webview panel exists (not disposed). */
   get isVisible(): boolean {
-    return this.view !== undefined;
+    return this.panel !== undefined;
+  }
+
+  /** Dispose the panel and clean up all listeners. */
+  dispose(): void {
+    this.panel?.dispose();
+    while (this.disposables.length) {
+      this.disposables.pop()?.dispose();
+    }
+  }
+
+  /** Wire up a panel: set HTML, register handlers, wait for ready handshake. */
+  private initPanel(panel: vscode.WebviewPanel): void {
+    // Clean up any previous disposables
+    while (this.disposables.length) {
+      this.disposables.pop()?.dispose();
+    }
+
+    this.panel = panel;
+    panel.webview.html = this.getHtmlForWebview(panel.webview);
+
+    // Listen for messages — intercept 'webview:ready' handshake, delegate the rest
+    this.disposables.push(
+      panel.webview.onDidReceiveMessage((msg) => {
+        const data = msg as Record<string, unknown>;
+        if (data.type === 'webview:ready') {
+          this.onWebviewReady?.();
+          return;
+        }
+        this.onWebviewMessage?.(msg);
+      }),
+    );
+
+    this.disposables.push(
+      panel.onDidDispose(() => {
+        this.panel = undefined;
+        while (this.disposables.length) {
+          this.disposables.pop()?.dispose();
+        }
+      }),
+    );
   }
 
   private getHtmlForWebview(webview: vscode.Webview): string {
     const nonce = this.getNonce();
-
-    const styleUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'media', 'webview.css'),
-    );
-    const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'media', 'webview.js'),
-    );
-    const mermaidUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.extensionUri, 'media', 'mermaid.min.js'),
-    );
+    const mediaUri = (file: string) =>
+      webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, 'media', file));
 
     // NOTE: 'unsafe-inline' in style-src is required because mermaid
     // generates SVG with inline style attributes that cannot use nonces.
@@ -94,7 +124,7 @@ export class DiagramViewProvider implements vscode.WebviewViewProvider {
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="${csp}">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link href="${styleUri}" rel="stylesheet">
+  <link href="${mediaUri('webview.css')}" rel="stylesheet">
   <title>SmartB Diagrams</title>
 </head>
 <body>
@@ -110,8 +140,8 @@ export class DiagramViewProvider implements vscode.WebviewViewProvider {
   <div id="diagram">
     <p class="status-message">Waiting for SmartB server connection...</p>
   </div>
-  <script nonce="${nonce}" src="${mermaidUri}"></script>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
+  <script nonce="${nonce}" src="${mediaUri('mermaid.min.js')}"></script>
+  <script nonce="${nonce}" src="${mediaUri('webview.js')}"></script>
 </body>
 </html>`;
   }

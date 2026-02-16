@@ -1,7 +1,7 @@
 {
   "name": "smartb-diagrams-vscode",
   "displayName": "SmartB Diagrams",
-  "description": "Live AI reasoning diagrams in VS Code sidebar",
+  "description": "Live AI reasoning diagrams in VS Code",
   "version": "0.1.0",
   "publisher": "smartb",
   "license": "MIT",
@@ -17,26 +17,8 @@
     "Visualization",
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": ["onWebviewPanel:smartb.diagramPanel"],
   "contributes": {
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "smartb-explorer",
-          "title": "SmartB Diagrams",
-          "icon": "media/icon.svg"
-        }
-      ]
-    },
-    "views": {
-      "smartb-explorer": [
-        {
-          "type": "webview",
-          "id": "smartb.diagramView",
-          "name": "Diagram"
-        }
-      ]
-    },
     "configuration": {
       "title": "SmartB Diagrams",
       "properties": {
@@ -60,6 +42,18 @@
       {
         "command": "smartb.openBrowser",
         "title": "SmartB: Open in Browser"
+      },
+      {
+        "command": "smartb.showDiagram",
+        "title": "SmartB: Show Diagram Panel",
+        "icon": "$(preview)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "smartb.showDiagram",
+        "key": "ctrl+shift+d",
+        "mac": "cmd+shift+d"
       }
     ]
   },
