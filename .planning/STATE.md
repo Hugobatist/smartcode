@@ -9,11 +9,11 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 16-heatmap-session-recording
-Plan: 02 of ?? in progress
-Status: Plan 02 complete -- MCP tools for session recording and risk annotations
-Last activity: 2026-02-16 -- Plan 02 executed (2 tasks, 4min), 251 tests passing
+Plan: 03 of ?? in progress
+Status: Plan 03 complete -- frontend heatmap module with risk overlay and frequency coloring
+Last activity: 2026-02-16 -- Plan 03 executed (2 tasks, 4min), 251 tests passing
 
-Progress: [██████████] v1.0 100% | Phase 16: [====------] 2/? plans complete
+Progress: [██████████] v1.0 100% | Phase 16: [======----] 3/? plans complete
 
 ## v1.0 Performance Metrics
 
@@ -175,6 +175,11 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - registerSessionTools receives optional deps (sessionStore, wsManager) -- same pattern as tools.ts optional deps
 - end_session broadcasts heatmap:update with aggregated data for real-time frontend heatmap rendering
 - record_step broadcasts session:event for real-time session visualization
+- DiagramDOM.getAllNodeElements() added for heatmap fill save/restore iteration
+- Frequency mode auto-selected over risk when visitCounts available (more dynamic/useful)
+- Risk data accepted as both Map and plain object for WS/REST compatibility
+- H key shortcut for heatmap toggle (consistent F, N, A, B, H single-key pattern)
+- Fill save/restore pattern: save fill+fill-opacity before overlay, restore on deactivate
 
 **Phase 15:**
 - Three-annotation preservation: every write operation reads and re-injects flags, statuses, AND breakpoints
@@ -359,8 +364,18 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - 13 new tests: 8 SessionStore CRUD/heatmap, 5 parseRisks parse/round-trip/preservation
 - Duration: 4 min, 251 tests pass
 
+**16-03 (Complete):** Frontend heatmap module with risk overlay and frequency coloring
+- heatmap.js (217 lines): SmartBHeatmap with risk overlay, frequency heatmap, toggle, legend, fill save/restore
+- heatmap.css (74 lines): toggle button active state, legend container, gradient bar
+- annotations.js (497 lines): RISK_REGEX, risk parsing, forwarding to SmartBHeatmap
+- custom-renderer.js (201 lines): heatmap re-apply after status colors
+- app-init.js (477 lines): SmartBHeatmap.init(), WS heatmap:update, H key shortcut, heatmap fetch
+- live.html (177 lines): heatmap.css, Heatmap button, heatmap.js script, H key help
+- diagram-dom.js (241 lines): getAllNodeElements() helper
+- Duration: 4 min, 251 tests pass
+
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 16-02-PLAN.md (MCP tools for session recording and risk annotations)
-Next action: Execute 16-03-PLAN.md (frontend heatmap visualization).
+Stopped at: Completed 16-03-PLAN.md (frontend heatmap module with risk overlay and frequency coloring)
+Next action: Execute 16-04-PLAN.md (session replay UI).
