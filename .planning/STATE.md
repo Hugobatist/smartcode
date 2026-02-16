@@ -8,12 +8,12 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 
 ## Current Position
 
-Phase: 14-undo-redo-edit-actions
-Plan: 03 of 03 complete
-Status: Phase 14 COMPLETE -- All 3 plans executed (command history, folder CRUD, clipboard + shortcuts)
-Last activity: 2026-02-16 -- Plan 03 executed (2 tasks, 2min), 225 tests passing
+Phase: 15-ai-breakpoints-ghost-paths
+Plan: 01 of 03 complete
+Status: Plan 01 complete -- backend infrastructure for breakpoints and ghost paths
+Last activity: 2026-02-16 -- Plan 01 executed (2 tasks, 4min), 225 tests passing
 
-Progress: [██████████] v1.0 100% | Phase 14: [==========] 3/3 plans complete
+Progress: [██████████] v1.0 100% | Phase 15: [===-------] 1/3 plans complete
 
 ## v1.0 Performance Metrics
 
@@ -165,6 +165,14 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Collapse-ui FSM guards: click checks editing/context-menu, dblclick checks editing/selected
 - Mode toggle FSM sync: after calling toggleX(), forceState based on resulting module state
 
+**Phase 15:**
+- Three-annotation preservation: every write operation reads and re-injects flags, statuses, AND breakpoints
+- GhostPathStore and breakpointContinueSignals created in createHttpServer, exposed on ServerInstance
+- buildFileTree extracted to file-tree.ts to keep routes.ts under 500 lines after adding breakpoint routes
+- POST /api/breakpoints/:file/continue registered BEFORE general breakpoints route for pattern specificity
+- Ghost paths stored in-memory per file (no disk persistence -- session-scoped data)
+- Breakpoint annotation format: %% @breakpoint NodeId (alongside existing @flag and @status)
+
 ### Pre-Release Todos Status
 
 **RESOLVED (by Phase 8 agents):**
@@ -279,8 +287,21 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - Help overlay documents Ctrl+C/V/D shortcuts
 - Duration: 2 min, 225 tests pass
 
+## Phase 15 Progress
+
+**15-01 (Complete):** Backend infrastructure for breakpoints and ghost paths
+- GhostPath interface in types.ts, BREAKPOINT_REGEX and parseBreakpoints in annotations.ts
+- injectAnnotations extended with optional breakpoints parameter
+- DiagramService: getBreakpoints/setBreakpoint/removeBreakpoint CRUD methods
+- All write operations (set/removeFlag, set/removeStatus) now preserve all 3 annotation types
+- GhostPathStore class in ghost-store.ts (in-memory per-file storage)
+- 3 new WsMessage types: breakpoint:hit, breakpoint:continue, ghost:update
+- 4 REST endpoints: GET/POST /api/breakpoints/:file, POST /api/breakpoints/:file/continue, GET /api/ghost-paths/:file
+- buildFileTree extracted to file-tree.ts (routes.ts 471 lines)
+- Duration: 4 min, 225 tests pass
+
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 14-03-PLAN.md (clipboard + keyboard shortcut wiring)
-Next action: Phase 14 complete -- all undo/redo/clipboard/folder CRUD plans executed
+Stopped at: Completed 15-01-PLAN.md (backend infrastructure for breakpoints and ghost paths)
+Next action: Execute 15-02-PLAN.md (MCP tools for breakpoints and ghost paths)
