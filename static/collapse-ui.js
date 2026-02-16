@@ -75,6 +75,11 @@
       var self = this;
 
       diagram.addEventListener('click', function(e) {
+        // Respect FSM states — don't interfere with editing or context menu
+        if (window.SmartBInteraction) {
+          var st = SmartBInteraction.getState();
+          if (st === 'editing' || st === 'context-menu') return;
+        }
         // Don't interfere with zoom controls
         if (e.target.closest('.zoom-controls')) return;
         if (e.target.closest('.flag-popover')) return;
@@ -114,6 +119,11 @@
 
       // Double-click to enter focus mode
       diagram.addEventListener('dblclick', function(e) {
+        // Respect FSM states — don't enter focus mode when editing or a node is selected
+        if (window.SmartBInteraction) {
+          var st = SmartBInteraction.getState();
+          if (st === 'editing' || st === 'selected') return;
+        }
         var node = e.target.closest('.node') || e.target.closest('.smartb-node');
         if (!node) return;
 

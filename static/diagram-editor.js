@@ -1,14 +1,10 @@
 /**
  * SmartB Diagrams — Visual Diagram Editor
  * Manipulates .mmd content: add/remove/edit nodes and edges.
- * Exposed as window.MmdEditor
- *
  * Dependencies: diagram-dom.js (DiagramDOM), event-bus.js (SmartBEventBus)
  */
 (function () {
     'use strict';
-
-    // ── .mmd Content Manipulation ──
 
     /** Find insertion point: before first `style` line, or before annotations, or at end */
     function findInsertionLine(lines) {
@@ -94,18 +90,14 @@
         return m ? m[1] : nodeId;
     }
 
-    /** Parse edge info from an SVG edge ID like "L-A-B-0" */
-    function parseEdgeId(edgeId) {
-        // Edge IDs: L-SOURCE-TARGET-INDEX or L-SOURCE-TARGET
-        var m = edgeId.match(/^L-(.+)-(\d+)$/);
-        if (!m) return null;
-        // The middle part is SOURCE-TARGET, need to split intelligently
-        var middle = m[1];
-        // Try known node IDs to split
-        return { raw: middle };
+    /** Duplicate a node with a new ID and "(copy)" appended to label */
+    function duplicateNode(content, nodeId) {
+        var newId = generateNodeId(content);
+        var label = getNodeText(content, nodeId);
+        return addNode(content, newId, label + ' (copy)');
     }
 
-    /** Find edge source and target from SVG edge element */
+    /** Find edge source and target from content */
     function findEdgeEndpoints(edgeId, content) {
         var lines = content.split('\n');
         var edgePatterns = [];
@@ -149,8 +141,6 @@
         return 'N' + i;
     }
 
-    // ── Visual Editing State ──
-
     var editorState = {
         mode: null,         // null | 'addNode' | 'addEdge'
         edgeSource: null,   // node ID when in addEdge and source is selected
@@ -164,8 +154,6 @@
         saveFile: null,
         renderDiagram: null,
     };
-
-    // ── Mode Management ──
 
     function setMode(mode) {
         editorState.mode = mode;
@@ -197,8 +185,6 @@
     function toggleAddNode() { setMode(editorState.mode === 'addNode' ? null : 'addNode'); }
     function toggleAddEdge() { setMode(editorState.mode === 'addEdge' ? null : 'addEdge'); }
 
-    // ── Click Handlers (uses DiagramDOM.extractNodeId) ──
-
     function handleClick(e) {
         if (!editorState.mode) return;
         if (e.target.closest('.zoom-controls') || e.target.closest('.flag-popover') || e.target.closest('.editor-popover')) return;
@@ -229,8 +215,6 @@
             }
         }
     }
-
-    // ── Popovers ──
 
     function closeEditorPopover() {
         var existing = document.querySelector('.editor-popover');
@@ -395,8 +379,6 @@
         btnCreate.addEventListener('click', doCreate);
     }
 
-    // ── Correction Actions (called from flag popover) ──
-
     function doRemoveNode(nodeId) {
         applyEdit(function(c) { return removeNode(c, nodeId); });
         if (window.SmartBAnnotations) {
@@ -426,11 +408,32 @@
         if (window.toast) window.toast('Origem: ' + nodeId + ' — clique no DESTINO');
     }
 
-    // ── Apply Edit & Re-render ──
+    var undoStack = [];
+    var MAX_UNDO = 50;
+
+    async function undo() {
+        if (undoStack.length === 0) {
+            if (window.toast) window.toast('Nada para desfazer');
+            return;
+        }
+        var prev = undoStack.pop();
+        var editor = editorHooks.getEditor();
+        if (!editor) return;
+        editor.value = prev;
+        editorHooks.setLastContent(prev);
+        if (editorHooks.saveFile) await editorHooks.saveFile();
+        if (editorHooks.renderDiagram) await editorHooks.renderDiagram(prev);
+        if (window.toast) window.toast('Desfeito (' + undoStack.length + ' restantes)');
+    }
 
     async function applyEdit(editFn) {
         var editor = editorHooks.getEditor();
         if (!editor) return;
+
+        // Save current content to undo stack BEFORE editing
+        undoStack.push(editor.value);
+        if (undoStack.length > MAX_UNDO) undoStack.shift();
+
         // Strip annotations, apply edit, re-inject annotations
         var annotations = window.SmartBAnnotations;
         var content = editor.value;
@@ -452,8 +455,6 @@
         }
     }
 
-    // ── Init ──
-
     function init(options) {
         if (options) Object.assign(editorHooks, options);
         var container = document.getElementById('preview-container');
@@ -468,17 +469,16 @@
         }
     }
 
-    // ── Public API ──
-
     window.MmdEditor = {
-        init: init, setMode: setMode,
+        init: init, setMode: setMode, undo: undo,
         toggleAddNode: toggleAddNode, toggleAddEdge: toggleAddEdge,
         addNode: addNode, addEdge: addEdge, removeNode: removeNode,
         removeEdge: removeEdge, editNodeText: editNodeText, getNodeText: getNodeText,
         getAllNodeIds: getAllNodeIds, generateNodeId: generateNodeId,
-        findEdgeEndpoints: findEdgeEndpoints,
+        findEdgeEndpoints: findEdgeEndpoints, duplicateNode: duplicateNode,
         doRemoveNode: doRemoveNode, doRemoveEdge: doRemoveEdge,
         doEditNodeText: doEditNodeText, startConnectFrom: startConnectFrom,
+        applyEdit: applyEdit,
         getState: function() { return editorState; },
         closeEditorPopover: closeEditorPopover,
     };

@@ -99,10 +99,30 @@
         if (e.target.closest('.flag-popover')) return;
         if (e.target.closest('.search-bar')) return;
         if (e.key === 'f' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); SmartBSearch.open(); return; }
-        if (e.key === 'f' && !e.ctrlKey && !e.metaKey) { SmartBAnnotations.toggleFlagMode(); return; }
-        if (e.key === 'n' && !e.ctrlKey && !e.metaKey) { MmdEditor.toggleAddNode(); return; }
-        if (e.key === 'a' && !e.ctrlKey && !e.metaKey) { MmdEditor.toggleAddEdge(); return; }
-        if (e.key === 'Escape') { SmartBAnnotations.closePopover(); MmdEditor.closeEditorPopover(); MmdEditor.setMode(null); SmartBSearch.close(); }
+        if (e.key === 'f' && !e.ctrlKey && !e.metaKey) {
+            if (window.SmartBInteraction && SmartBInteraction.isBlocking()) return;
+            SmartBAnnotations.toggleFlagMode();
+            if (window.SmartBInteraction) SmartBInteraction.forceState(SmartBAnnotations.getState().flagMode ? 'flagging' : 'idle');
+            return;
+        }
+        if (e.key === 'n' && !e.ctrlKey && !e.metaKey) {
+            if (window.SmartBInteraction && SmartBInteraction.isBlocking()) return;
+            MmdEditor.toggleAddNode();
+            if (window.SmartBInteraction) SmartBInteraction.forceState(MmdEditor.getState().mode === 'addNode' ? 'add-node' : 'idle');
+            return;
+        }
+        if (e.key === 'a' && !e.ctrlKey && !e.metaKey) {
+            if (window.SmartBInteraction && SmartBInteraction.isBlocking()) return;
+            MmdEditor.toggleAddEdge();
+            if (window.SmartBInteraction) SmartBInteraction.forceState(MmdEditor.getState().mode === 'addEdge' ? 'add-edge' : 'idle');
+            return;
+        }
+        if (e.key === 'z' && (e.ctrlKey || e.metaKey) && !e.shiftKey) { e.preventDefault(); MmdEditor.undo(); return; }
+        if (e.key === 'Escape') {
+            SmartBAnnotations.closePopover(); MmdEditor.closeEditorPopover(); MmdEditor.setMode(null); SmartBSearch.close();
+            if (window.SmartBSelection) SmartBSelection.deselectAll();
+            if (window.SmartBContextMenu) SmartBContextMenu.close();
+        }
         if (e.key === '?' && !e.ctrlKey) showHelp();
         if (e.key === 'e' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
@@ -139,7 +159,11 @@
     SmartBAnnotations.init(_initHooks);
     MmdEditor.init(_initHooks);
     SmartBSearch.init(_initHooks);
+
+    // ── Init Phase 13: Canvas Interaction Modules ──
     if (window.SmartBSelection) SmartBSelection.init();
+    if (window.SmartBContextMenu) SmartBContextMenu.init();
+    if (window.SmartBInlineEdit) SmartBInlineEdit.init();
 
     // ── Init Collapse UI ──
     if (window.SmartBCollapseUI) {
