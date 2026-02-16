@@ -9,11 +9,11 @@ See: .planning/PROJECT.md (updated 2026-02-15)
 ## Current Position
 
 Phase: 16-heatmap-session-recording
-Plan: 01 of ?? in progress
-Status: Plan 01 complete -- backend infrastructure for @risk annotations, sessions, heatmap
-Last activity: 2026-02-16 -- Plan 01 executed (2 tasks, 4min), 238 tests passing
+Plan: 02 of ?? in progress
+Status: Plan 02 complete -- MCP tools for session recording and risk annotations
+Last activity: 2026-02-16 -- Plan 02 executed (2 tasks, 4min), 251 tests passing
 
-Progress: [██████████] v1.0 100% | Phase 16: [==--------] 1/? plans complete
+Progress: [██████████] v1.0 100% | Phase 16: [====------] 2/? plans complete
 
 ## v1.0 Performance Metrics
 
@@ -171,6 +171,10 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - JSONL format for session persistence: append-only, one JSON per line, simple to read/write
 - SessionStore exposed on ServerInstance: same pattern as ghostStore and breakpointContinueSignals
 - Route module extraction: registerSessionRoutes in separate session-routes.ts to keep routes.ts under 500 lines
+- Session tools extracted to session-tools.ts following module extraction pattern -- keeps tools.ts under 400 lines
+- registerSessionTools receives optional deps (sessionStore, wsManager) -- same pattern as tools.ts optional deps
+- end_session broadcasts heatmap:update with aggregated data for real-time frontend heatmap rendering
+- record_step broadcasts session:event for real-time session visualization
 
 **Phase 15:**
 - Three-annotation preservation: every write operation reads and re-injects flags, statuses, AND breakpoints
@@ -216,8 +220,8 @@ Decisions are logged in PROJECT.md Key Decisions table.
 
 ### Test Coverage
 
-- 238 tests passing across 18 test files
-- Key coverage: collapser (42 tests), graph-parser (30), annotations (28), graph-roundtrip (25), graph-serializer (15), server (13), viewport-transform (11), service (11), dagre-layout (9), parser (9), breakpoint-tools (7)
+- 251 tests passing across 19 test files
+- Key coverage: collapser (42 tests), annotations (33), graph-parser (30), graph-roundtrip (25), graph-serializer (15), server (13), viewport-transform (11), service (11), dagre-layout (9), parser (9), session-store (8), breakpoint-tools (7)
 - Gaps: no frontend tests, no POST route tests
 
 ## Phase 11 Progress
@@ -347,8 +351,16 @@ Decisions are logged in PROJECT.md Key Decisions table.
 - SessionStore instantiated in createHttpServer, exposed on ServerInstance
 - Duration: 4 min, 238 tests pass
 
+**16-02 (Complete):** MCP tools for session recording and risk annotations
+- 4 new MCP tools: start_session, record_step, end_session, set_risk_level
+- session-tools.ts (218 lines): registerSessionTools with optional deps pattern
+- Zod schemas: StartSessionInput, RecordStepInput, EndSessionInput, SetRiskLevelInput
+- McpToolDependencies extended with sessionStore, wired through in startMcpServer
+- 13 new tests: 8 SessionStore CRUD/heatmap, 5 parseRisks parse/round-trip/preservation
+- Duration: 4 min, 251 tests pass
+
 ## Session Continuity
 
 Last session: 2026-02-16
-Stopped at: Completed 16-01-PLAN.md (backend infrastructure for @risk annotations, sessions, heatmap)
-Next action: Execute 16-02-PLAN.md (MCP tools for sessions and risk annotations).
+Stopped at: Completed 16-02-PLAN.md (MCP tools for session recording and risk annotations)
+Next action: Execute 16-03-PLAN.md (frontend heatmap visualization).
