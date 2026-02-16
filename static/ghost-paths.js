@@ -56,7 +56,24 @@
         var el = DiagramDOM.findNodeElement(nodeId);
         if (!el || !el.getBBox) return null;
         var bbox = el.getBBox();
-        return { x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2 };
+
+        // Custom renderer uses transform="translate(x,y)" on <g> nodes.
+        // getBBox() returns local coords (centered at 0,0), so we need
+        // to add the transform offset to get the real SVG position.
+        var tx = 0, ty = 0;
+        var transform = el.getAttribute('transform');
+        if (transform) {
+            var match = transform.match(/translate\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/);
+            if (match) {
+                tx = parseFloat(match[1]);
+                ty = parseFloat(match[2]);
+            }
+        }
+
+        return {
+            x: tx + bbox.x + bbox.width / 2,
+            y: ty + bbox.y + bbox.height / 2
+        };
     }
 
     function renderGhostPaths() {

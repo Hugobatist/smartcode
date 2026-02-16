@@ -126,6 +126,11 @@
             SmartBAnnotations.closePopover(); MmdEditor.closeEditorPopover(); MmdEditor.setMode(null); SmartBSearch.close();
             if (window.SmartBSelection) SmartBSelection.deselectAll();
             if (window.SmartBContextMenu) SmartBContextMenu.close();
+            if (window.SmartBInlineEdit) SmartBInlineEdit.cancel();
+            // Catch-all: force FSM back to idle regardless of current state
+            if (window.SmartBInteraction && SmartBInteraction.getState() !== 'idle') {
+                SmartBInteraction.forceState('idle');
+            }
         }
         if (e.key === '?' && !e.ctrlKey) showHelp();
         if (e.key === 'e' && (e.ctrlKey || e.metaKey)) {

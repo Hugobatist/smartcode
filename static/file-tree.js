@@ -163,6 +163,24 @@
         SmartBRenderer.setInitialRender(true);
         syncFile();
         renderTree();
+
+        // Fetch overlay data for the new file (ghost paths, heatmap, sessions)
+        var encoded = encodeURIComponent(path);
+        if (window.SmartBGhostPaths) {
+            fetch('/api/ghost-paths/' + encoded)
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(d) { if (d) SmartBGhostPaths.updateGhostPaths(d.ghostPaths || []); })
+                .catch(function() {});
+        }
+        if (window.SmartBHeatmap) {
+            fetch('/api/heatmap/' + encoded)
+                .then(function(r) { return r.ok ? r.json() : null; })
+                .then(function(d) { if (d) SmartBHeatmap.updateVisitCounts(d); })
+                .catch(function() {});
+        }
+        if (window.SmartBSessionPlayer) {
+            SmartBSessionPlayer.fetchSessionList(path);
+        }
     }
 
     // ── File sync via fetch ──

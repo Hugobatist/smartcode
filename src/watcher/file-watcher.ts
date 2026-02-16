@@ -1,13 +1,19 @@
-import chokidar, { type FSWatcher } from 'chokidar';
+import { watch, existsSync, type FSWatcher } from 'node:fs';
 import path from 'node:path';
 import { log } from '../utils/logger.js';
 
 /**
- * Watches a project directory for .mmd file changes using chokidar.
+ * Watches a project directory for .mmd file changes using Node.js native fs.watch.
+ * Uses recursive mode (supported on macOS and Windows with Node >= 22).
  * Fires callbacks with normalized forward-slash relative paths.
+ *
+ * Replaces chokidar which has known issues with directory watching on macOS (Darwin 25+).
  */
 export class FileWatcher {
   private watcher: FSWatcher;
+  /** Debounce map to avoid duplicate events for the same file */
+  private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private static readonly DEBOUNCE_MS = 80;
 
   constructor(
     private projectDir: string,
@@ -15,44 +21,57 @@ export class FileWatcher {
     private onFileAdded: (relativePath: string) => void,
     private onFileRemoved: (relativePath: string) => void,
   ) {
-    this.watcher = chokidar.watch(projectDir, {
-      ignored: (filePath: string, stats) => {
-        // Exclude node_modules and .git directories
-        const basename = path.basename(filePath);
-        if (basename === 'node_modules' || basename === '.git') return true;
-        // Allow directories to be traversed
-        if (stats?.isDirectory()) return false;
+    this.watcher = watch(
+      projectDir,
+      { recursive: true },
+      (eventType, filename) => {
+        if (!filename) return;
+
+        // Normalize to forward slashes
+        const relative = filename.split(path.sep).join('/');
+
         // Only watch .mmd files
-        return !filePath.endsWith('.mmd');
+        if (!relative.endsWith('.mmd')) return;
+
+        // Skip node_modules and .git
+        if (relative.includes('node_modules/') || relative.includes('.git/')) return;
+
+        // Debounce: fs.watch can fire multiple events for a single write
+        const existing = this.debounceTimers.get(relative);
+        if (existing) clearTimeout(existing);
+
+        this.debounceTimers.set(relative, setTimeout(() => {
+          this.debounceTimers.delete(relative);
+          this.handleEvent(relative);
+        }, FileWatcher.DEBOUNCE_MS));
       },
-      persistent: true,
-      ignoreInitial: true,
-      atomic: true,
-    });
+    );
 
-    this.watcher
-      .on('change', (filePath: string) => this.handleEvent('change', filePath))
-      .on('add', (filePath: string) => this.handleEvent('add', filePath))
-      .on('unlink', (filePath: string) => this.handleEvent('unlink', filePath));
-
-    log.debug(`FileWatcher started for ${projectDir}`);
+    log.debug(`FileWatcher started for ${projectDir} (native fs.watch recursive)`);
   }
 
-  /** Normalize file path and route to appropriate callback */
-  private handleEvent(event: string, filePath: string): void {
-    const relative = path.relative(this.projectDir, filePath)
-      .split(path.sep).join('/');
+  /** Check if file exists and route to appropriate callback */
+  private handleEvent(relative: string): void {
+    const absolute = path.join(this.projectDir, relative);
+    const exists = existsSync(absolute);
 
-    log.debug(`File ${event}: ${relative}`);
-
-    if (event === 'change') this.onFileChanged(relative);
-    else if (event === 'add') this.onFileAdded(relative);
-    else if (event === 'unlink') this.onFileRemoved(relative);
+    if (exists) {
+      // Could be a change or a new file — we check both
+      log.debug(`File changed: ${relative}`);
+      this.onFileChanged(relative);
+    } else {
+      log.debug(`File removed: ${relative}`);
+      this.onFileRemoved(relative);
+    }
   }
 
   /** Close the file watcher and release OS file handles */
   async close(): Promise<void> {
-    await this.watcher.close();
+    this.watcher.close();
+    for (const timer of this.debounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.debounceTimers.clear();
     log.debug('FileWatcher closed');
   }
 }
