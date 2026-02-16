@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   parseFlags,
   parseStatuses,
+  parseBreakpoints,
   stripAnnotations,
   injectAnnotations,
   ANNOTATION_START,
@@ -291,5 +292,87 @@ describe('status round-trip', () => {
 
     const stripped = stripAnnotations(injected);
     expect(stripped).toBe(validFlowchartContent);
+  });
+});
+
+describe('breakpoint annotations', () => {
+  it('parseBreakpoints extracts nodeIds from annotation block', () => {
+    const content = [
+      'flowchart LR',
+      '    A --> B',
+      '',
+      ANNOTATION_START,
+      '%% @breakpoint A',
+      '%% @breakpoint B',
+      ANNOTATION_END,
+    ].join('\n');
+
+    const breakpoints = parseBreakpoints(content);
+    expect(breakpoints.size).toBe(2);
+    expect(breakpoints.has('A')).toBe(true);
+    expect(breakpoints.has('B')).toBe(true);
+  });
+
+  it('parseBreakpoints returns empty set when no breakpoints', () => {
+    const breakpoints = parseBreakpoints(validFlowchartContent);
+    expect(breakpoints.size).toBe(0);
+  });
+
+  it('parseBreakpoints ignores lines outside annotation block', () => {
+    const content = [
+      'flowchart LR',
+      '%% @breakpoint X',
+      '    A --> B',
+      '',
+      ANNOTATION_START,
+      '%% @breakpoint Y',
+      ANNOTATION_END,
+    ].join('\n');
+
+    const breakpoints = parseBreakpoints(content);
+    expect(breakpoints.size).toBe(1);
+    expect(breakpoints.has('Y')).toBe(true);
+    expect(breakpoints.has('X')).toBe(false);
+  });
+
+  it('injectAnnotations includes breakpoint lines', () => {
+    const flags = new Map<string, Flag>();
+    const statuses = new Map<string, NodeStatus>();
+    const breakpoints = new Set(['NodeA', 'NodeB']);
+
+    const result = injectAnnotations(validFlowchartContent, flags, statuses, breakpoints);
+    expect(result).toContain(ANNOTATION_START);
+    expect(result).toContain(ANNOTATION_END);
+    expect(result).toContain('%% @breakpoint NodeA');
+    expect(result).toContain('%% @breakpoint NodeB');
+  });
+
+  it('injectAnnotations preserves flags, statuses, and breakpoints together', () => {
+    const flags = new Map<string, Flag>([
+      ['A', { nodeId: 'A', message: 'check this' }],
+    ]);
+    const statuses = new Map<string, NodeStatus>([
+      ['B', 'ok'],
+    ]);
+    const breakpoints = new Set(['C']);
+
+    const result = injectAnnotations(validFlowchartContent, flags, statuses, breakpoints);
+    expect(result).toContain('%% @flag A "check this"');
+    expect(result).toContain('%% @status B ok');
+    expect(result).toContain('%% @breakpoint C');
+  });
+
+  it('round-trip: inject then parse preserves breakpoints', () => {
+    const flags = new Map<string, Flag>();
+    const statuses = new Map<string, NodeStatus>();
+    const breakpoints = new Set(['Alpha', 'Beta']);
+
+    const injected = injectAnnotations(validFlowchartContent, flags, statuses, breakpoints);
+    const parsed = parseBreakpoints(injected);
+
+    expect(parsed.size).toBe(breakpoints.size);
+    for (const id of breakpoints) {
+      expect(parsed.has(id)).toBe(true);
+    }
   });
 });
