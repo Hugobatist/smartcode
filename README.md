@@ -4,7 +4,7 @@
 
 [![npm version](https://img.shields.io/npm/v/smartb-diagrams.svg)](https://www.npmjs.com/package/smartb-diagrams)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen.svg)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D18.17-brightgreen.svg)](https://nodejs.org/)
 
 ---
 
@@ -65,10 +65,6 @@ Color-code nodes by visit frequency (cold blue to hot red). Identify which reaso
 ### Node Status Tracking
 
 Color-coded progress: green (ok), yellow (in-progress), red (problem), gray (discarded). See at a glance where the AI succeeded and where it struggled.
-
-### VS Code Extension
-
-View diagrams directly in VS Code. WebSocket connection with auto-reconnect, flag interaction, and file selector. Open with `Cmd+Alt+M`.
 
 ## CLI Reference
 
@@ -276,7 +272,7 @@ Developer's Machine (single process)
 
 ## Requirements
 
-- Node.js >= 22
+- Node.js >= 18.17
 - npm or npx
 
 ## Contributing

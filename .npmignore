@@ -1,0 +1,12 @@
+test/
+src/
+.planning/
+.github/
+*.mmd
+*.py
+AVALIACAO-PROJETO.md
+CLAUDE.md
+tsup.config.ts
+tsconfig.json
+vitest.config.ts
+univale/
