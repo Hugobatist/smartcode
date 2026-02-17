@@ -91,7 +91,10 @@ export class SessionStore {
    */
   async endSession(sessionId: string): Promise<SessionSummary> {
     const meta = this.activeSessions.get(sessionId);
-    const diagramFile = meta?.diagramFile ?? '';
+    if (!meta) {
+      throw new Error(`Session ${sessionId} is not active`);
+    }
+    const diagramFile = meta.diagramFile;
 
     const endEvent: SessionEvent = {
       ts: Date.now(),

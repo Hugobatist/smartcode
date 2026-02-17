@@ -26,9 +26,10 @@
     'use strict';
 
     // ── State ──
-    var currentFile = 'diagram.mmd';
+    var currentFile = '';
     var lastContent = '';
     var treeData = [];
+    var initialLoadDone = false;
     var collapsedFolders = new Set(JSON.parse(localStorage.getItem('smartb-collapsed') || '[]'));
 
     // Centralized setter -- keeps window.currentFile in sync
@@ -39,6 +40,16 @@
 
     // Initial sync
     window.currentFile = currentFile;
+
+    /** Collect all file paths from nested tree data */
+    function collectFilePaths(nodes) {
+        var paths = [];
+        for (var i = 0; i < nodes.length; i++) {
+            if (nodes[i].type === 'file') paths.push(nodes[i].path);
+            else if (nodes[i].children) paths = paths.concat(collectFilePaths(nodes[i].children));
+        }
+        return paths;
+    }
 
     function saveCollapsed() {
         localStorage.setItem('smartb-collapsed', JSON.stringify([...collapsedFolders]));
@@ -72,6 +83,16 @@
             .then(function(data) {
                 if (data) treeData = data;
                 renderTree();
+                // On first load, auto-select first available file if current doesn't exist
+                if (!initialLoadDone && data) {
+                    initialLoadDone = true;
+                    var allFiles = collectFilePaths(data);
+                    if (allFiles.length > 0 && (!currentFile || allFiles.indexOf(currentFile) === -1)) {
+                        loadFile(allFiles[0]);
+                    } else if (currentFile && allFiles.indexOf(currentFile) !== -1) {
+                        syncFile();
+                    }
+                }
             })
             .catch(function() {
                 renderTree();
@@ -92,13 +113,13 @@
                 var pad = 8 + depth * 16;
                 return '<div class="tree-folder">' +
                     '<div class="tree-folder-header" style="padding-left:' + pad + 'px" data-action="toggle-folder" data-folder="' + escapeHtml(n.name) + '">' +
-                        '<span class="tree-chevron ' + (isOpen ? 'open' : '') + '">&#x25B6;</span>' +
-                        '<span class="tree-folder-icon">' + (isOpen ? '&#x1F4C2;' : '&#x1F4C1;') + '</span>' +
+                        '<span class="tree-chevron ' + (isOpen ? 'open' : '') + '">' + SmartBIcons.chevronRight + '</span>' +
+                        '<span class="tree-folder-icon">' + (isOpen ? SmartBIcons.folderOpen : SmartBIcons.folder) + '</span>' +
                         '<span class="tree-folder-name">' + escapeHtml(prettyFolder(n.name)) + '</span>' +
                         '<span class="tree-folder-count">' + count + '</span>' +
                         '<span class="tree-folder-actions">' +
-                            '<button class="rename-btn" data-action="rename-folder" data-folder="' + escapeHtml(n.name) + '" title="Renomear Pasta">&#x270E;</button>' +
-                            '<button class="delete-btn" data-action="delete-folder" data-folder="' + escapeHtml(n.name) + '" title="Deletar Pasta">&#x2715;</button>' +
+                            '<button class="rename-btn" data-action="rename-folder" data-folder="' + escapeHtml(n.name) + '" title="Renomear Pasta">' + SmartBIcons.edit + '</button>' +
+                            '<button class="delete-btn" data-action="delete-folder" data-folder="' + escapeHtml(n.name) + '" title="Deletar Pasta">' + SmartBIcons.trash + '</button>' +
                         '</span>' +
                     '</div>' +
                     '<div class="tree-children ' + (isOpen ? '' : 'collapsed') + '">' +
@@ -110,11 +131,11 @@
                 var filePath = n.path;
                 var isActive = filePath === currentFile;
                 return '<div class="tree-file ' + (isActive ? 'active' : '') + '" style="padding-left:' + filePad + 'px" data-action="load-file" data-path="' + escapeHtml(filePath) + '">' +
-                    '<span class="tree-file-icon">&#x25C8;</span>' +
+                    '<span class="tree-file-icon">' + SmartBIcons.file + '</span>' +
                     '<span class="tree-file-name" title="' + escapeHtml(filePath) + '">' + escapeHtml(prettyName(n.name)) + '</span>' +
                     '<span class="tree-file-actions">' +
-                        '<button class="rename-btn" data-action="rename-file" data-path="' + escapeHtml(filePath) + '" title="Renomear">&#x270E;</button>' +
-                        '<button class="delete-btn" data-action="delete-file" data-path="' + escapeHtml(filePath) + '" title="Deletar">&#x2715;</button>' +
+                        '<button class="rename-btn" data-action="rename-file" data-path="' + escapeHtml(filePath) + '" title="Renomear">' + SmartBIcons.edit + '</button>' +
+                        '<button class="delete-btn" data-action="delete-file" data-path="' + escapeHtml(filePath) + '" title="Deletar">' + SmartBIcons.trash + '</button>' +
                     '</span>' +
                 '</div>';
             }

@@ -36,14 +36,24 @@ export interface Route {
   handler: Handler;
 }
 
+/** Allowed localhost origins for CORS */
+const LOCALHOST_PATTERNS = [
+  /^https?:\/\/localhost(:\d+)?$/,
+  /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
+  /^https?:\/\/\[::1\](:\d+)?$/,
+];
+
 /**
  * Set CORS headers on a response.
- * Allows all origins for local dev server usage.
+ * Only allows localhost origins (127.0.0.1, localhost, [::1]).
  */
-function setCorsHeaders(res: ServerResponse): void {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+function setCorsHeaders(req: IncomingMessage, res: ServerResponse): void {
+  const origin = req.headers.origin;
+  if (origin && LOCALHOST_PATTERNS.some((p) => p.test(origin))) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
 }
 
 /**
@@ -51,7 +61,6 @@ function setCorsHeaders(res: ServerResponse): void {
  */
 export function sendJson(res: ServerResponse, data: unknown, status = 200): void {
   const body = JSON.stringify(data);
-  setCorsHeaders(res);
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Content-Length': Buffer.byteLength(body),
@@ -108,8 +117,8 @@ function createHandler(
     try {
       const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
 
-      // CORS headers on all responses
-      setCorsHeaders(res);
+      // CORS headers on all responses (localhost-only)
+      setCorsHeaders(req, res);
 
       // Handle OPTIONS preflight
       if (req.method === 'OPTIONS') {

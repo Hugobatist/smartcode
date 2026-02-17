@@ -75,9 +75,9 @@
         overlay.style.fontFamily = computed.fontFamily || "'Inter', sans-serif";
         overlay.style.fontSize = computed.fontSize || '14px';
         overlay.style.fontWeight = computed.fontWeight || '400';
-        overlay.style.color = '#cdd6f4';
-        overlay.style.background = 'var(--panel-bg, #1e1e2e)';
-        overlay.style.border = '2px solid #6366f1';
+        overlay.style.color = '#e4e4e7';
+        overlay.style.background = 'var(--surface-2)';
+        overlay.style.border = '2px solid #3b82f6';
         overlay.style.borderRadius = '4px';
         overlay.style.padding = '2px 6px';
         overlay.style.outline = 'none';

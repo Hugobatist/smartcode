@@ -7,7 +7,9 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="vendor/dagre-bundle.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11.12.2/dist/mermaid.min.js"></script>
+    <link rel="stylesheet" href="tokens.css">
+    <link rel="stylesheet" href="main-layout.css">
     <link rel="stylesheet" href="main.css">
     <link rel="stylesheet" href="annotations.css">
     <link rel="stylesheet" href="breakpoints.css">
@@ -19,30 +21,54 @@
 
 <!-- Top Bar -->
 <div class="topbar">
-    <span class="logo">SMARTB DIAGRAMS</span>
-    <div class="sep"></div>
-    <span id="workspaceSwitcher" class="workspace-switcher"></span>
-    <div class="sep"></div>
-    <span class="file-name" id="currentFileName">Plano Acao</span>
-    <div class="sep"></div>
-    <button class="btn" id="toggleSidebar" title="Toggle sidebar">Arquivos</button>
-    <button class="btn" id="toggleEditor" title="Toggle editor">Editor</button>
-    <button class="btn" id="toggleAutoSync">Auto-Sync</button>
-    <button class="btn" onclick="saveCurrentFile()">Salvar</button>
-    <button class="btn" onclick="exportSVG()">SVG</button>
-    <button class="btn" onclick="exportPNG()">PNG</button>
-    <div class="sep"></div>
-    <button class="btn btn-edit" id="btnAddNode" onclick="MmdEditor.toggleAddNode()">+ Nodo</button>
-    <button class="btn btn-edit" id="btnAddEdge" onclick="MmdEditor.toggleAddEdge()">+ Seta</button>
-    <button class="btn btn-flags" id="btnFlags" onclick="SmartBAnnotations.toggleFlagMode()">Flags <span class="flag-count-badge" id="flagCountBadge" data-count="0"></span></button>
-    <button class="btn" id="toggleFlagPanel" onclick="SmartBAnnotations.togglePanel()">Painel</button>
-    <button class="btn" id="btnGhostPaths" onclick="SmartBGhostPaths.toggle()">Ghost <span class="ghost-count-badge" id="ghostCountBadge" data-count="0"></span></button>
-    <button class="btn" id="btnHeatmap" onclick="SmartBHeatmap.toggle()">Heatmap</button>
-    <span style="position:relative">
-        <button class="btn" id="btnSessions">Sessions</button>
-        <div class="session-dropdown hidden" id="sessionDropdown"><div id="sessionList"></div></div>
-    </span>
-    <button class="btn" onclick="showHelp()">?</button>
+    <!-- Group 1: Navigation -->
+    <div class="toolbar-group">
+        <span class="logo">SmartB</span>
+        <span id="workspaceSwitcher" class="workspace-switcher"></span>
+        <span class="file-name" id="currentFileName">Plano Acao</span>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- Group 2: View -->
+    <div class="toolbar-group">
+        <button class="toolbar-btn" id="toggleSidebar" title="Toggle sidebar">Arquivos</button>
+        <button class="toolbar-btn" id="toggleEditor" title="Toggle editor">Editor</button>
+        <button class="toolbar-btn" id="toggleAutoSync">Auto-Sync</button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- Group 3: Edit -->
+    <div class="toolbar-group">
+        <button class="toolbar-btn toolbar-btn--primary" id="btnAddNode" onclick="MmdEditor.toggleAddNode()">+ Nodo</button>
+        <button class="toolbar-btn toolbar-btn--primary" id="btnAddEdge" onclick="MmdEditor.toggleAddEdge()">+ Seta</button>
+    </div>
+
+    <div class="toolbar-separator"></div>
+
+    <!-- Group 4: Inspect -->
+    <div class="toolbar-group">
+        <button class="toolbar-btn" id="btnFlags" onclick="SmartBAnnotations.toggleFlagMode()">Flags <span class="toolbar-badge" id="flagCountBadge" data-count="0"></span></button>
+        <button class="toolbar-btn" id="toggleFlagPanel" onclick="SmartBAnnotations.togglePanel()">Painel</button>
+        <button class="toolbar-btn" id="btnGhostPaths" onclick="SmartBGhostPaths.toggle()">Ghost <span class="toolbar-badge" id="ghostCountBadge" data-count="0"></span></button>
+        <button class="toolbar-btn" id="btnHeatmap" onclick="SmartBHeatmap.toggle()">Heatmap</button>
+        <span style="position:relative">
+            <button class="toolbar-btn" id="btnSessions">Sessions</button>
+            <div class="session-dropdown hidden" id="sessionDropdown"><div id="sessionList"></div></div>
+        </span>
+    </div>
+
+    <div class="toolbar-spacer"></div>
+
+    <!-- Group 5: Export + Status (right-aligned) -->
+    <div class="toolbar-group">
+        <button class="toolbar-btn" onclick="saveCurrentFile()">Salvar</button>
+        <button class="toolbar-btn" onclick="exportSVG()">SVG</button>
+        <button class="toolbar-btn" onclick="exportPNG()">PNG</button>
+        <button class="toolbar-btn toolbar-btn--ghost" onclick="showHelp()">?</button>
+    </div>
+
     <div class="status">
         <div class="status-dot" id="statusDot"></div>
         <span id="statusText">Watching...</span>
@@ -56,9 +82,9 @@
         <div class="sidebar-header">
             <span>Explorer</span>
             <div class="actions">
-                <button onclick="createNewFolder()" title="Nova pasta">+&#x1F4C1;</button>
-                <button onclick="createNewFile()" title="Novo diagrama">+&#x1F4C4;</button>
-                <button onclick="saveCurrentFile()" title="Salvar (Ctrl+S)">&#x1F4BE;</button>
+                <button id="btnNewFolder" onclick="createNewFolder()" title="Nova pasta"></button>
+                <button id="btnNewFile" onclick="createNewFile()" title="Novo diagrama"></button>
+                <button id="btnSaveFile" onclick="saveCurrentFile()" title="Salvar (Ctrl+S)"></button>
             </div>
         </div>
         <div id="fileTree" style="flex:1;overflow-y:auto;padding:4px 0"></div>
@@ -70,7 +96,7 @@
         <div class="editor-panel hidden" id="editorPanel">
             <div class="panel-header">
                 <span class="tab active">Mermaid</span>
-                <span style="margin-left:auto; font-size:11px; color:var(--text-dim)">
+                <span style="margin-left:auto; font-size:11px; color:var(--text-secondary)">
                     <kbd>Ctrl</kbd>+<kbd>Enter</kbd> render
                 </span>
             </div>
@@ -155,7 +181,7 @@
         <div class="help-row"><span><kbd>?</kbd></span><span>Ajuda</span></div>
         <br>
         <h2>Como funciona</h2>
-        <p style="font-size:13px;color:var(--text-dim);line-height:1.6">
+        <p style="font-size:13px;color:var(--text-secondary);line-height:1.6">
             O Claude atualiza os arquivos <code>.mmd</code> na pasta <code>diagramas/</code>.
             Com Auto-Sync ligado, esta pagina atualiza em tempo real via WebSocket.
             Clique em <strong>Editor</strong> para editar direto no navegador.
@@ -170,10 +196,13 @@
 <script src="renderer.js"></script>
 <script src="pan-zoom.js"></script>
 <script src="export.js"></script>
+<script src="icons.js"></script>
 <script src="file-tree.js"></script>
 <script src="editor-panel.js"></script>
 <script src="ws-client.js"></script>
 <script src="collapse-ui.js"></script>
+<script src="annotations-svg.js"></script>
+<script src="annotations-panel.js"></script>
 <script src="annotations.js"></script>
 <script src="command-history.js"></script>
 <script src="diagram-editor.js"></script>
@@ -194,6 +223,7 @@
 <script src="ghost-paths.js"></script>
 <script src="heatmap.js"></script>
 <script src="session-player.js"></script>
+<script src="ws-handler.js"></script>
 <script src="app-init.js"></script>
 
 </body>

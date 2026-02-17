@@ -17,9 +17,9 @@
     align-items: center;
     gap: 12px;
     padding: 10px 16px;
-    background: linear-gradient(135deg, #1e1e2e 0%, #2a1a2e 100%);
-    border-bottom: 2px solid #ef4444;
-    color: #cdd6f4;
+    background: var(--surface-1);
+    border-bottom: 2px solid var(--status-problem);
+    color: var(--text-primary);
     font-family: 'Inter', sans-serif;
     font-size: 13px;
     animation: slideDown 0.2s ease-out;
@@ -32,15 +32,15 @@
 
 .breakpoint-notification .bp-node-name {
     font-weight: 600;
-    color: #ef4444;
+    color: var(--status-problem);
 }
 
 .btn-breakpoint-action {
     padding: 4px 12px;
     border-radius: 4px;
-    border: 1px solid var(--border, #313244);
-    background: var(--panel-bg, #1e1e2e);
-    color: var(--text, #cdd6f4);
+    border: 1px solid var(--border-default);
+    background: var(--surface-1);
+    color: var(--text-primary);
     cursor: pointer;
     font-size: 12px;
     font-family: 'Inter', sans-serif;
@@ -48,47 +48,22 @@
 }
 
 .btn-breakpoint-action:hover {
-    background: var(--hover-bg, #313244);
+    background: var(--surface-3);
 }
 
 .btn-breakpoint-action.primary {
-    background: #22c55e;
+    background: var(--status-ok);
     color: #000;
-    border-color: #22c55e;
+    border-color: var(--status-ok);
 }
 
 .btn-breakpoint-action.primary:hover {
-    background: #16a34a;
+    background: var(--status-ok-stroke);
 }
 
 /* ── Ghost Paths Toggle Button ── */
-#btnGhostPaths {
-    position: relative;
-}
 #btnGhostPaths.active {
-    background: rgba(156, 163, 175, 0.2) !important;
-    color: #9ca3af !important;
-    border-color: rgba(156, 163, 175, 0.3) !important;
-}
-
-.ghost-count-badge {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: #9ca3af;
-    color: #fff;
-    font-size: 9px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
-    box-shadow: 0 1px 4px rgba(156,163,175,0.4);
-}
-.ghost-count-badge:empty,
-.ghost-count-badge[data-count="0"] {
-    display: none;
+    background: rgba(113, 113, 122, 0.2) !important;
+    color: var(--status-neutral) !important;
+    border-color: rgba(113, 113, 122, 0.3) !important;
 }

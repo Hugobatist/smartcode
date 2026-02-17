@@ -24,15 +24,6 @@
     var selectedType = null; // 'node' | 'edge'
     var overlayGroup = null; // SVGGElement for selection indicator
 
-    // ── Style Injection ──
-    var styleEl = document.createElement('style');
-    styleEl.textContent = [
-        '.selected-edge path { stroke: #6366f1 !important; stroke-width: 3 !important; }',
-        '.selected-edge .smartb-edge-path { stroke: #6366f1 !important; stroke-width: 3 !important; }',
-        '.selection-indicator { pointer-events: none; }',
-    ].join('\n');
-    document.head.appendChild(styleEl);
-
     // ── Core Functions ──
 
     /**
@@ -106,7 +97,7 @@
         rect.setAttribute('width', bbox.width + 8);
         rect.setAttribute('height', bbox.height + 8);
         rect.setAttribute('fill', 'none');
-        rect.setAttribute('stroke', '#6366f1');
+        rect.setAttribute('stroke', '#3b82f6');
         rect.setAttribute('stroke-width', '2');
         rect.setAttribute('stroke-dasharray', '6,3');
         rect.setAttribute('rx', '4');
@@ -125,7 +116,7 @@
             handle.setAttribute('y', corners[i][1]);
             handle.setAttribute('width', '8');
             handle.setAttribute('height', '8');
-            handle.setAttribute('fill', '#6366f1');
+            handle.setAttribute('fill', '#3b82f6');
             handle.setAttribute('rx', '2');
             g.appendChild(handle);
         }

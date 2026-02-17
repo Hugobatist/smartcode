@@ -12,17 +12,21 @@ function httpRequest(
   method: string,
   urlPath: string,
   body?: string,
+  extraHeaders?: Record<string, string>,
 ): Promise<{ status: number; headers: IncomingMessage['headers']; body: string }> {
   return new Promise((resolve, reject) => {
+    const headers: Record<string, string | number> = { ...extraHeaders };
+    if (body) {
+      headers['Content-Type'] = 'application/json';
+      headers['Content-Length'] = Buffer.byteLength(body);
+    }
     const req = request(
       {
         hostname: 'localhost',
         port,
         method,
         path: urlPath,
-        headers: body
-          ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-          : undefined,
+        headers,
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -155,15 +159,19 @@ describe('HTTP Server Integration', { timeout: 10_000 }, () => {
     expect(res.status).toBe(404);
   });
 
-  it('CORS headers present on API responses', async () => {
-    const res = await httpRequest(port, 'GET', '/api/diagrams');
-    expect(res.headers['access-control-allow-origin']).toBe('*');
+  it('CORS headers present on API responses with localhost origin', async () => {
+    const res = await httpRequest(port, 'GET', '/api/diagrams', undefined, {
+      Origin: `http://localhost:${port}`,
+    });
+    expect(res.headers['access-control-allow-origin']).toBe(`http://localhost:${port}`);
   });
 
   it('OPTIONS preflight returns 204 with CORS headers', async () => {
-    const res = await httpRequest(port, 'OPTIONS', '/api/diagrams');
+    const res = await httpRequest(port, 'OPTIONS', '/api/diagrams', undefined, {
+      Origin: `http://localhost:${port}`,
+    });
     expect(res.status).toBe(204);
-    expect(res.headers['access-control-allow-origin']).toBe('*');
+    expect(res.headers['access-control-allow-origin']).toBe(`http://localhost:${port}`);
     expect(res.headers['access-control-allow-methods']).toContain('GET');
   });
 

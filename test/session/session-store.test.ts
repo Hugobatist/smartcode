@@ -163,22 +163,16 @@ describe('SessionStore', () => {
     expect(heatmap).toEqual({});
   });
 
-  it('endSession with no active session still writes end event', async () => {
+  it('endSession with no active session throws an error', async () => {
     // Start session and immediately forget it (not tracked in activeSessions after restart)
     const sessionId = await store.startSession('orphan.mmd');
 
     // Simulate a "lost" session by creating a new store instance
     const freshStore = new SessionStore(tempDir);
 
-    // endSession should still work gracefully
-    const summary = await freshStore.endSession(sessionId);
-
-    expect(summary.sessionId).toBe(sessionId);
-    expect(summary.diagramFile).toBe(''); // no active session, so diagramFile is ''
-    expect(summary.totalEvents).toBe(2); // start + end
-
-    // Verify end event was appended
-    const events = await freshStore.readSession(sessionId);
-    expect(events[events.length - 1]!.type).toBe('session:end');
+    // endSession should throw because the session is not in activeSessions
+    await expect(freshStore.endSession(sessionId)).rejects.toThrow(
+      `Session ${sessionId} is not active`,
+    );
   });
 });

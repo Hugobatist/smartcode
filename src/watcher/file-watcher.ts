@@ -18,7 +18,7 @@ export class FileWatcher {
   constructor(
     private projectDir: string,
     private onFileChanged: (relativePath: string) => void,
-    _onFileAdded: (relativePath: string) => void,
+    private onFileAdded: (relativePath: string) => void,
     private onFileRemoved: (relativePath: string) => void,
   ) {
     this.watcher = watch(
@@ -50,17 +50,26 @@ export class FileWatcher {
     log.debug(`FileWatcher started for ${projectDir} (native fs.watch recursive)`);
   }
 
+  /** Tracks known files so we can distinguish adds from changes */
+  private knownFiles = new Set<string>();
+
   /** Check if file exists and route to appropriate callback */
   private handleEvent(relative: string): void {
     const absolute = path.join(this.projectDir, relative);
     const exists = existsSync(absolute);
 
     if (exists) {
-      // Could be a change or a new file — we check both
-      log.debug(`File changed: ${relative}`);
-      this.onFileChanged(relative);
+      if (this.knownFiles.has(relative)) {
+        log.debug(`File changed: ${relative}`);
+        this.onFileChanged(relative);
+      } else {
+        log.debug(`File added: ${relative}`);
+        this.knownFiles.add(relative);
+        this.onFileAdded(relative);
+      }
     } else {
       log.debug(`File removed: ${relative}`);
+      this.knownFiles.delete(relative);
       this.onFileRemoved(relative);
     }
   }

@@ -85,6 +85,23 @@ export class DiagramService {
     breakpoints?: Set<string>,
     risks?: Map<string, RiskAnnotation>,
   ): Promise<void> {
+    return this.withWriteLock(filePath, () =>
+      this._writeDiagramInternal(filePath, content, flags, statuses, breakpoints, risks),
+    );
+  }
+
+  /**
+   * Internal write without acquiring the lock.
+   * Used by methods that already hold the write lock for the same file.
+   */
+  private async _writeDiagramInternal(
+    filePath: string,
+    content: string,
+    flags?: Map<string, Flag>,
+    statuses?: Map<string, NodeStatus>,
+    breakpoints?: Set<string>,
+    risks?: Map<string, RiskAnnotation>,
+  ): Promise<void> {
     const resolved = this.resolvePath(filePath);
     let output = content;
 
@@ -126,7 +143,7 @@ export class DiagramService {
       flags.set(nodeId, { nodeId, message });
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
+      await this._writeDiagramInternal(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -146,7 +163,7 @@ export class DiagramService {
       flags.delete(nodeId);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
+      await this._writeDiagramInternal(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -174,7 +191,7 @@ export class DiagramService {
       statuses.set(nodeId, status);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
+      await this._writeDiagramInternal(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -194,7 +211,7 @@ export class DiagramService {
       statuses.delete(nodeId);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
+      await this._writeDiagramInternal(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -223,7 +240,7 @@ export class DiagramService {
       breakpoints.add(nodeId);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
+      await this._writeDiagramInternal(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -243,7 +260,7 @@ export class DiagramService {
       breakpoints.delete(nodeId);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
+      await this._writeDiagramInternal(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -272,7 +289,7 @@ export class DiagramService {
       risks.set(nodeId, { nodeId, level, reason });
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
+      await this._writeDiagramInternal(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 
@@ -292,7 +309,7 @@ export class DiagramService {
       risks.delete(nodeId);
 
       const { mermaidContent } = parseDiagramContent(raw);
-      await this.writeDiagram(filePath, mermaidContent, flags, statuses, breakpoints, risks);
+      await this._writeDiagramInternal(filePath, mermaidContent, flags, statuses, breakpoints, risks);
     });
   }
 

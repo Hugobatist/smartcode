@@ -16,22 +16,22 @@
 
     // ── Theme constants (matching renderer.js MERMAID_CONFIG themeVariables) ──
     var THEME = {
-        nodeFill: '#eef2ff',
-        nodeStroke: '#4f46e5',
+        nodeFill: '#eff6ff',
+        nodeStroke: '#2563eb',
         nodeStrokeWidth: '2',
-        nodeTextColor: '#1e1b4b',
+        nodeTextColor: '#18181b',
         nodeFontSize: '15',
         nodeFontWeight: '600',
         nodeFontFamily: "'Inter', sans-serif",
-        edgeStroke: '#6b7280',
+        edgeStroke: '#52525b',
         edgeStrokeWidth: '1.5',
         edgeLabelBg: '#ffffff',
-        edgeLabelColor: '#6b7280',
+        edgeLabelColor: '#52525b',
         edgeLabelFontSize: '13',
-        subgraphFill: '#f8fafc',
-        subgraphStroke: '#cbd5e1',
+        subgraphFill: '#f4f4f5',
+        subgraphStroke: '#a1a1aa',
         subgraphStrokeWidth: '1',
-        subgraphLabelColor: '#1e293b',
+        subgraphLabelColor: '#18181b',
         subgraphLabelFontSize: '14',
         subgraphLabelFontWeight: '700'
     };

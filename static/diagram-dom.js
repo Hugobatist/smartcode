@@ -205,7 +205,7 @@
                 if (on) {
                     shape.setAttribute('data-prev-stroke', shape.getAttribute('stroke') || '');
                     shape.setAttribute('data-prev-stroke-width', shape.getAttribute('stroke-width') || '');
-                    shape.setAttribute('stroke', '#6366f1');
+                    shape.setAttribute('stroke', '#3b82f6');
                     shape.setAttribute('stroke-width', '3');
                 } else {
                     shape.setAttribute('stroke', shape.getAttribute('data-prev-stroke') || '');

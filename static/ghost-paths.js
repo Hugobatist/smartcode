@@ -13,20 +13,20 @@
     var LS_KEY = 'smartb-ghost-paths-visible';
 
     // Visual config
-    var GHOST_COLOR = '#a78bfa';      // Purple — distinct from diagram blues/greens/reds
+    var GHOST_COLOR = '#8b5cf6';      // matches --ghost-path token
     var GHOST_OPACITY = 0.55;
     var GHOST_STROKE_W = 2;
     var GHOST_DASH = '6,4';
     var LABEL_FONT_SIZE = 10;
     var LABEL_BG_PAD_X = 6;
     var LABEL_BG_PAD_Y = 3;
-    var LABEL_BG_COLOR = '#1e1b2e';   // Dark background for contrast
+    var LABEL_BG_COLOR = '#18181b';   // matches --surface-1 token
     var LABEL_BG_OPACITY = 0.85;
     var LABEL_MAX_CHARS = 40;
     var CURVE_OFFSET = 60;            // Bezier curve offset to avoid straight-line crossings
 
     // ── Module State ──
-    var ghostPaths = [];
+    var ghostPathsByFile = {};   // { filePath: [ghostPath, ...] }
     var visible = false;
 
     // ── Helpers ──
@@ -42,10 +42,17 @@
         try { localStorage.setItem(LS_KEY, String(visible)); } catch (e) {}
     }
 
+    /** Get ghost paths for the currently viewed file */
+    function getCurrentPaths() {
+        var file = window.SmartBFileTree ? SmartBFileTree.getCurrentFile() : null;
+        if (!file) return [];
+        return ghostPathsByFile[file] || [];
+    }
+
     function updateBadge() {
         var badge = document.getElementById('ghostCountBadge');
         if (badge) {
-            var count = ghostPaths.length;
+            var count = getCurrentPaths().length;
             badge.textContent = count || '';
             badge.dataset.count = count;
         }
@@ -80,12 +87,11 @@
 
     // ── Ghost Path Rendering ──
 
-    function getNodeCenter(nodeId) {
-        var el = DiagramDOM.findNodeElement(nodeId);
-        if (!el || !el.getBBox) return null;
-        var bbox = el.getBBox();
-
-        // Custom renderer uses transform="translate(x,y)" on <g> nodes.
+    /**
+     * Parse translate(x,y) from an element's transform attribute.
+     * Returns { tx, ty } with offsets (0,0 if no transform).
+     */
+    function parseTranslate(el) {
         var tx = 0, ty = 0;
         var transform = el.getAttribute('transform');
         if (transform) {
@@ -95,10 +101,17 @@
                 ty = parseFloat(match[2]);
             }
         }
+        return { tx: tx, ty: ty };
+    }
 
+    function getNodeCenter(nodeId) {
+        var el = DiagramDOM.findNodeElement(nodeId);
+        if (!el || !el.getBBox) return null;
+        var bbox = el.getBBox();
+        var t = parseTranslate(el);
         return {
-            x: tx + bbox.x + bbox.width / 2,
-            y: ty + bbox.y + bbox.height / 2
+            x: t.tx + bbox.x + bbox.width / 2,
+            y: t.ty + bbox.y + bbox.height / 2
         };
     }
 
@@ -106,20 +119,10 @@
         var el = DiagramDOM.findNodeElement(nodeId);
         if (!el || !el.getBBox) return null;
         var bbox = el.getBBox();
-
-        var tx = 0, ty = 0;
-        var transform = el.getAttribute('transform');
-        if (transform) {
-            var match = transform.match(/translate\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/);
-            if (match) {
-                tx = parseFloat(match[1]);
-                ty = parseFloat(match[2]);
-            }
-        }
-
+        var t = parseTranslate(el);
         return {
-            x: tx + bbox.x + bbox.width / 2,
-            y: ty + bbox.y + bbox.height
+            x: t.tx + bbox.x + bbox.width / 2,
+            y: t.ty + bbox.y + bbox.height
         };
     }
 
@@ -127,20 +130,10 @@
         var el = DiagramDOM.findNodeElement(nodeId);
         if (!el || !el.getBBox) return null;
         var bbox = el.getBBox();
-
-        var tx = 0, ty = 0;
-        var transform = el.getAttribute('transform');
-        if (transform) {
-            var match = transform.match(/translate\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)/);
-            if (match) {
-                tx = parseFloat(match[1]);
-                ty = parseFloat(match[2]);
-            }
-        }
-
+        var t = parseTranslate(el);
         return {
-            x: tx + bbox.x + bbox.width / 2,
-            y: ty + bbox.y
+            x: t.tx + bbox.x + bbox.width / 2,
+            y: t.ty + bbox.y
         };
     }
 
@@ -210,11 +203,12 @@
         // Remove existing ghost path elements
         svg.querySelectorAll('.ghost-path').forEach(function(el) { el.remove(); });
 
-        if (!visible || ghostPaths.length === 0) return;
+        var paths = getCurrentPaths();
+        if (!visible || paths.length === 0) return;
 
         createArrowMarker(svg);
 
-        var unique = dedupPaths(ghostPaths);
+        var unique = dedupPaths(paths);
         var diagramGroup = svg.querySelector('.smartb-diagram');
         var container = diagramGroup || svg;
 
@@ -222,7 +216,12 @@
             var gp = unique[i];
             var fromPt = getNodeBottom(gp.fromNodeId) || getNodeCenter(gp.fromNodeId);
             var toPt = getNodeTop(gp.toNodeId) || getNodeCenter(gp.toNodeId);
-            if (!fromPt || !toPt) continue;
+            if (!fromPt || !toPt) {
+                console.warn('[SmartB GhostPaths] Node not found in SVG:',
+                    !fromPt ? gp.fromNodeId : gp.toNodeId,
+                    '— ghost path skipped:', gp.fromNodeId, '->', gp.toNodeId);
+                continue;
+            }
 
             var g = document.createElementNS(SVG_NS, 'g');
             g.setAttribute('class', 'ghost-path');
@@ -292,14 +291,31 @@
         return visible;
     }
 
-    function updateGhostPathsFn(paths) {
-        ghostPaths = Array.isArray(paths) ? paths : [];
+    function updateGhostPathsFn(file, paths) {
+        // Support legacy call without file: updateGhostPaths(paths)
+        if (Array.isArray(file)) {
+            paths = file;
+            file = window.SmartBFileTree ? SmartBFileTree.getCurrentFile() : 'unknown';
+        }
+        var list = Array.isArray(paths) ? paths : [];
+        if (file) {
+            ghostPathsByFile[file] = list;
+        }
         updateBadge();
-        if (visible) renderGhostPaths();
+
+        // Auto-show ghost paths when new ones arrive for the current file
+        var currentFile = window.SmartBFileTree ? SmartBFileTree.getCurrentFile() : null;
+        if (list.length > 0 && file === currentFile && !visible) {
+            visible = true;
+            saveVisibility();
+            updateButtonState();
+        }
+
+        renderGhostPaths();
     }
 
     function getCount() {
-        return ghostPaths.length;
+        return getCurrentPaths().length;
     }
 
     // ── Init ──

@@ -1,19 +1,6 @@
 import type { ValidationResult } from './types.js';
 import { parseDiagramType } from './parser.js';
-
-const KNOWN_DIAGRAM_TYPES = [
-  'flowchart',
-  'graph',
-  'sequenceDiagram',
-  'classDiagram',
-  'stateDiagram',
-  'erDiagram',
-  'gantt',
-  'pie',
-  'gitgraph',
-  'mindmap',
-  'timeline',
-];
+import { KNOWN_DIAGRAM_TYPES } from './constants.js';
 
 /**
  * Validate Mermaid syntax using a regex-based heuristic approach.

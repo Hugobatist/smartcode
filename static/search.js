@@ -44,19 +44,19 @@
 
         var btnPrev = document.createElement('button');
         btnPrev.className = 'search-nav-btn';
-        btnPrev.textContent = '\u25B2'; // up arrow
+        btnPrev.innerHTML = SmartBIcons.arrowUp; /* safe: static SVG */
         btnPrev.title = 'Anterior (Shift+Enter)';
         btnPrev.addEventListener('click', function () { navigatePrev(); });
 
         var btnNext = document.createElement('button');
         btnNext.className = 'search-nav-btn';
-        btnNext.textContent = '\u25BC'; // down arrow
+        btnNext.innerHTML = SmartBIcons.arrowDown; /* safe: static SVG */
         btnNext.title = 'Proximo (Enter)';
         btnNext.addEventListener('click', function () { navigateNext(); });
 
         var btnClose = document.createElement('button');
         btnClose.className = 'search-close-btn';
-        btnClose.textContent = '\u2715'; // X
+        btnClose.innerHTML = SmartBIcons.close; /* safe: static SVG */
         btnClose.title = 'Fechar (Esc)';
         btnClose.addEventListener('click', function () { close(); });
 

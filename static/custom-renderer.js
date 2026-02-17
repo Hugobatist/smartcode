@@ -20,7 +20,7 @@
         'ok':          { fill: '#22c55e', stroke: '#16a34a', text: '#fff' },
         'problem':     { fill: '#ef4444', stroke: '#dc2626', text: '#fff' },
         'in-progress': { fill: '#eab308', stroke: '#ca8a04', text: '#000' },
-        'discarded':   { fill: '#9ca3af', stroke: '#6b7280', text: '#fff' },
+        'discarded':   { fill: '#71717a', stroke: '#52525b', text: '#fff' },
     };
 
     // ── Last rendered graph model (for re-application) ──

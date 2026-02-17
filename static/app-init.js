@@ -7,11 +7,18 @@
  *   - event-bus.js, diagram-dom.js, renderer.js, pan-zoom.js, export.js
  *   - file-tree.js, editor-panel.js, ws-client.js
  *   - collapse-ui.js, annotations.js, diagram-editor.js, search.js
+ *   - ws-handler.js
  *
  * This is the last script loaded -- it wires everything together.
  */
 (function() {
     'use strict';
+
+    // ── CSS Token Reader ──
+    function getToken(name) {
+        return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    }
+    window.getToken = getToken;
 
     // ── Renderer type from query params ──
     var params = new URLSearchParams(window.location.search);
@@ -20,9 +27,7 @@
 
     // ── Auto-select renderer based on diagram type ──
     function selectRendererType(diagramType) {
-        // User override via ?renderer= always wins
         if (paramRenderer) return paramRenderer;
-        // Auto-select: custom for flowchart/graph, mermaid for everything else
         if (diagramType === 'flowchart' || diagramType === 'graph') return 'custom';
         return 'mermaid';
     }
@@ -34,7 +39,7 @@
         if (effectiveRendererType === 'custom') {
             var indicator = document.createElement('span');
             indicator.className = 'renderer-indicator';
-            indicator.style.cssText = 'font-size:10px;color:#6366f1;margin-left:8px;font-weight:600;';
+            indicator.style.cssText = 'font-size:10px;color:#3b82f6;margin-left:8px;font-weight:600;';
             indicator.textContent = 'CUSTOM';
             var statusEl = document.querySelector('.topbar .status');
             if (statusEl) statusEl.appendChild(indicator);
@@ -46,12 +51,11 @@
         if (!text) return null;
         var first = text.trim().split(/\s/)[0].toLowerCase();
         if (first === 'flowchart' || first === 'graph') return first;
-        return first; // sequence, classDiagram, etc.
+        return first;
     }
 
     // ── Render with type (custom or mermaid) ──
     async function renderWithType(text) {
-        // Auto-detect renderer from diagram source on every render
         var diagramType = detectDiagramType(text);
         if (diagramType) {
             effectiveRendererType = selectRendererType(diagramType);
@@ -61,14 +65,9 @@
         if (effectiveRendererType === 'custom') {
             try {
                 var currentFile = SmartBFileTree.getCurrentFile();
-                // Render Mermaid first for immediate visual feedback
                 await SmartBRenderer.render(text);
-                // Then upgrade to custom renderer once server has processed the file.
-                // The WebSocket graph:update will also re-render, but fetching here
-                // avoids a visible flash on file navigation (non-edit scenarios).
                 await SmartBCustomRenderer.fetchAndRender(currentFile);
             } catch (e) {
-                // Custom failed — Mermaid already rendered above, so user sees content
                 console.warn('Custom renderer failed, keeping Mermaid render:', e.message);
             }
         } else {
@@ -76,7 +75,6 @@
         }
     }
 
-    // Override global render so file-tree and other modules use smart routing
     window.render = renderWithType;
 
     // ── Toast ──
@@ -127,7 +125,6 @@
             if (window.SmartBSelection) SmartBSelection.deselectAll();
             if (window.SmartBContextMenu) SmartBContextMenu.close();
             if (window.SmartBInlineEdit) SmartBInlineEdit.cancel();
-            // Catch-all: force FSM back to idle regardless of current state
             if (window.SmartBInteraction && SmartBInteraction.getState() !== 'idle') {
                 SmartBInteraction.forceState('idle');
             }
@@ -209,6 +206,14 @@
         getPan: function() { return SmartBPanZoom.getPan(); },
         setPan: function(px, py) { SmartBPanZoom.setPan(px, py); },
     };
+
+    // ── Set sidebar action button icons (safe: SmartBIcons are static SVG strings) ──
+    var _nf = document.getElementById('btnNewFolder');
+    if (_nf) _nf.innerHTML = SmartBIcons.folder;
+    var _nd = document.getElementById('btnNewFile');
+    if (_nd) _nd.innerHTML = SmartBIcons.file;
+    var _sv = document.getElementById('btnSaveFile');
+    if (_sv) _sv.innerHTML = SmartBIcons.save;
 
     SmartBAnnotations.init(_initHooks);
     MmdEditor.init(_initHooks);
@@ -309,99 +314,20 @@
     function baseUrl(path) {
         return (window.SmartBBaseUrl || '') + path;
     }
-    // Expose globally so other modules can use it
     window.SmartBUrl = baseUrl;
 
-    // ── WebSocket message handler (extracted for reconnection) ──
-    function handleWsMessage(msg) {
-        switch (msg.type) {
-            case 'graph:update':
-                if (msg.file === SmartBFileTree.getCurrentFile()) {
-                    effectiveRendererType = selectRendererType(msg.graph.diagramType);
-                    if (effectiveRendererType === 'custom') {
-                        SmartBCustomRenderer.render(msg.graph).catch(function(e) {
-                            console.warn('Custom renderer failed on graph:update, keeping current render:', e.message);
-                        });
-                    }
-                    updateRendererIndicator();
-                }
-                break;
-            case 'file:changed':
-                if (!SmartBEditorPanel.isAutoSync()) return;
-                if (msg.file === SmartBFileTree.getCurrentFile()) {
-                    var wsText = msg.content;
-                    if (wsText !== SmartBFileTree.getLastContent()) {
-                        var finalText = wsText;
-                        if (window.SmartBAnnotations && SmartBAnnotations.getState().flags.size > 0) {
-                            finalText = SmartBAnnotations.mergeIncomingContent(wsText);
-                        } else if (window.SmartBAnnotations) {
-                            var incoming = SmartBAnnotations.parseAnnotations(wsText);
-                            SmartBAnnotations.getState().flags = incoming.flags;
-                            SmartBAnnotations.getState().statuses = incoming.statuses;
-                            SmartBAnnotations.getState().breakpoints = incoming.breakpoints;
-                            SmartBAnnotations.getState().risks = incoming.risks;
-                            if (window.SmartBBreakpoints) SmartBBreakpoints.updateBreakpoints(incoming.breakpoints);
-                            if (window.SmartBHeatmap) SmartBHeatmap.updateRisks(incoming.risks);
-                            SmartBAnnotations.renderPanel();
-                            SmartBAnnotations.updateBadge();
-                        }
-                        SmartBFileTree.setLastContent(finalText);
-                        document.getElementById('editor').value = finalText;
-                        if (effectiveRendererType !== 'custom') {
-                            renderWithType(finalText);
-                        }
-                    }
-                }
-                break;
-            case 'breakpoint:hit':
-                if (window.SmartBBreakpoints) SmartBBreakpoints.showNotification(msg.nodeId);
-                break;
-            case 'breakpoint:continue':
-                if (window.SmartBBreakpoints) SmartBBreakpoints.hideNotification();
-                break;
-            case 'ghost:update':
-                if (window.SmartBGhostPaths) SmartBGhostPaths.updateGhostPaths(msg.ghostPaths);
-                break;
-            case 'heatmap:update':
-                if (window.SmartBHeatmap) SmartBHeatmap.updateVisitCounts(msg.data);
-                break;
-            case 'session:event':
-                if (window.SmartBSessionPlayer) SmartBSessionPlayer.handleSessionEvent(msg.sessionId, msg.event);
-                break;
-            case 'file:added':
-            case 'file:removed':
-            case 'tree:updated':
-                SmartBFileTree.refreshFileList();
-                break;
-        }
-    }
-
-    function handleWsStatus(status) {
-        var dot = document.getElementById('statusDot');
-        var statusText = document.getElementById('statusText');
-        switch (status) {
-            case 'connected':
-                dot.className = 'status-dot';
-                statusText.textContent = 'Servidor Local';
-                statusText.title = 'Conectado ao servidor SmartB via WebSocket.';
-                break;
-            case 'disconnected':
-                dot.className = 'status-dot paused';
-                statusText.textContent = 'Desconectado';
-                statusText.title = 'Sem conexao com o servidor SmartB. Execute: smartb serve';
-                break;
-            case 'reconnecting':
-                dot.className = 'status-dot paused';
-                statusText.textContent = 'Reconectando...';
-                statusText.title = 'Tentando reconectar ao servidor SmartB...';
-                break;
-        }
-    }
+    // ── WebSocket context for ws-handler ──
+    var wsCtx = {
+        getRendererType: function() { return effectiveRendererType; },
+        setRendererType: function(type) { effectiveRendererType = type; },
+        selectRendererType: selectRendererType,
+        updateRendererIndicator: updateRendererIndicator,
+        renderWithType: renderWithType,
+    };
 
     function buildWsUrl(baseUrlStr) {
         var wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
         if (baseUrlStr) {
-            // Extract host from http://localhost:PORT
             var host = baseUrlStr.replace(/^https?:\/\//, '');
             return wsProtocol + '//' + host + '/ws';
         }
@@ -411,19 +337,19 @@
     // ── Active WS connection ──
     var activeWs = null;
 
-    /** Reconnect WebSocket to a new base URL (called by workspace-switcher) */
     function reconnectWebSocket(newBaseUrl) {
         if (activeWs) activeWs.close();
         var wsUrl = buildWsUrl(newBaseUrl);
-        activeWs = createReconnectingWebSocket(wsUrl, handleWsMessage, handleWsStatus);
+        activeWs = createReconnectingWebSocket(wsUrl,
+            function(msg) { SmartBWsHandler.handleMessage(msg, wsCtx); },
+            function(status) { SmartBWsHandler.handleStatus(status); }
+        );
     }
 
-    // Expose reconnect for workspace-switcher
     window.SmartBWsReconnect = reconnectWebSocket;
 
     // ── Bootstrap: load initial file, connect WebSocket ──
     (async function() {
-        // Show hint briefly
         var hint = document.getElementById('fitHint');
         hint.classList.add('show');
         setTimeout(function() { hint.classList.remove('show'); }, 4000);
@@ -445,14 +371,11 @@
             await renderWithType(editor.value);
         }
 
-        // Fetch diagram metadata for auto-renderer selection and collapse
         if (currentFile) {
             try {
                 var apiResp = await fetch(baseUrl('/api/diagrams/' + encodeURIComponent(currentFile)));
                 if (apiResp.ok) {
                     var data = await apiResp.json();
-
-                    // Auto-detect renderer type on initial load
                     if (data.validation && data.validation.diagramType) {
                         effectiveRendererType = selectRendererType(data.validation.diagramType);
                         if (effectiveRendererType === 'custom') {
@@ -460,8 +383,6 @@
                         }
                         updateRendererIndicator();
                     }
-
-                    // Collapse metadata for initial auto-collapse
                     if (window.SmartBCollapseUI && data.collapse) {
                         SmartBCollapseUI.setConfig(data.collapse.config);
                         if (data.collapse.autoCollapsed && data.collapse.autoCollapsed.length > 0) {
@@ -472,7 +393,6 @@
                 }
             } catch (e) { /* keep Mermaid as fallback */ }
 
-            // Fetch ghost paths for initial file
             if (window.SmartBGhostPaths) {
                 try {
                     var gpResp = await fetch(baseUrl('/api/ghost-paths/' + encodeURIComponent(currentFile)));
@@ -483,7 +403,6 @@
                 } catch (e) {}
             }
 
-            // Fetch heatmap data for initial file
             if (window.SmartBHeatmap) {
                 fetch(baseUrl('/api/heatmap/' + encodeURIComponent(currentFile)))
                     .then(function(r) { return r.ok ? r.json() : null; })
@@ -491,21 +410,21 @@
                     .catch(function() {});
             }
 
-            // Fetch session list for initial file
             if (window.SmartBSessionPlayer) SmartBSessionPlayer.fetchSessionList(currentFile);
         }
 
-        // WebSocket real-time sync — connect to current base URL
+        // WebSocket real-time sync
         var wsUrl = buildWsUrl(window.SmartBBaseUrl);
-        activeWs = createReconnectingWebSocket(wsUrl, handleWsMessage, handleWsStatus);
+        activeWs = createReconnectingWebSocket(wsUrl,
+            function(msg) { SmartBWsHandler.handleMessage(msg, wsCtx); },
+            function(status) { SmartBWsHandler.handleStatus(status); }
+        );
 
-        // Show CUSTOM indicator in status bar (dynamic, based on effectiveRendererType)
         updateRendererIndicator();
     })();
 
     SmartBFileTree.refreshFileList();
 
-    // Re-fit on window resize (debounced to avoid excessive calls)
     var resizeTimer = null;
     window.addEventListener('resize', function() {
         if (resizeTimer) clearTimeout(resizeTimer);
@@ -532,7 +451,7 @@
     window.SmartBApp = {
         toast: toast,
         showHelp: showHelp,
-        get rendererType() { return effectiveRendererType; }, // dynamic getter
+        get rendererType() { return effectiveRendererType; },
         getRendererType: function() { return effectiveRendererType; },
     };
     window.toast = toast;

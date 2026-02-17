@@ -20,26 +20,6 @@
     var menuEl = null;
     var outsideHandler = null;
 
-    // ── Style Injection ──
-    var styleEl = document.createElement('style');
-    styleEl.textContent = [
-        '.context-menu {',
-        '  position: fixed; z-index: 10000; background: var(--panel-bg, #1e1e2e);',
-        '  border: 1px solid var(--border, #313244); border-radius: 8px;',
-        '  box-shadow: 0 8px 24px rgba(0,0,0,0.4); padding: 4px 0;',
-        '  min-width: 180px; font-family: "Inter", sans-serif; font-size: 13px;',
-        '}',
-        '.context-menu-item {',
-        '  padding: 8px 16px; cursor: pointer; color: var(--text, #cdd6f4);',
-        '  display: flex; align-items: center; gap: 8px; transition: background 0.1s;',
-        '}',
-        '.context-menu-item:hover { background: var(--hover-bg, #313244); }',
-        '.context-menu-item.danger { color: #ef4444; }',
-        '.context-menu-item.danger:hover { background: rgba(239,68,68,0.15); }',
-        '.context-menu-separator { height: 1px; background: var(--border, #313244); margin: 4px 0; }',
-    ].join('\n');
-    document.head.appendChild(styleEl);
-
     // ── Helpers ──
 
     function createMenuItem(label, className, handler) {

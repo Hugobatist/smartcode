@@ -53,8 +53,8 @@ export function createEmptyState(): CollapseState {
 
 // ─── Parsing ─────────────────────────────────────────────────────────────────
 
-const SUBGRAPH_START = /^\s*subgraph\s+([^\s\[]+)(?:\s*\["([^"]+)"\])?/;
-const SUBGRAPH_END = /^\s*end\s*$/;
+import { SUBGRAPH_START, SUBGRAPH_END } from './constants.js';
+
 const NODE_DEF = /^\s*(\w[\w\d_-]*)(?:\s*\[|\s*\(|\s*\{|\s*\[\[|\s*>)/;
 const EDGE_LINE = /^\s*(\w[\w\d_-]*)\s*(?:-->|---|-\.-|-.->|==>|-.->)/;
 
@@ -413,7 +413,7 @@ export function focusOnNode(
     if (!focusPath.includes(info.id)) {
       // Collapse if parent is in focusPath (sibling at any level)
       // or if parent is null/undefined (root-level sibling)
-      if (info.parent === null || info.parent === undefined || focusPath.includes(info.parent ?? '')) {
+      if (info.parent == null || focusPath.includes(info.parent)) {
         newCollapsed.add(info.id);
       }
     }
@@ -431,11 +431,11 @@ export function focusOnNode(
  */
 export function navigateToBreadcrumb(
   breadcrumbId: string,
-  _subgraphs: Map<string, SubgraphInfo>,
+  _subgraphs: Map<string, SubgraphInfo>,  // reserved for future breadcrumb validation
   currentState: CollapseState
 ): CollapseState {
   if (breadcrumbId === 'root') {
-    return exitFocus(currentState);
+    return exitFocus();
   }
   
   const index = currentState.focusPath.indexOf(breadcrumbId);
@@ -454,7 +454,7 @@ export function navigateToBreadcrumb(
 /**
  * Exit focus mode.
  */
-export function exitFocus(_state: CollapseState): CollapseState {
+export function exitFocus(): CollapseState {
   return {
     collapsed: new Set(),
     focusPath: [],

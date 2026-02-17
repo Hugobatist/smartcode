@@ -23,17 +23,17 @@
             background: '#ffffff',
             fontFamily: 'Inter, sans-serif',
             fontSize: '16px',
-            primaryColor: '#6366f1',
-            primaryTextColor: '#1e1b4b',
-            primaryBorderColor: '#4f46e5',
-            secondaryColor: '#e0e7ff',
+            primaryColor: '#3b82f6',
+            primaryTextColor: '#18181b',
+            primaryBorderColor: '#2563eb',
+            secondaryColor: '#dbeafe',
             tertiaryColor: '#f0fdf4',
-            lineColor: '#6b7280',
-            mainBkg: '#eef2ff',
-            nodeBorder: '#4f46e5',
-            clusterBkg: '#f8fafc',
-            clusterBorder: '#cbd5e1',
-            titleColor: '#1e293b',
+            lineColor: '#52525b',
+            mainBkg: '#eff6ff',
+            nodeBorder: '#2563eb',
+            clusterBkg: '#f4f4f5',
+            clusterBorder: '#a1a1aa',
+            titleColor: '#18181b',
             edgeLabelBackground: '#ffffff',
         },
         flowchart: {
@@ -75,7 +75,7 @@
             'classDef ok fill:#22c55e,stroke:#16a34a,color:#fff;',
             'classDef problem fill:#ef4444,stroke:#dc2626,color:#fff;',
             'classDef inProgress fill:#eab308,stroke:#ca8a04,color:#000;',
-            'classDef discarded fill:#9ca3af,stroke:#6b7280,color:#fff;',
+            'classDef discarded fill:#71717a,stroke:#52525b,color:#fff;',
         ];
 
         var classAssignments = [];
@@ -181,12 +181,12 @@
             snippetBlock.style.cssText = 'padding:0 20px 16px;';
 
             var snippetLabel = document.createElement('div');
-            snippetLabel.style.cssText = 'font-size:11px;font-weight:600;color:#9ca3af;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;';
+            snippetLabel.style.cssText = 'font-size:11px;font-weight:600;color:#a1a1aa;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;';
             snippetLabel.textContent = 'Codigo fonte';
             snippetBlock.appendChild(snippetLabel);
 
             var codeContainer = document.createElement('div');
-            codeContainer.style.cssText = 'background:#1e1e2e;border-radius:8px;overflow:hidden;font-family:"JetBrains Mono",monospace;font-size:12px;line-height:1.7;';
+            codeContainer.style.cssText = 'background:#18181b;border-radius:8px;overflow:hidden;font-family:"JetBrains Mono",monospace;font-size:12px;line-height:1.7;';
 
             for (var i = start; i < end; i++) {
                 var lineNum = i + 1;
@@ -201,7 +201,7 @@
                 numSpan.textContent = String(lineNum);
 
                 var codeSpan = document.createElement('span');
-                codeSpan.style.cssText = 'color:' + (isError ? '#fca5a5' : '#cdd6f4') + ';padding-right:12px;';
+                codeSpan.style.cssText = 'color:' + (isError ? '#fca5a5' : '#e4e4e7') + ';padding-right:12px;';
                 codeSpan.textContent = lines[i] || '';
 
                 lineDiv.appendChild(numSpan);

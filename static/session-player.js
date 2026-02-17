@@ -288,7 +288,7 @@ var SmartBSessionPlayer = (function() {
         while (list.firstChild) list.removeChild(list.firstChild);
         if (sessions.length === 0) {
             var empty = document.createElement('div');
-            empty.style.cssText = 'padding:8px;color:#666;font-size:12px;';
+            empty.style.cssText = 'padding:8px;color:#71717a;font-size:12px;';
             empty.textContent = 'No sessions recorded';
             list.appendChild(empty);
             return;

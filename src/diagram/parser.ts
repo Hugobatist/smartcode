@@ -1,19 +1,6 @@
 import type { Flag } from './types.js';
 import { stripAnnotations, parseFlags } from './annotations.js';
-
-const KNOWN_DIAGRAM_TYPES = [
-  'flowchart',
-  'graph',
-  'sequenceDiagram',
-  'classDiagram',
-  'stateDiagram',
-  'erDiagram',
-  'gantt',
-  'pie',
-  'gitgraph',
-  'mindmap',
-  'timeline',
-] as const;
+import { KNOWN_DIAGRAM_TYPES } from './constants.js';
 
 /**
  * Extract the diagram type from the first non-empty, non-comment line.

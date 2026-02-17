@@ -9,8 +9,10 @@
 (function() {
   'use strict';
 
+  // Private state -- not exposed on the public object
+  var _state = { collapsed: new Set() };
+
   var SmartBCollapseUI = {
-    state: { collapsed: new Set() },
     autoCollapsed: [],
     breadcrumbs: [],
     focusedSubgraph: null,
@@ -45,11 +47,11 @@
     // ─── State Management ────────────────────────────────────────────────────
 
     setCollapsed: function(ids) {
-      this.state.collapsed = new Set(ids);
+      _state.collapsed = new Set(ids);
     },
 
     getCollapsed: function() {
-      return Array.from(this.state.collapsed);
+      return Array.from(_state.collapsed);
     },
 
     setAutoCollapsed: function(ids) {
@@ -164,7 +166,7 @@
     // ─── Collapse/Expand Operations ──────────────────────────────────────────
 
     expand: function(subgraphId) {
-      this.state.collapsed.delete(subgraphId);
+      _state.collapsed.delete(subgraphId);
       // Remove from auto-collapsed if present
       var idx = this.autoCollapsed.indexOf(subgraphId);
       if (idx !== -1) this.autoCollapsed.splice(idx, 1);
@@ -173,12 +175,12 @@
     },
 
     collapse: function(subgraphId) {
-      this.state.collapsed.add(subgraphId);
+      _state.collapsed.add(subgraphId);
       this.onToggle(this.getCollapsed());
     },
 
     toggle: function(subgraphId) {
-      if (this.state.collapsed.has(subgraphId)) {
+      if (_state.collapsed.has(subgraphId)) {
         this.expand(subgraphId);
       } else {
         this.collapse(subgraphId);
@@ -187,7 +189,7 @@
 
     expandAll: function() {
       for (var i = 0; i < this.autoCollapsed.length; i++) {
-        this.state.collapsed.delete(this.autoCollapsed[i]);
+        _state.collapsed.delete(this.autoCollapsed[i]);
       }
       this.autoCollapsed = [];
       this.renderAutoCollapseNotice();
@@ -231,7 +233,8 @@
 
       var icon = document.createElement('span');
       icon.className = 'notice-icon';
-      icon.textContent = '\uD83D\uDCCA';
+      // Safe: SmartBIcons.chart is a static trusted SVG string
+      icon.innerHTML = SmartBIcons.chart;
       notice.appendChild(icon);
 
       var text = document.createElement('span');
@@ -254,7 +257,8 @@
       var dismissBtn = document.createElement('button');
       dismissBtn.className = 'notice-dismiss';
       dismissBtn.title = 'Dismiss';
-      dismissBtn.textContent = '\u2715';
+      // Safe: SmartBIcons.close is a static trusted SVG string
+      dismissBtn.innerHTML = SmartBIcons.close;
       dismissBtn.addEventListener('click', function() {
         notice.remove();
       });
@@ -305,7 +309,8 @@
       if (this.focusedSubgraph) {
         var exitBtn = document.createElement('button');
         exitBtn.className = 'breadcrumb-exit';
-        exitBtn.textContent = '\u2715 Exit Focus';
+        // Safe: SmartBIcons.close is a static trusted SVG string
+        exitBtn.innerHTML = SmartBIcons.close + ' Exit Focus';
         exitBtn.title = 'Exit focus mode (Esc)';
         exitBtn.addEventListener('click', function() { self.exitFocusMode(); });
         bar.appendChild(exitBtn);

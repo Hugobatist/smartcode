@@ -9,6 +9,7 @@ import { registerResources } from './resources.js';
 import { MCP_INSTRUCTIONS } from './instructions.js';
 import { log } from '../utils/logger.js';
 import { register as registerWorkspace, deregister as deregisterWorkspace } from '../registry/workspace-registry.js';
+import { getVersion } from '../utils/version.js';
 
 /** Options for starting the MCP server */
 export interface McpServerOptions {
@@ -35,7 +36,7 @@ export function createMcpServer(
   deps?: McpToolDependencies,
 ): McpServer {
   const server = new McpServer(
-    { name: 'smartb-diagrams', version: '0.1.0' },
+    { name: 'smartb-diagrams', version: getVersion() },
     { instructions: MCP_INSTRUCTIONS },
   );
 

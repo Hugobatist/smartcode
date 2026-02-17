@@ -52,7 +52,7 @@
         pop.appendChild(titleDiv);
 
         var idLabel = document.createElement('label');
-        idLabel.style.cssText = 'font-size:11px;color:var(--text-dim);margin-bottom:2px;display:block';
+        idLabel.style.cssText = 'font-size:11px;color:var(--text-secondary);margin-bottom:2px;display:block';
         idLabel.textContent = 'ID (sem espacos)';
         pop.appendChild(idLabel);
 
@@ -64,7 +64,7 @@
         pop.appendChild(idInput);
 
         var labelLabel = document.createElement('label');
-        labelLabel.style.cssText = 'font-size:11px;color:var(--text-dim);margin-bottom:2px;display:block';
+        labelLabel.style.cssText = 'font-size:11px;color:var(--text-secondary);margin-bottom:2px;display:block';
         labelLabel.textContent = 'Texto';
         pop.appendChild(labelLabel);
 
@@ -124,7 +124,7 @@
         pop.appendChild(titleDiv);
 
         var labelLabel = document.createElement('label');
-        labelLabel.style.cssText = 'font-size:11px;color:var(--text-dim);margin-bottom:2px;display:block';
+        labelLabel.style.cssText = 'font-size:11px;color:var(--text-secondary);margin-bottom:2px;display:block';
         labelLabel.textContent = 'Label (opcional)';
         pop.appendChild(labelLabel);
 

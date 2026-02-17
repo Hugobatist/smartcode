@@ -27,7 +27,7 @@
         var svg = document.querySelector('#preview svg');
         if (!svg) return window.toast && toast('Nada para exportar');
         var blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' });
-        var currentFile = window.currentFile || 'diagram.mmd';
+        var currentFile = (window.SmartBFileTree && SmartBFileTree.getCurrentFile()) || 'export';
         download(blob, currentFile.replace('.mmd', '.svg'));
     }
 
@@ -41,7 +41,7 @@
 
         // Custom SVG: direct PNG export without mermaid re-render
         if (window.DiagramDOM && DiagramDOM.getRendererType() === 'custom') {
-            var currentFile = (window.SmartBFileTree && SmartBFileTree.getCurrentFile()) || 'diagram.mmd';
+            var currentFile = (window.SmartBFileTree && SmartBFileTree.getCurrentFile()) || 'export';
             var clone = currentSvg.cloneNode(true);
             var canvas = document.createElement('canvas');
             var ctx = canvas.getContext('2d');
@@ -69,7 +69,7 @@
             return;
         }
 
-        var currentFile = window.currentFile || 'diagram.mmd';
+        var currentFile = (window.SmartBFileTree && SmartBFileTree.getCurrentFile()) || 'export';
 
         try {
             // Get current diagram source code (same pipeline as render())

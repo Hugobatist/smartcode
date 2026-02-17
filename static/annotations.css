@@ -26,7 +26,7 @@
 .flag-mode #preview .edgePath:hover path.flowchart-link,
 .flag-mode #preview path.flowchart-link:hover,
 .flag-mode #preview .smartb-edge:hover path {
-    stroke: #ef4444 !important;
+    stroke: var(--status-problem) !important;
     cursor: crosshair;
 }
 
@@ -35,7 +35,7 @@
 #preview .flagged circle,
 #preview .flagged polygon,
 #preview .flagged .label-container {
-    stroke: #ef4444 !important;
+    stroke: var(--status-problem) !important;
     stroke-width: 3px !important;
     stroke-dasharray: 6 3 !important;
     animation: flag-pulse 1.5s ease-in-out infinite;
@@ -48,7 +48,7 @@
 
 /* ── Flagged Edge (red dashed) ── */
 #preview .flagged-edge path {
-    stroke: #ef4444 !important;
+    stroke: var(--status-problem) !important;
     stroke-width: 3px !important;
     stroke-dasharray: 8 4 !important;
     animation: flag-pulse 1.5s ease-in-out infinite;
@@ -64,26 +64,25 @@
 .flag-popover {
     position: fixed;
     z-index: 150;
-    background: var(--bg-panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-xl);
     padding: 14px;
     min-width: 260px;
     max-width: 340px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.3);
-    backdrop-filter: blur(16px);
     animation: pop-in 0.15s ease-out;
 }
 
 @keyframes pop-in {
-    from { opacity: 0; transform: scale(0.95) translateY(-4px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
 }
 
 .flag-popover-title {
     font-size: 12px;
     font-weight: 700;
-    color: var(--text);
+    color: var(--text-primary);
     margin-bottom: 8px;
     display: flex;
     align-items: center;
@@ -93,8 +92,8 @@
 .flag-popover-title .node-id {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
-    color: var(--accent-purple);
-    background: rgba(167, 139, 250, 0.12);
+    color: var(--accent);
+    background: var(--accent-muted);
     padding: 2px 8px;
     border-radius: 4px;
 }
@@ -103,10 +102,10 @@
     width: 100%;
     min-height: 60px;
     resize: vertical;
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
-    background: rgba(255,255,255,0.04);
-    color: var(--text);
+    background: var(--surface-2);
+    color: var(--text-primary);
     font-family: inherit;
     font-size: 12px;
     padding: 8px 10px;
@@ -116,10 +115,10 @@
 }
 .flag-popover textarea:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(99,102,241,0.2);
+    box-shadow: 0 0 0 2px var(--accent-muted);
 }
 .flag-popover textarea::placeholder {
-    color: var(--text-dim);
+    color: var(--text-secondary);
 }
 
 .flag-popover-actions {
@@ -139,25 +138,24 @@
     transition: all 0.15s;
 }
 .flag-popover .btn-flag.primary {
-    background: var(--accent-red);
-    color: #fff;
+    background: var(--status-problem);
+    color: var(--text-on-accent);
 }
 .flag-popover .btn-flag.primary:hover {
-    background: #dc2626;
-    transform: translateY(-1px);
+    background: var(--status-problem-stroke);
 }
 .flag-popover .btn-flag.secondary {
-    background: rgba(255,255,255,0.06);
-    color: var(--text-dim);
-    border: 1px solid rgba(255,255,255,0.1);
+    background: var(--surface-3);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
 }
 .flag-popover .btn-flag.secondary:hover {
-    background: rgba(255,255,255,0.12);
-    color: var(--text);
+    background: var(--surface-4);
+    color: var(--text-primary);
 }
 .flag-popover .btn-flag.remove {
     background: rgba(239,68,68,0.12);
-    color: var(--accent-red);
+    color: var(--status-problem);
     border: 1px solid rgba(239,68,68,0.2);
 }
 .flag-popover .btn-flag.remove:hover {
@@ -167,8 +165,8 @@
 /* ── Flags Panel (right side) ── */
 .flag-panel {
     width: 280px;
-    background: var(--bg-panel);
-    border-left: 1px solid var(--border);
+    background: var(--surface-1);
+    border-left: 1px solid var(--border-subtle);
     display: flex;
     flex-direction: column;
     overflow-y: auto;
@@ -184,8 +182,8 @@
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1.5px;
-    color: var(--text-dim);
-    border-bottom: 1px solid var(--border);
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border-subtle);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -193,8 +191,8 @@
 
 .flag-panel-count {
     font-size: 10px;
-    background: var(--accent-red);
-    color: #fff;
+    background: var(--status-problem);
+    color: var(--text-on-accent);
     padding: 1px 7px;
     border-radius: 10px;
     font-weight: 700;
@@ -210,10 +208,10 @@
     padding: 6px 14px;
     font-size: 10px;
     font-weight: 600;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    border-bottom: 1px solid var(--surface-3);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -222,11 +220,11 @@
 .flag-panel-item {
     padding: 10px 14px;
     cursor: pointer;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
+    border-bottom: 1px solid var(--surface-2);
     transition: background 0.1s;
 }
 .flag-panel-item:hover {
-    background: rgba(255,255,255,0.04);
+    background: var(--surface-2);
 }
 
 .flag-panel-item-top {
@@ -240,13 +238,13 @@
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
     font-weight: 600;
-    color: var(--accent-red);
+    color: var(--status-problem);
 }
 
 .flag-panel-item-delete {
     background: none;
     border: none;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     font-size: 16px;
     line-height: 1;
     cursor: pointer;
@@ -258,12 +256,12 @@
     opacity: 1;
 }
 .flag-panel-item-delete:hover {
-    color: var(--accent-red);
+    color: var(--status-problem);
 }
 
 .flag-panel-item-msg {
     font-size: 12px;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     line-height: 1.4;
     word-break: break-word;
 }
@@ -271,42 +269,16 @@
 .flag-panel-empty {
     padding: 24px 14px;
     text-align: center;
-    color: var(--text-dim);
+    color: var(--text-secondary);
     font-size: 12px;
     line-height: 1.6;
 }
 
 /* ── Topbar Flag Button ── */
-.btn-flags {
-    position: relative;
-}
-.btn-flags.active {
-    background: rgba(239, 68, 68, 0.2) !important;
-    color: var(--accent-red) !important;
+#btnFlags.active {
+    background: rgba(239, 68, 68, 0.15) !important;
+    color: var(--status-problem) !important;
     border-color: rgba(239, 68, 68, 0.3) !important;
-    box-shadow: 0 2px 12px rgba(239, 68, 68, 0.25) !important;
-}
-
-.flag-count-badge {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: var(--accent-red);
-    color: #fff;
-    font-size: 9px;
-    font-weight: 700;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    line-height: 1;
-    box-shadow: 0 1px 4px rgba(239,68,68,0.4);
-}
-.flag-count-badge:empty,
-.flag-count-badge[data-count="0"] {
-    display: none;
 }
 
 /* ═══════════════════════════════════════════════
@@ -315,7 +287,7 @@
 
 /* ── Correction actions inside flag popover ── */
 .correction-actions {
-    border-top: 1px solid rgba(255,255,255,0.08);
+    border-top: 1px solid var(--border-subtle);
     margin: 8px 0;
     padding-top: 8px;
 }
@@ -328,9 +300,9 @@
 .btn-correction {
     padding: 5px 12px;
     border-radius: 6px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(99,102,241,0.1);
-    color: var(--accent-purple);
+    border: 1px solid var(--border-subtle);
+    background: var(--accent-muted);
+    color: var(--accent);
     font-size: 11px;
     font-weight: 600;
     font-family: inherit;
@@ -338,12 +310,11 @@
     transition: all 0.15s;
 }
 .btn-correction:hover {
-    background: rgba(99,102,241,0.2);
-    transform: translateY(-1px);
+    background: rgba(59, 130, 246, 0.25);
 }
 .btn-correction-danger {
     background: rgba(239,68,68,0.1);
-    color: var(--accent-red);
+    color: var(--status-problem);
     border-color: rgba(239,68,68,0.15);
 }
 .btn-correction-danger:hover {
@@ -367,27 +338,24 @@
 .mode-addEdge #preview .smartb-node:hover polygon {
     stroke: var(--accent) !important;
     stroke-width: 3px !important;
-    filter: drop-shadow(0 0 6px rgba(99,102,241,0.4));
+    filter: drop-shadow(0 0 6px var(--accent-muted));
 }
 
 /* ── Topbar edit buttons ── */
-.btn-edit {
-    position: relative;
-}
-.btn-edit.active {
-    background: rgba(99,102,241,0.2) !important;
+#btnAddNode.active,
+#btnAddEdge.active {
+    background: var(--accent-muted) !important;
     color: var(--accent) !important;
-    border-color: rgba(99,102,241,0.3) !important;
-    box-shadow: 0 2px 12px rgba(99,102,241,0.25) !important;
+    border-color: rgba(59, 130, 246, 0.3) !important;
 }
 
 /* ── Editor popover inputs ── */
 .ep-input {
     width: 100%;
-    border: 1px solid rgba(255,255,255,0.1);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
-    background: rgba(255,255,255,0.04);
-    color: var(--text);
+    background: var(--surface-2);
+    color: var(--text-primary);
     font-family: inherit;
     font-size: 12px;
     padding: 7px 10px;
@@ -395,5 +363,5 @@
 }
 .ep-input:focus {
     border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(99,102,241,0.2);
+    box-shadow: 0 0 0 2px var(--accent-muted);
 }

@@ -37,6 +37,10 @@ export function registerSessionRoutes(routes: Route[], sessionStore: SessionStor
     handler: async (_req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => {
       try {
         const id = decodeURIComponent(params['id']!);
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(id)) {
+          sendJson(res, { error: 'Invalid session ID' }, 400);
+          return;
+        }
         const events = await sessionStore.readSession(id);
         if (events.length === 0) {
           sendJson(res, { error: 'Session not found' }, 404);

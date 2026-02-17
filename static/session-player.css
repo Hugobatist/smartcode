@@ -5,8 +5,8 @@
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
-    background: #1e1e2e;
-    border-top: 1px solid #333;
+    background: var(--surface-1);
+    border-top: 1px solid var(--border-default);
     z-index: 50;
 }
 .session-player.hidden {
@@ -14,9 +14,9 @@
 }
 
 .sp-btn {
-    background: #2d2d3d;
-    color: #ccc;
-    border: 1px solid #444;
+    background: var(--surface-2);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
     border-radius: 4px;
     padding: 4px 10px;
     font-size: 12px;
@@ -24,8 +24,8 @@
     font-family: 'Inter', sans-serif;
 }
 .sp-btn:hover {
-    background: #3d3d4d;
-    color: #fff;
+    background: var(--surface-3);
+    color: var(--text-primary);
 }
 
 .sp-scrubber {
@@ -33,7 +33,7 @@
     -webkit-appearance: none;
     appearance: none;
     height: 6px;
-    background: #333;
+    background: var(--border-default);
     border-radius: 3px;
     outline: none;
     cursor: pointer;
@@ -43,14 +43,14 @@
     appearance: none;
     width: 14px;
     height: 14px;
-    background: #58a6ff;
+    background: var(--accent);
     border-radius: 50%;
     cursor: pointer;
 }
 .sp-scrubber::-moz-range-thumb {
     width: 14px;
     height: 14px;
-    background: #58a6ff;
+    background: var(--accent);
     border-radius: 50%;
     cursor: pointer;
     border: none;
@@ -59,16 +59,16 @@
 .sp-time {
     font-family: 'JetBrains Mono', monospace;
     font-size: 11px;
-    color: #aaa;
+    color: var(--text-secondary);
     min-width: 60px;
     text-align: center;
     white-space: nowrap;
 }
 
 .sp-speed {
-    background: #2d2d3d;
-    color: #ccc;
-    border: 1px solid #444;
+    background: var(--surface-2);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-default);
     border-radius: 4px;
     padding: 3px 6px;
     font-size: 11px;
@@ -78,18 +78,18 @@
 /* Diff highlighting */
 .diff-added rect, .diff-added polygon, .diff-added circle,
 .diff-added ellipse, .diff-added path {
-    stroke: #22c55e !important;
+    stroke: var(--diff-added) !important;
     stroke-width: 3px !important;
 }
 .diff-removed-ghost {
     opacity: 0.3;
-    fill: #ef4444;
-    stroke: #ef4444;
+    fill: var(--diff-removed);
+    stroke: var(--diff-removed);
     stroke-dasharray: 6,3;
 }
 .diff-modified rect, .diff-modified polygon, .diff-modified circle,
 .diff-modified ellipse, .diff-modified path {
-    stroke: #eab308 !important;
+    stroke: var(--diff-modified) !important;
     stroke-width: 3px !important;
 }
 
@@ -101,8 +101,8 @@
     width: 260px;
     max-height: 300px;
     overflow-y: auto;
-    background: #1e1e2e;
-    border: 1px solid #444;
+    background: var(--surface-1);
+    border: 1px solid var(--border-default);
     border-radius: 6px;
     z-index: 100;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
@@ -113,13 +113,13 @@
 .session-list-item {
     padding: 8px 12px;
     font-size: 12px;
-    color: #ccc;
+    color: var(--text-secondary);
     cursor: pointer;
-    border-bottom: 1px solid #333;
+    border-bottom: 1px solid var(--border-default);
 }
 .session-list-item:hover {
-    background: #2d2d3d;
-    color: #fff;
+    background: var(--surface-2);
+    color: var(--text-primary);
 }
 .session-list-item:last-child {
     border-bottom: none;

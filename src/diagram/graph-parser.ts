@@ -9,6 +9,7 @@ import type {
 } from './graph-types.js';
 import { parseFlags, parseStatuses, stripAnnotations } from './annotations.js';
 import { validateMermaidSyntax } from './validator.js';
+import { SUBGRAPH_START, SUBGRAPH_END } from './constants.js';
 import {
   stripInlineClass, parseNodeShape, extractNodeSegments, parseEdgesFromLine,
 } from './graph-edge-parser.js';
@@ -170,8 +171,6 @@ function parseSubgraphStructure(
   subgraphLineIndices: Set<number>,
 ): void {
   const subgraphStack: string[] = [];
-  const SUBGRAPH_START = /^\s*subgraph\s+([^\s\[]+)(?:\s*\["([^"]+)"\])?/;
-  const SUBGRAPH_END = /^\s*end\s*$/;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i]!;
