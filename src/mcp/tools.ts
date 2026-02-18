@@ -42,24 +42,70 @@ export function registerTools(
     sessionStore?: SessionStore;
   },
 ): void {
-  // Tool 1: update_diagram (MCP-02)
+  // Tool 1: update_diagram (MCP-02) — all-in-one: diagram + statuses + risks + ghost paths
   server.registerTool(
     'update_diagram',
     {
       description:
-        'Create or update a Mermaid diagram (.mmd file). The content should be valid Mermaid syntax. Changes appear in the browser viewer within 100ms via WebSocket.',
+        'Create or update a Mermaid diagram (.mmd file) with optional annotations — all in ONE call. ' +
+        'Pass nodeStatuses to color nodes (ok=green, problem=red, in-progress=yellow, discarded=gray). ' +
+        'Pass riskLevels to flag risky nodes with reasons. ' +
+        'Pass ghostPaths to show rejected alternatives as dashed edges. ' +
+        'Changes appear in the browser viewer within 100ms via WebSocket.',
       inputSchema: UpdateDiagramInput,
     },
-    async ({ filePath, content }) => {
+    async ({ filePath, content, nodeStatuses, riskLevels, ghostPaths }) => {
       try {
-        await service.writeDiagram(filePath, content);
+        // Build annotation maps from the flat input
+        const statusMap = nodeStatuses
+          ? new Map(Object.entries(nodeStatuses)) as Map<string, import('../diagram/types.js').NodeStatus>
+          : undefined;
+
+        const riskMap = riskLevels
+          ? new Map(
+              Object.entries(riskLevels).map(([nodeId, r]) => [
+                nodeId,
+                { nodeId, level: r.level as import('../diagram/types.js').RiskLevel, reason: r.reason },
+              ]),
+            )
+          : undefined;
+
+        // Write diagram with all annotations in a single atomic write
+        await service.writeDiagram(filePath, content, undefined, statusMap, undefined, riskMap);
+
+        // Process ghost paths (in-memory store, broadcast via WebSocket)
+        const ghostStore = options?.ghostStore;
+        if (ghostPaths && ghostPaths.length > 0 && ghostStore) {
+          for (const gp of ghostPaths) {
+            ghostStore.add(filePath, {
+              fromNodeId: gp.from,
+              toNodeId: gp.to,
+              label: gp.label,
+              timestamp: Date.now(),
+            });
+          }
+          if (options?.wsManager) {
+            const allPaths = ghostStore.get(filePath);
+            options.wsManager.broadcastAll({
+              type: 'ghost:update',
+              file: filePath,
+              ghostPaths: allPaths.map((p) => ({
+                fromNodeId: p.fromNodeId,
+                toNodeId: p.toNodeId,
+                label: p.label,
+              })),
+            });
+          }
+        }
+
+        // Build summary response
+        const parts = [`Diagram updated: ${filePath}`];
+        if (statusMap && statusMap.size > 0) parts.push(`${statusMap.size} node statuses set`);
+        if (riskMap && riskMap.size > 0) parts.push(`${riskMap.size} risk levels set`);
+        if (ghostPaths && ghostPaths.length > 0) parts.push(`${ghostPaths.length} ghost paths recorded`);
+
         return {
-          content: [
-            {
-              type: 'text' as const,
-              text: `Diagram updated: ${filePath}`,
-            },
-          ],
+          content: [{ type: 'text' as const, text: parts.join('. ') + '.' }],
         };
       } catch (error) {
         const message =

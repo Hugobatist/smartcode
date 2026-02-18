@@ -130,9 +130,9 @@
 
         g.setGraph({
             rankdir: graphModel.direction || 'TB',
-            nodesep: 60,
-            ranksep: 80,
-            edgesep: 10,
+            nodesep: 80,
+            ranksep: 100,
+            edgesep: 20,
             marginx: 20,
             marginy: 20,
         });

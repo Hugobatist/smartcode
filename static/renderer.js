@@ -38,12 +38,13 @@
         },
         flowchart: {
             curve: 'basis',
-            padding: 32,
-            nodeSpacing: 80,
-            rankSpacing: 100,
-            htmlLabels: true,
+            padding: 48,
+            nodeSpacing: 100,
+            rankSpacing: 120,
+            htmlLabels: false,
+            useMaxWidth: false,
         },
-        securityLevel: 'sandbox',
+        securityLevel: 'loose',
     };
 
     mermaid.initialize(MERMAID_CONFIG);
@@ -155,7 +156,7 @@
         if (errorLine !== null) {
             var badge = document.createElement('span');
             badge.style.cssText = 'background:#fef2f2;color:#ef4444;font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;border:1px solid #fecaca;';
-            badge.textContent = 'Linha ' + errorLine;
+            badge.textContent = 'Line ' + errorLine;
             header.appendChild(badge);
         }
 

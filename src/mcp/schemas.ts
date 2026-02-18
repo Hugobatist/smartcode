@@ -10,11 +10,44 @@ export const UpdateDiagramInput = {
   filePath: z
     .string()
     .describe(
-      'Relative path to the .mmd file (e.g., "architecture.mmd")',
+      'Relative path to the .mmd file (e.g., "reasoning.mmd")',
     ),
   content: z
     .string()
     .describe('Full Mermaid diagram content'),
+  nodeStatuses: z
+    .record(
+      z.string(),
+      z.enum(['ok', 'problem', 'in-progress', 'discarded']),
+    )
+    .optional()
+    .describe(
+      'Node status colors. Map of nodeId to status. Example: {"ANALYZE": "ok", "PLAN": "in-progress", "DEPLOY": "problem"}',
+    ),
+  riskLevels: z
+    .record(
+      z.string(),
+      z.object({
+        level: z.enum(['high', 'medium', 'low']),
+        reason: z.string(),
+      }),
+    )
+    .optional()
+    .describe(
+      'Risk assessments per node. Example: {"DEPLOY": {"level": "high", "reason": "touches production DB"}}',
+    ),
+  ghostPaths: z
+    .array(
+      z.object({
+        from: z.string(),
+        to: z.string(),
+        label: z.string().optional(),
+      }),
+    )
+    .optional()
+    .describe(
+      'Rejected alternatives. Example: [{"from": "A", "to": "C", "label": "Skipped: too risky"}]',
+    ),
 };
 
 export const ReadFlagsInput = {
