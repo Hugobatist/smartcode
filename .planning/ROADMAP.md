@@ -43,7 +43,7 @@ All 8 phases completed. Custom interactive canvas (dagre + SVG), node selection/
 
 - [x] **Phase 17: Critical Fixes + Write Safety** - Fix data-destroying MCP bugs and race conditions so every tool call preserves existing data (completed 2026-02-19)
 - [x] **Phase 18: Ghost Paths Functional** - Ghost paths persist in .mmd files, are fully manageable from UI, and visible to AI via MCP (completed 2026-02-19)
-- [ ] **Phase 19: Heatmap Practical** - Heatmap shows useful data without MCP setup, updates in real-time, and supports mode toggling
+- [x] **Phase 19: Heatmap Practical** - Heatmap shows useful data without MCP setup, updates in real-time, and supports mode toggling (completed 2026-02-19)
 - [ ] **Phase 20: Polish** - Code quality compliance, keyboard shortcut fixes, complete exports
 
 ## Phase Details
@@ -90,11 +90,11 @@ Plans:
   3. A UI control (dropdown or cycle button) lets users toggle between risk mode (annotation-based severity) and frequency mode (click/visit counts)
   4. Switching files in the file tree re-fetches heatmap data for the newly selected file instead of showing stale data from the previous file
   5. When heatmap has no data for the current file, a clear empty state message guides the user on how to populate it
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 19-01: Automatic click tracking (interaction-tracker.js, POST /api/heatmap/:file/increment, batch flush)
-- [ ] 19-02: Real-time session updates, mode toggle UI, file-switch re-fetch, empty state guidance
+- [x] 19-01-PLAN.md -- Automatic click tracking (HeatmapStore, POST endpoint, interaction-tracker.js, batch flush)
+- [x] 19-02-PLAN.md -- Real-time session updates, mode toggle UI, file-switch re-fetch, empty state guidance
 
 ### Phase 20: Polish
 **Goal**: All files comply with the 500-line limit, keyboard shortcuts work correctly in all contexts, PNG export captures the complete visual state, and the public API exports all necessary types
@@ -119,5 +119,5 @@ Phases execute in numeric order: 17 → 18 → 19 → 20
 |-------|----------------|--------|-----------|
 | 17. Critical Fixes + Write Safety | 2/2 | Complete    | 2026-02-19 |
 | 18. Ghost Paths Functional | 2/2 | Complete    | 2026-02-19 |
-| 19. Heatmap Practical | 0/2 | Not started | - |
+| 19. Heatmap Practical | 2/2 | Complete    | 2026-02-19 |
 | 20. Polish | 0/1 | Not started | - |

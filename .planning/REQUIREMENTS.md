@@ -34,11 +34,11 @@ Requirements for stability and usability release. Each maps to roadmap phases.
 
 ### Heatmap Usability
 
-- [ ] **HEAT-01**: Automatic click tracking on nodes feeds heatmap frequency data (no MCP session required)
-- [ ] **HEAT-02**: Heatmap updates in real-time during session recording (not only on end_session)
-- [ ] **HEAT-03**: UI toggle between risk and frequency modes (dropdown or cycle button)
-- [ ] **HEAT-04**: Heatmap data re-fetches when user switches files in file tree
-- [ ] **HEAT-05**: Empty state guidance when heatmap has no data
+- [x] **HEAT-01**: Automatic click tracking on nodes feeds heatmap frequency data (no MCP session required)
+- [x] **HEAT-02**: Heatmap updates in real-time during session recording (not only on end_session)
+- [x] **HEAT-03**: UI toggle between risk and frequency modes (dropdown or cycle button)
+- [x] **HEAT-04**: Heatmap data re-fetches when user switches files in file tree
+- [x] **HEAT-05**: Empty state guidance when heatmap has no data
 
 ### Code Quality
 
@@ -89,11 +89,11 @@ Requirements for stability and usability release. Each maps to roadmap phases.
 | GHOST-05 | Phase 18 | Complete |
 | GHOST-06 | Phase 18 | Complete |
 | GHOST-07 | Phase 18 | Complete |
-| HEAT-01 | Phase 19 | Pending |
-| HEAT-02 | Phase 19 | Pending |
-| HEAT-03 | Phase 19 | Pending |
-| HEAT-04 | Phase 19 | Pending |
-| HEAT-05 | Phase 19 | Pending |
+| HEAT-01 | Phase 19 | Complete |
+| HEAT-02 | Phase 19 | Complete |
+| HEAT-03 | Phase 19 | Complete |
+| HEAT-04 | Phase 19 | Complete |
+| HEAT-05 | Phase 19 | Complete |
 | QUAL-01 | Phase 20 | Pending |
 | QUAL-02 | Phase 20 | Pending |
 | QUAL-03 | Phase 20 | Pending |

@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-02-19)
 
 **Core value:** Developers can see what their AI is thinking and intervene surgically before it finishes
-**Current focus:** Phase 19 - Heatmap Practical
+**Current focus:** Phase 20 - Polish
 
 ## Current Position
 
-Phase: 19 of 20 (Heatmap Practical)
-Plan: 1 of 2 in current phase
+Phase: 20 of 20 (Polish)
+Plan: 1 of 1 in current phase
 Status: Ready
-Last activity: 2026-02-19 — Completed Phase 18 (Ghost Paths Functional: @ghost annotations, dual-parser sync, CRUD, UI toggle preference)
+Last activity: 2026-02-19 — Completed Phase 19 (Heatmap Practical: click tracking, real-time updates, mode toggle, empty state)
 
-Progress: [######░░░░] 57% (4/7 plans across 4 phases)
+Progress: [########░░] 86% (6/7 plans across 4 phases)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 4 (v2.1) | 53 (lifetime: 23 v1.0 + 26 v2.0 + 4 v2.1)
+- Total plans completed: 6 (v2.1) | 55 (lifetime: 23 v1.0 + 26 v2.0 + 6 v2.1)
 - Average duration: ~4min (v2.1)
-- Total execution time: ~15min (v2.1)
+- Total execution time: ~24min (v2.1)
 
 **By Phase:**
 
@@ -29,7 +29,7 @@ Progress: [######░░░░] 57% (4/7 plans across 4 phases)
 |-------|-------|-------|----------|
 | 17. Critical Fixes + Write Safety | 2/2 | 7min | 3.5min |
 | 18. Ghost Paths Functional | 2/2 | ~8min | ~4min |
-| 19. Heatmap Practical | 0/2 | - | - |
+| 19. Heatmap Practical | 2/2 | ~9min | ~4.5min |
 | 20. Polish | 0/1 | - | - |
 
 ## Accumulated Context
@@ -55,6 +55,11 @@ Recent decisions affecting current work:
 - [18]: writeDiagramPreserving ghosts parameter: replace if provided, else preserve existing (merge semantics)
 - [18]: userExplicitlyHid flag in ghost-paths.js prevents auto-show from overriding user's toggle-off choice
 - [18]: resetUserHide() called on file switch so auto-show works fresh for each file
+- [19]: Click data is ephemeral in-memory (HeatmapStore), session JSONL provides persistent data
+- [19]: Batch flush interval is 2 seconds to balance responsiveness and request volume
+- [19]: record_step broadcasts heatmap:update with single-node delta for real-time visualization
+- [19]: ws-handler uses key count heuristic (<=3 keys = merge, >3 = replace) for delta detection
+- [19]: Mode toggle only appears when data exists in at least one mode
 
 ### Pending Todos
 
@@ -62,11 +67,11 @@ None yet.
 
 ### Blockers/Concerns
 
-- None currently — dual annotation parser sync risk (Phase 18) was resolved successfully
+- None currently
 
 ## Session Continuity
 
 Last session: 2026-02-19
-Stopped at: Completed Phase 18 (Ghost Paths Functional) — all 7 GHOST requirements done
+Stopped at: Completed Phase 19 (Heatmap Practical) — all 5 HEAT requirements done
 Resume file: None
-Next: Phase 19 (Heatmap Practical) — plan and execute 19-01, 19-02
+Next: Phase 20 (Polish) — plan and execute 20-01
