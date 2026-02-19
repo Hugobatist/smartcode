@@ -474,3 +474,4 @@ describe('parseRisks', () => {
     expect(parsedRisks.get('D')).toEqual({ nodeId: 'D', level: 'medium', reason: 'Needs review' });
   });
 });
+
