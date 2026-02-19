@@ -38,6 +38,8 @@ export interface DiagramContent {
   breakpoints: Set<string>;
   /** Parsed risk annotations */
   risks: Map<string, RiskAnnotation>;
+  /** Parsed ghost path annotations */
+  ghosts: GhostPathAnnotation[];
   /** Validation result for the Mermaid syntax */
   validation: ValidationResult;
   /** Relative file path within the project */
@@ -74,6 +76,13 @@ export interface GhostPath {
   toNodeId: string;
   label?: string;
   timestamp: number;
+}
+
+/** A ghost path annotation persisted in a .mmd file (no timestamp) */
+export interface GhostPathAnnotation {
+  fromNodeId: string;
+  toNodeId: string;
+  label: string;
 }
 
 /** A project containing .mmd files */
