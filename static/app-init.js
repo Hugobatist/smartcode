@@ -65,10 +65,10 @@
         if (effectiveRendererType === 'custom') {
             try {
                 var currentFile = SmartBFileTree.getCurrentFile();
-                await SmartBRenderer.render(text);
                 await SmartBCustomRenderer.fetchAndRender(currentFile);
             } catch (e) {
-                console.warn('Custom renderer failed, keeping Mermaid render:', e.message);
+                console.warn('Custom renderer failed, falling back to Mermaid:', e.message);
+                await SmartBRenderer.render(text);
             }
         } else {
             await SmartBRenderer.render(text);
@@ -144,7 +144,7 @@
         if (e.key === 'c' && (e.ctrlKey || e.metaKey) && !e.shiftKey) {
             if (window.SmartBClipboard && SmartBClipboard.copy()) {
                 e.preventDefault();
-                if (window.toast) toast('Nodo copiado');
+                if (window.toast) toast('Node copied');
             }
             return;
         }
@@ -152,14 +152,14 @@
             if (window.SmartBClipboard && SmartBClipboard.hasContent()) {
                 e.preventDefault();
                 SmartBClipboard.paste();
-                if (window.toast) toast('Nodo colado');
+                if (window.toast) toast('Node pasted');
             }
             return;
         }
         if (e.key === 'd' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             if (window.SmartBClipboard && SmartBClipboard.duplicate()) {
-                if (window.toast) toast('Nodo duplicado');
+                if (window.toast) toast('Node duplicated');
             }
             return;
         }
@@ -173,6 +173,10 @@
         }
         if (e.key === 'ArrowRight' && window.SmartBSessionPlayer && SmartBSessionPlayer.isVisible()) {
             e.preventDefault(); SmartBSessionPlayer.seekTo(SmartBSessionPlayer.getIndex() + 1); return;
+        }
+        if (e.key === 'g' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            if (window.SmartBGhostPaths) SmartBGhostPaths.toggle();
+            return;
         }
         if (e.key === 'h' && !e.ctrlKey && !e.metaKey && !e.altKey) {
             if (window.SmartBHeatmap) SmartBHeatmap.toggle();
@@ -215,6 +219,15 @@
     var _sv = document.getElementById('btnSaveFile');
     if (_sv) _sv.innerHTML = SmartBIcons.save;
 
+    // ── Inject toolbar icons from data-icon attributes ──
+    // Safe: SmartBIcons contains only static SVG strings from icons.js (trusted source)
+    document.querySelectorAll('.toolbar-icon[data-icon]').forEach(function(span) {
+        var iconName = span.getAttribute('data-icon');
+        if (iconName && SmartBIcons[iconName]) {
+            span.innerHTML = SmartBIcons[iconName];
+        }
+    });
+
     SmartBAnnotations.init(_initHooks);
     MmdEditor.init(_initHooks);
     SmartBSearch.init(_initHooks);
@@ -232,6 +245,9 @@
     // ── Init Phase 16: Heatmap & Session Player ──
     if (window.SmartBHeatmap) SmartBHeatmap.init();
     if (window.SmartBSessionPlayer) SmartBSessionPlayer.init();
+
+    // ── Init MCP Sessions view ──
+    if (window.SmartBMcpSessions) SmartBMcpSessions.init();
 
     // ── Init Collapse UI ──
     if (window.SmartBCollapseUI) {
@@ -398,7 +414,7 @@
                     var gpResp = await fetch(baseUrl('/api/ghost-paths/' + encodeURIComponent(currentFile)));
                     if (gpResp.ok) {
                         var gpData = await gpResp.json();
-                        SmartBGhostPaths.updateGhostPaths(gpData.ghostPaths || []);
+                        SmartBGhostPaths.updateGhostPaths(currentFile, gpData.ghostPaths || []);
                     }
                 } catch (e) {}
             }
@@ -436,7 +452,7 @@
     document.addEventListener('drop', async function(e) {
         e.preventDefault();
         var file = e.dataTransfer.files[0];
-        if (!file || !file.name.endsWith('.mmd')) { toast('Apenas arquivos .mmd'); return; }
+        if (!file || !file.name.endsWith('.mmd')) { toast('Only .mmd files'); return; }
         var text = await file.text();
         var editor = document.getElementById('editor');
         editor.value = text;

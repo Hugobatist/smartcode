@@ -100,8 +100,10 @@
     }
 
     function renderTree() {
+        // Skip rendering if MCP Sessions view is active
+        if (window.SmartBMcpSessions && SmartBMcpSessions.getViewMode() === 'sessions') return;
         var container = document.getElementById('fileTree');
-        // Safe: all dynamic values are escaped via escapeHtml before interpolation
+        // Safe: all dynamic values pass through escapeHtml() — see renderNodes()
         if (container) container.innerHTML = renderNodes(treeData, 0);
     }
 
@@ -118,8 +120,8 @@
                         '<span class="tree-folder-name">' + escapeHtml(prettyFolder(n.name)) + '</span>' +
                         '<span class="tree-folder-count">' + count + '</span>' +
                         '<span class="tree-folder-actions">' +
-                            '<button class="rename-btn" data-action="rename-folder" data-folder="' + escapeHtml(n.name) + '" title="Renomear Pasta">' + SmartBIcons.edit + '</button>' +
-                            '<button class="delete-btn" data-action="delete-folder" data-folder="' + escapeHtml(n.name) + '" title="Deletar Pasta">' + SmartBIcons.trash + '</button>' +
+                            '<button class="rename-btn" data-action="rename-folder" data-folder="' + escapeHtml(n.name) + '" title="Rename Folder">' + SmartBIcons.edit + '</button>' +
+                            '<button class="delete-btn" data-action="delete-folder" data-folder="' + escapeHtml(n.name) + '" title="Delete Folder">' + SmartBIcons.trash + '</button>' +
                         '</span>' +
                     '</div>' +
                     '<div class="tree-children ' + (isOpen ? '' : 'collapsed') + '">' +
@@ -134,8 +136,8 @@
                     '<span class="tree-file-icon">' + SmartBIcons.file + '</span>' +
                     '<span class="tree-file-name" title="' + escapeHtml(filePath) + '">' + escapeHtml(prettyName(n.name)) + '</span>' +
                     '<span class="tree-file-actions">' +
-                        '<button class="rename-btn" data-action="rename-file" data-path="' + escapeHtml(filePath) + '" title="Renomear">' + SmartBIcons.edit + '</button>' +
-                        '<button class="delete-btn" data-action="delete-file" data-path="' + escapeHtml(filePath) + '" title="Deletar">' + SmartBIcons.trash + '</button>' +
+                        '<button class="rename-btn" data-action="rename-file" data-path="' + escapeHtml(filePath) + '" title="Rename">' + SmartBIcons.edit + '</button>' +
+                        '<button class="delete-btn" data-action="delete-file" data-path="' + escapeHtml(filePath) + '" title="Delete">' + SmartBIcons.trash + '</button>' +
                     '</span>' +
                 '</div>';
             }
@@ -193,12 +195,15 @@
         syncFile();
         renderTree();
 
+        // Reset ghost path user-hide tracking on file switch
+        if (window.SmartBGhostPaths) SmartBGhostPaths.resetUserHide();
+
         // Fetch overlay data for the new file (ghost paths, heatmap, sessions)
         var encoded = encodeURIComponent(path);
         if (window.SmartBGhostPaths) {
             fetch(bUrl('/api/ghost-paths/' + encoded))
                 .then(function(r) { return r.ok ? r.json() : null; })
-                .then(function(d) { if (d) SmartBGhostPaths.updateGhostPaths(d.ghostPaths || []); })
+                .then(function(d) { if (d) SmartBGhostPaths.updateGhostPaths(path, d.ghostPaths || []); })
                 .catch(function() {});
         }
         if (window.SmartBHeatmap) {
@@ -229,6 +234,8 @@
                         var incoming = SmartBAnnotations.parseAnnotations(text);
                         SmartBAnnotations.getState().flags = incoming.flags;
                         SmartBAnnotations.getState().statuses = incoming.statuses;
+                        SmartBAnnotations.getState().ghosts = incoming.ghosts || [];
+                        if (window.SmartBGhostPaths) SmartBGhostPaths.updateGhostPaths(currentFile, incoming.ghosts || []);
                         SmartBAnnotations.renderPanel();
                         SmartBAnnotations.updateBadge();
                     }
@@ -243,74 +250,88 @@
 
     // ── File CRUD ──
     function createNewFile() {
-        var name = prompt('Nome do diagrama (sem extensao).\nUse pasta/nome para criar dentro de pasta:');
-        if (!name) return;
-        var fname = name.replace(/[^a-z0-9-_/]/gi, '-').toLowerCase().replace(/^\/|\/$/g, '') + '.mmd';
-        var editor = document.getElementById('editor');
-        editor.value = 'flowchart LR\n    A["Inicio"] --> B["Fim"]';
-        setFile(fname);
-        lastContent = editor.value;
-        saveCurrentFile();
-        render(editor.value);
-        document.getElementById('currentFileName').textContent = prettyName(fname);
+        SmartBModal.prompt({
+            title: 'New Diagram',
+            placeholder: 'diagram-name (use folder/name for subfolders)',
+            onConfirm: function(name) {
+                var fname = name.replace(/[^a-z0-9-_/]/gi, '-').toLowerCase().replace(/^\/|\/$/g, '') + '.mmd';
+                var editor = document.getElementById('editor');
+                editor.value = 'flowchart LR\n    A["Start"] --> B["End"]';
+                setFile(fname);
+                lastContent = editor.value;
+                saveCurrentFile();
+                render(editor.value);
+                document.getElementById('currentFileName').textContent = prettyName(fname);
+            },
+        });
     }
 
     function createNewFolder() {
-        var name = prompt('Nome da pasta:');
-        if (!name) return;
-        var safe = name.replace(/[^a-z0-9-_/]/gi, '-').toLowerCase();
-        fetch(bUrl('/mkdir'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ folder: safe }),
-        }).then(function() {
-            if (window.toast) toast('Pasta criada: ' + safe);
-            refreshFileList();
+        SmartBModal.prompt({
+            title: 'New Folder',
+            placeholder: 'folder-name',
+            onConfirm: function(name) {
+                var safe = name.replace(/[^a-z0-9-_/]/gi, '-').toLowerCase();
+                fetch(bUrl('/mkdir'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder: safe }),
+                }).then(function() {
+                    if (window.toast) toast('Folder created: ' + safe);
+                    refreshFileList();
+                });
+            },
         });
     }
 
     function saveCurrentFile() {
         var editor = document.getElementById('editor');
         var content = editor.value;
-        if (!content.trim()) { if (window.toast) toast('Nada para salvar'); return; }
+        if (!content.trim()) { if (window.toast) toast('Nothing to save'); return; }
         fetch(bUrl('/save'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ filename: currentFile, content: content }),
         }).then(function(resp) {
             if (resp.ok) {
-                if (window.toast) toast('Salvo: ' + currentFile);
+                if (window.toast) toast('Saved: ' + currentFile);
                 lastContent = content;
                 refreshFileList();
                 if (window.SmartBEventBus) {
                     SmartBEventBus.emit('file:saved', { path: currentFile });
                 }
             } else {
-                if (window.toast) toast('Erro ao salvar');
+                if (window.toast) toast('Error saving');
             }
         }).catch(function() {
-            if (window.toast) toast('Erro: servidor offline?');
+            if (window.toast) toast('Error: server offline?');
         });
     }
 
     function deleteFile(fpath) {
-        if (!confirm('Deletar ' + prettyName(fpath) + '?')) return;
-        fetch(bUrl('/delete'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filename: fpath }),
-        }).then(function() {
-            if (window.toast) toast('Deletado');
-            if (currentFile === fpath) {
-                setFile('');
-                document.getElementById('currentFileName').textContent = '';
-                var editor = document.getElementById('editor');
-                editor.value = '';
-                lastContent = '';
-            }
-            refreshFileList();
-        }).catch(function() {
-            if (window.toast) toast('Erro ao deletar');
+        SmartBModal.confirm({
+            title: 'Delete Diagram',
+            message: 'Delete ' + prettyName(fpath) + '?',
+            danger: true,
+            onConfirm: function() {
+                fetch(bUrl('/delete'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filename: fpath }),
+                }).then(function() {
+                    if (window.toast) toast('Deleted');
+                    if (currentFile === fpath) {
+                        setFile('');
+                        document.getElementById('currentFileName').textContent = '';
+                        var editor = document.getElementById('editor');
+                        editor.value = '';
+                        lastContent = '';
+                    }
+                    refreshFileList();
+                }).catch(function() {
+                    if (window.toast) toast('Error deleting file');
+                });
+            },
         });
     }
 
@@ -318,50 +339,60 @@
         var parts = oldPath.split('/');
         var base = parts.pop().replace('.mmd', '');
         var folder = parts.join('/');
-        var newBase = prompt('Novo nome:', base);
-        if (!newBase || newBase === base) return;
-        var safeName = newBase.replace(/[^a-z0-9-_]/gi, '-').toLowerCase() + '.mmd';
-        var newPath = folder ? folder + '/' + safeName : safeName;
-        fetch(bUrl('/move'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from: oldPath, to: newPath }),
-        }).then(function() {
-            if (currentFile === oldPath) {
-                setFile(newPath);
-                document.getElementById('currentFileName').textContent = prettyName(newPath);
-            }
-            refreshFileList();
-            if (window.toast) toast('Renomeado');
+        SmartBModal.prompt({
+            title: 'Rename Diagram',
+            placeholder: 'New name',
+            defaultValue: base,
+            onConfirm: function(newBase) {
+                if (newBase === base) return;
+                var safeName = newBase.replace(/[^a-z0-9-_]/gi, '-').toLowerCase() + '.mmd';
+                var newPath = folder ? folder + '/' + safeName : safeName;
+                fetch(bUrl('/move'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ from: oldPath, to: newPath }),
+                }).then(function() {
+                    if (currentFile === oldPath) {
+                        setFile(newPath);
+                        document.getElementById('currentFileName').textContent = prettyName(newPath);
+                    }
+                    refreshFileList();
+                    if (window.toast) toast('Renamed');
+                });
+            },
         });
     }
 
     function renameFolder(oldName) {
         var displayName = prettyFolder(oldName);
-        var newName = prompt('Novo nome da pasta:', displayName);
-        if (!newName || newName === displayName) return;
-        var safeName = newName.replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
-        fetch(bUrl('/move'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ from: oldName, to: safeName }),
-        }).then(function() {
-            // If current file is inside the renamed folder, update its path
-            if (currentFile.startsWith(oldName + '/')) {
-                var newPath = currentFile.replace(oldName + '/', safeName + '/');
-                setFile(newPath);
-                document.getElementById('currentFileName').textContent = prettyName(newPath);
-            }
-            // Update collapsed folders set
-            if (collapsedFolders.has(oldName)) {
-                collapsedFolders.delete(oldName);
-                collapsedFolders.add(safeName);
-                saveCollapsed();
-            }
-            refreshFileList();
-            if (window.toast) toast('Pasta renomeada');
-        }).catch(function() {
-            if (window.toast) toast('Erro ao renomear pasta');
+        SmartBModal.prompt({
+            title: 'Rename Folder',
+            placeholder: 'New folder name',
+            defaultValue: displayName,
+            onConfirm: function(newName) {
+                if (newName === displayName) return;
+                var safeName = newName.replace(/[^a-z0-9-_]/gi, '-').toLowerCase();
+                fetch(bUrl('/move'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ from: oldName, to: safeName }),
+                }).then(function() {
+                    if (currentFile.startsWith(oldName + '/')) {
+                        var newPath = currentFile.replace(oldName + '/', safeName + '/');
+                        setFile(newPath);
+                        document.getElementById('currentFileName').textContent = prettyName(newPath);
+                    }
+                    if (collapsedFolders.has(oldName)) {
+                        collapsedFolders.delete(oldName);
+                        collapsedFolders.add(safeName);
+                        saveCollapsed();
+                    }
+                    refreshFileList();
+                    if (window.toast) toast('Folder renamed');
+                }).catch(function() {
+                    if (window.toast) toast('Error renaming folder');
+                });
+            },
         });
     }
 
@@ -378,29 +409,34 @@
             }
         }
         countInFolder(treeData);
-        var msg = 'Deletar pasta "' + prettyFolder(folderName) + '"';
-        if (count > 0) msg += ' com ' + count + ' arquivo' + (count > 1 ? 's' : '') + '?';
-        else msg += ' (vazia)?';
-        msg += '\nEsta acao nao pode ser desfeita.';
-        if (!confirm(msg)) return;
-        fetch(bUrl('/rmdir'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ folder: folderName }),
-        }).then(function() {
-            // If current file was inside deleted folder, clear it
-            if (currentFile.startsWith(folderName + '/')) {
-                setFile('');
-                document.getElementById('currentFileName').textContent = '';
-                document.getElementById('editor').value = '';
-                lastContent = '';
-            }
-            collapsedFolders.delete(folderName);
-            saveCollapsed();
-            refreshFileList();
-            if (window.toast) toast('Pasta deletada');
-        }).catch(function() {
-            if (window.toast) toast('Erro ao deletar pasta');
+        var msg = 'Delete folder "' + prettyFolder(folderName) + '"';
+        if (count > 0) msg += ' with ' + count + ' file' + (count > 1 ? 's' : '') + '.';
+        else msg += ' (empty).';
+        msg += '\nThis action cannot be undone.';
+        SmartBModal.confirm({
+            title: 'Delete Folder',
+            message: msg,
+            danger: true,
+            onConfirm: function() {
+                fetch(bUrl('/rmdir'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder: folderName }),
+                }).then(function() {
+                    if (currentFile.startsWith(folderName + '/')) {
+                        setFile('');
+                        document.getElementById('currentFileName').textContent = '';
+                        document.getElementById('editor').value = '';
+                        lastContent = '';
+                    }
+                    collapsedFolders.delete(folderName);
+                    saveCollapsed();
+                    refreshFileList();
+                    if (window.toast) toast('Folder deleted');
+                }).catch(function() {
+                    if (window.toast) toast('Error deleting folder');
+                });
+            },
         });
     }
 

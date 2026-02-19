@@ -12,6 +12,7 @@
     var STATUS_REGEX = /^%%\s*@status\s+(\S+)\s+(\S+)$/;
     var BREAKPOINT_REGEX = /^%%\s*@breakpoint\s+(\S+)$/;
     var RISK_REGEX = /^%%\s*@risk\s+(\S+)\s+(high|medium|low)\s+"([^"]*)"$/;
+    var GHOST_REGEX = /^%%\s*@ghost\s+(\S+)\s+(\S+)\s+"([^"]*)"$/;
 
     var state = {
         flagMode: false,
@@ -19,6 +20,7 @@
         statuses: new Map(),   // nodeId -> statusValue string
         breakpoints: new Set(), // nodeId set
         risks: new Map(),      // nodeId -> { level, reason }
+        ghosts: [],            // [{ fromNodeId, toNodeId, label }]
         panelOpen: false, popover: null,
         popoverOutsideHandler: null, // stored ref to remove on close
     };
@@ -36,6 +38,7 @@
 
     function parseAnnotations(content) {
         var flags = new Map(), statuses = new Map(), breakpoints = new Set(), risks = new Map();
+        var ghosts = [];
         var lines = content.split('\n');
         var inBlock = false;
         for (var li = 0; li < lines.length; li++) {
@@ -50,10 +53,12 @@
                 var bm = trimmed.match(BREAKPOINT_REGEX);
                 if (bm) { breakpoints.add(bm[1]); continue; }
                 var rm = trimmed.match(RISK_REGEX);
-                if (rm) { risks.set(rm[1], { level: rm[2], reason: rm[3] }); }
+                if (rm) { risks.set(rm[1], { level: rm[2], reason: rm[3] }); continue; }
+                var gm = trimmed.match(GHOST_REGEX);
+                if (gm) { ghosts.push({ fromNodeId: gm[1], toNodeId: gm[2], label: gm[3] }); continue; }
             }
         }
-        return { flags, statuses, breakpoints, risks };
+        return { flags, statuses, breakpoints, risks, ghosts };
     }
 
     function stripAnnotations(content) {
@@ -69,15 +74,20 @@
         return result.join('\n');
     }
 
-    function injectAnnotations(content, flags, statuses) {
+    function injectAnnotations(content, flags, statuses, ghosts) {
         var clean = stripAnnotations(content), statusMap = statuses || state.statuses;
-        var hasAnnotations = flags.size > 0 || statusMap.size > 0 || state.breakpoints.size > 0 || state.risks.size > 0;
+        var ghostList = ghosts || state.ghosts || [];
+        var hasAnnotations = flags.size > 0 || statusMap.size > 0 || state.breakpoints.size > 0 || state.risks.size > 0 || ghostList.length > 0;
         if (!hasAnnotations) return clean;
         var lines = ['', ANNOTATION_START];
         flags.forEach(function(val, nid) { lines.push('%% @flag ' + nid + ' "' + val.message.replace(/"/g, "''") + '"'); });
         statusMap.forEach(function(sv, nid) { lines.push('%% @status ' + nid + ' ' + sv); });
         state.breakpoints.forEach(function(nid) { lines.push('%% @breakpoint ' + nid); });
         state.risks.forEach(function(val, nid) { lines.push('%% @risk ' + nid + ' ' + val.level + ' "' + val.reason.replace(/"/g, "''") + '"'); });
+        for (var gi = 0; gi < ghostList.length; gi++) {
+            var g = ghostList[gi];
+            lines.push('%% @ghost ' + g.fromNodeId + ' ' + g.toNodeId + ' "' + (g.label || '').replace(/"/g, "''") + '"');
+        }
         lines.push(ANNOTATION_END);
         return clean + '\n' + lines.join('\n');
     }
@@ -124,14 +134,14 @@
         pop.style.left = Math.min(clientX + 12, window.innerWidth - 380) + 'px';
         pop.style.top = Math.min(clientY - 20, window.innerHeight - 320) + 'px';
 
-        var typeLabel = nodeInfo.type === 'edge' ? 'Conexao' : nodeInfo.type === 'subgraph' ? 'Subgrafo' : 'Nodo';
+        var typeLabel = nodeInfo.type === 'edge' ? 'Edge' : nodeInfo.type === 'subgraph' ? 'Subgraph' : 'Node';
         var hasMmdEditor = !!window.MmdEditor;
 
         // Build popover content using DOM methods for safety
         var titleDiv = document.createElement('div');
         titleDiv.className = 'flag-popover-title';
         var titleSpan = document.createElement('span');
-        titleSpan.textContent = isExisting ? 'Editar Flag' : 'Sinalizar ' + typeLabel;
+        titleSpan.textContent = isExisting ? 'Edit Flag' : 'Flag ' + typeLabel;
         titleDiv.appendChild(titleSpan);
         var idSpan = document.createElement('span');
         idSpan.className = 'node-id';
@@ -141,7 +151,7 @@
 
         var textarea = document.createElement('textarea');
         textarea.className = 'flag-note';
-        textarea.placeholder = 'Descreva o problema (opcional)...';
+        textarea.placeholder = 'Describe the issue (optional)...';
         textarea.value = isExisting ? existing.message : '';
         pop.appendChild(textarea);
 
@@ -150,7 +160,7 @@
             corrDiv.className = 'correction-actions';
             var corrLabel = document.createElement('span');
             corrLabel.style.cssText = 'font-size:10px;font-weight:700;color:var(--text-secondary);text-transform:uppercase;letter-spacing:1px';
-            corrLabel.textContent = 'Correcoes';
+            corrLabel.textContent = 'Actions';
             corrDiv.appendChild(corrLabel);
             var btnsDiv = document.createElement('div');
             btnsDiv.className = 'correction-btns';
@@ -158,21 +168,21 @@
                 var btnEditText = document.createElement('button');
                 btnEditText.className = 'btn-correction';
                 btnEditText.dataset.action = 'edit-text';
-                btnEditText.title = 'Editar texto do nodo';
-                btnEditText.textContent = 'Editar Texto';
+                btnEditText.title = 'Edit node text';
+                btnEditText.textContent = 'Edit Text';
                 btnsDiv.appendChild(btnEditText);
                 var btnConnect = document.createElement('button');
                 btnConnect.className = 'btn-correction';
                 btnConnect.dataset.action = 'connect-from';
-                btnConnect.title = 'Criar nova seta a partir deste nodo';
-                btnConnect.innerHTML = 'Nova Seta ' + SmartBIcons.arrowRight;
+                btnConnect.title = 'Create new edge from this node';
+                btnConnect.innerHTML = 'New Edge ' + SmartBIcons.arrowRight;
                 btnsDiv.appendChild(btnConnect);
             }
             var btnDelete = document.createElement('button');
             btnDelete.className = 'btn-correction btn-correction-danger';
             btnDelete.dataset.action = 'delete';
-            btnDelete.title = 'Remover ' + typeLabel.toLowerCase() + ' do diagrama';
-            btnDelete.textContent = 'Remover ' + typeLabel;
+            btnDelete.title = 'Remove ' + typeLabel.toLowerCase() + ' from diagram';
+            btnDelete.textContent = 'Remove ' + typeLabel;
             btnsDiv.appendChild(btnDelete);
             corrDiv.appendChild(btnsDiv);
             pop.appendChild(corrDiv);
@@ -184,18 +194,18 @@
             var btnRemove = document.createElement('button');
             btnRemove.className = 'btn-flag remove';
             btnRemove.dataset.action = 'remove-flag';
-            btnRemove.textContent = 'Remover Flag';
+            btnRemove.textContent = 'Remove Flag';
             actionsDiv.appendChild(btnRemove);
         }
         var btnCancel = document.createElement('button');
         btnCancel.className = 'btn-flag secondary';
         btnCancel.dataset.action = 'cancel';
-        btnCancel.textContent = 'Cancelar';
+        btnCancel.textContent = 'Cancel';
         actionsDiv.appendChild(btnCancel);
         var btnFlag = document.createElement('button');
         btnFlag.className = 'btn-flag primary';
         btnFlag.dataset.action = 'flag';
-        btnFlag.textContent = isExisting ? 'Atualizar' : 'Sinalizar';
+        btnFlag.textContent = isExisting ? 'Update' : 'Flag';
         actionsDiv.appendChild(btnFlag);
         pop.appendChild(actionsDiv);
 
@@ -275,6 +285,12 @@
         for (var rEntry of state.risks) mergedRisks.set(rEntry[0], rEntry[1]);
         state.risks = mergedRisks;
         if (window.SmartBHeatmap) SmartBHeatmap.updateRisks(state.risks);
+        // Ghosts from file take precedence (file is source of truth)
+        state.ghosts = incoming.ghosts || [];
+        if (window.SmartBGhostPaths) {
+            var file = window.SmartBFileTree ? SmartBFileTree.getCurrentFile() : null;
+            if (file) SmartBGhostPaths.updateGhostPaths(file, state.ghosts);
+        }
         var cleanIncoming = stripAnnotations(incomingContent);
         return injectAnnotations(cleanIncoming, mergedFlags, mergedStatuses);
     }
@@ -299,7 +315,7 @@
         var btn = document.getElementById('btnFlags');
         if (btn) btn.classList.toggle('active', state.flagMode);
         if (!state.flagMode) closePopover();
-        if (window.toast) window.toast(state.flagMode ? 'Flag Mode ON -- clique em um nodo' : 'Flag Mode OFF');
+        if (window.toast) window.toast(state.flagMode ? 'Flag Mode ON -- click on a node' : 'Flag Mode OFF');
     }
 
     // ── Init ──
@@ -313,6 +329,7 @@
             state.statuses = parsed.statuses;
             state.breakpoints = parsed.breakpoints;
             state.risks = parsed.risks;
+            state.ghosts = parsed.ghosts || [];
             if (window.SmartBBreakpoints) SmartBBreakpoints.updateBreakpoints(parsed.breakpoints);
             if (window.SmartBHeatmap) SmartBHeatmap.updateRisks(parsed.risks);
         }

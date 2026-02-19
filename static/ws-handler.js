@@ -45,8 +45,10 @@
                             SmartBAnnotations.getState().statuses = incoming.statuses;
                             SmartBAnnotations.getState().breakpoints = incoming.breakpoints;
                             SmartBAnnotations.getState().risks = incoming.risks;
+                            SmartBAnnotations.getState().ghosts = incoming.ghosts || [];
                             if (window.SmartBBreakpoints) SmartBBreakpoints.updateBreakpoints(incoming.breakpoints);
                             if (window.SmartBHeatmap) SmartBHeatmap.updateRisks(incoming.risks);
+                            if (window.SmartBGhostPaths) SmartBGhostPaths.updateGhostPaths(msg.file, incoming.ghosts || []);
                             SmartBAnnotations.renderPanel();
                             SmartBAnnotations.updateBadge();
                         }
@@ -73,6 +75,9 @@
             case 'session:event':
                 if (window.SmartBSessionPlayer) SmartBSessionPlayer.handleSessionEvent(msg.sessionId, msg.event);
                 break;
+            case 'mcp-session:updated':
+                if (window.SmartBMcpSessions) SmartBMcpSessions.refresh();
+                break;
             case 'file:added':
             case 'file:removed':
             case 'tree:updated':
@@ -87,18 +92,18 @@
         switch (status) {
             case 'connected':
                 dot.className = 'status-dot';
-                statusText.textContent = 'Servidor Local';
-                statusText.title = 'Conectado ao servidor SmartB via WebSocket.';
+                statusText.textContent = 'Local Server';
+                statusText.title = 'Connected to SmartB server via WebSocket.';
                 break;
             case 'disconnected':
                 dot.className = 'status-dot paused';
-                statusText.textContent = 'Desconectado';
-                statusText.title = 'Sem conexao com o servidor SmartB. Execute: smartb serve';
+                statusText.textContent = 'Disconnected';
+                statusText.title = 'No connection to SmartB server. Run: smartb serve';
                 break;
             case 'reconnecting':
                 dot.className = 'status-dot paused';
-                statusText.textContent = 'Reconectando...';
-                statusText.title = 'Tentando reconectar ao servidor SmartB...';
+                statusText.textContent = 'Reconnecting...';
+                statusText.title = 'Attempting to reconnect to SmartB server...';
                 break;
         }
     }

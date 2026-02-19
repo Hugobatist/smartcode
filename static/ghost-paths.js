@@ -28,6 +28,7 @@
     // ── Module State ──
     var ghostPathsByFile = {};   // { filePath: [ghostPath, ...] }
     var visible = false;
+    var userExplicitlyHid = false; // Track if user manually toggled off (GHOST-06)
 
     // ── Helpers ──
 
@@ -282,6 +283,8 @@
 
     function toggle() {
         visible = !visible;
+        // Track explicit user choice: if they hide, don't auto-show again
+        userExplicitlyHid = !visible;
         saveVisibility();
         updateButtonState();
         renderGhostPaths();
@@ -303,9 +306,9 @@
         }
         updateBadge();
 
-        // Auto-show ghost paths when new ones arrive for the current file
+        // Auto-show ghost paths when new ones arrive -- but respect user choice
         var currentFile = window.SmartBFileTree ? SmartBFileTree.getCurrentFile() : null;
-        if (list.length > 0 && file === currentFile && !visible) {
+        if (list.length > 0 && file === currentFile && !visible && !userExplicitlyHid) {
             visible = true;
             saveVisibility();
             updateButtonState();
@@ -333,6 +336,52 @@
         renderGhostPaths();
     }
 
+    // ── URL helper ──
+    function bUrl(path) { return (window.SmartBBaseUrl || '') + path; }
+
+    /** Create a ghost path via REST API and update UI */
+    function createGhostPath(fromNodeId, toNodeId, label) {
+        var file = window.SmartBFileTree ? SmartBFileTree.getCurrentFile() : null;
+        if (!file) return;
+        var encoded = encodeURIComponent(file);
+        fetch(bUrl('/api/ghost-paths/' + encoded), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fromNodeId: fromNodeId, toNodeId: toNodeId, label: label || undefined }),
+        }).then(function(r) {
+            if (!r.ok) throw new Error('Failed');
+            // Refetch to get updated list
+            return fetch(bUrl('/api/ghost-paths/' + encoded));
+        }).then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(d) {
+            if (d) updateGhostPathsFn(file, d.ghostPaths || []);
+            if (window.toast) toast('Ghost path created');
+        }).catch(function() {
+            if (window.toast) toast('Error creating ghost path');
+        });
+    }
+
+    /** Clear all ghost paths for the current file via REST API */
+    function clearAllGhostPaths() {
+        var file = window.SmartBFileTree ? SmartBFileTree.getCurrentFile() : null;
+        if (!file) return;
+        var encoded = encodeURIComponent(file);
+        fetch(bUrl('/api/ghost-paths/' + encoded), {
+            method: 'DELETE',
+        }).then(function(r) {
+            if (!r.ok) throw new Error('Failed');
+            updateGhostPathsFn(file, []);
+            if (window.toast) toast('Ghost paths cleared');
+        }).catch(function() {
+            if (window.toast) toast('Error clearing ghost paths');
+        });
+    }
+
+    /** Reset the explicit-hide flag (called on file switch) */
+    function resetUserHide() {
+        userExplicitlyHid = false;
+    }
+
     // ── Public API ──
     window.SmartBGhostPaths = {
         init: init,
@@ -341,5 +390,8 @@
         updateGhostPaths: updateGhostPathsFn,
         renderGhostPaths: renderGhostPaths,
         getCount: getCount,
+        createGhostPath: createGhostPath,
+        clearAll: clearAllGhostPaths,
+        resetUserHide: resetUserHide,
     };
 })();
