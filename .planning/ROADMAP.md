@@ -1,173 +1,123 @@
 # Roadmap: SmartB Diagrams
 
-## Milestone v1.0 (Complete)
+## Milestones
 
-All 8 phases completed on 2026-02-15. See `.planning/phases/` for details.
+- ✅ **v1.0 MVP** - Phases 1-8 (shipped 2026-02-15)
+- ✅ **v2.0 Interactive Canvas + AI Observability** - Phases 9-16 (shipped 2026-02-16)
+- 🚧 **v2.1 Stability & Usability** - Phases 17-20 (in progress)
 
-## Milestone v2.0: Interactive Canvas + AI Observability
+<details>
+<summary>✅ v1.0 MVP (Phases 1-8) - SHIPPED 2026-02-15</summary>
 
-### Overview
+All 8 phases completed. TypeScript npm package with HTTP server, WebSocket real-time sync, browser UI with pan/zoom/flags/search/export, MCP server for AI tools, VS Code extension, and subgraph collapse/expand. 23 plans executed.
 
-v2.0 replaces Mermaid.js as a black-box renderer with a custom interactive SVG pipeline. The roadmap follows a strict dependency chain: refactor the monolithic live.html first, then build the graph model and custom renderer, then add canvas interactions, then AI observability features, and finally advanced replay capabilities. Each phase delivers a coherent, independently verifiable capability that unblocks the next.
+</details>
 
-### Phases
+<details>
+<summary>✅ v2.0 Interactive Canvas + AI Observability (Phases 9-16) - SHIPPED 2026-02-16</summary>
 
-- [ ] **Phase 9: Foundation Refactoring** - Extract live.html into modules, DOM abstraction layer, event bus
-- [x] **Phase 10: Graph Model + Parser** - Internal graph model types, .mmd parser, serializer, round-trip tests (completed 2026-02-15)
-- [x] **Phase 11: Custom Renderer** - dagre layout engine, SVG renderer, parallel rendering mode, feature parity gate (completed 2026-02-15)
-- [x] **Phase 12: Server + Browser Integration** - Graph API endpoint, WebSocket graph:update, live.html integration, Mermaid fallback (completed 2026-02-15)
-- [x] **Phase 13: Canvas Interactions** - Node selection, context menu, inline edit, keyboard shortcuts (completed 2026-02-15)
-- [x] **Phase 14: Undo/Redo + Edit Actions** - Command pattern, copy/paste/duplicate, folder management (completed 2026-02-16)
-- [x] **Phase 15: AI Breakpoints + Ghost Paths** - Breakpoint annotations, ghost path rendering, MCP tools (completed 2026-02-16)
-- [x] **Phase 16: Heatmap + Session Recording** - Risk heatmap overlay, session store, session replay UI (completed 2026-02-16)
-
-### Phase Details
-
-#### Phase 9: Foundation Refactoring
-**Goal**: live.html is split into < 500-line modules with proper event bus communication, and a DOM abstraction layer decouples interaction code from Mermaid's SVG DOM structure
-**Depends on**: v1.0 complete
-**Success Criteria** (what must be TRUE):
-  1. live.html is under 300 lines (HTML shell + script imports only)
-  2. All existing features work identically (flags, search, collapse, export, file tree, pan/zoom, editor)
-  3. Each extracted module is under 500 lines
-  4. Modules communicate via an event bus, not window.* globals
-  5. A DiagramDOM abstraction layer provides findNode/getNodeBBox/getNodeLabel without Mermaid-specific queries
-  6. All 131 existing tests still pass
-**Plans:** 4 plans
-
-Plans:
-- [ ] 09-01-PLAN.md — Extract event-bus.js, diagram-dom.js, and main.css from live.html
-- [ ] 09-02-PLAN.md — Extract renderer.js, pan-zoom.js, and export.js from live.html
-- [ ] 09-03-PLAN.md — Extract file-tree.js, editor-panel.js, app-init.js; finalize HTML shell
-- [ ] 09-04-PLAN.md — Migrate existing modules to DiagramDOM + event bus; human verification
-
-#### Phase 10: Graph Model + Parser
-**Goal**: The server can parse any .mmd flowchart file into a structured GraphModel and serialize it back with round-trip fidelity
-**Depends on**: Phase 9
-**Success Criteria** (what must be TRUE):
-  1. GraphModel types (GraphNode, GraphEdge, GraphSubgraph) are defined and exported
-  2. parseMermaidToGraph() handles all flowchart node shapes, edge types, subgraphs, styles, and annotations
-  3. serializeGraphToMermaid() produces semantically equivalent .mmd text (parse(serialize(parse(text))) === parse(text))
-  4. Round-trip tests cover 20+ .mmd fixtures including nested subgraphs, special characters, and all edge types
-  5. Existing .mmd files with flags and statuses parse correctly into the graph model
-**Plans:** 3/3 plans complete
-
-Plans:
-- [ ] 10-01-PLAN.md — Define GraphModel types and create 22 .mmd test fixtures
-- [ ] 10-02-PLAN.md — TDD: parseMermaidToGraph() with multi-pass pipeline
-- [ ] 10-03-PLAN.md — TDD: serializeGraphToMermaid(), round-trip tests, DiagramService integration
-
-#### Phase 11: Custom Renderer
-**Goal**: The browser can render a flowchart diagram from a GraphModel using dagre layout and custom SVG, producing output visually similar to Mermaid
-**Depends on**: Phase 10
-**Success Criteria** (what must be TRUE):
-  1. dagre computes node positions from GraphModel (nodes, edges, subgraphs)
-  2. Custom SVG renderer generates `<g data-node-id>` elements for each node with correct shapes
-  3. Edges render as SVG `<path>` elements with arrow markers
-  4. Subgraphs render as background rectangles with labels
-  5. A `?renderer=custom` query param toggles between Mermaid and custom renderer
-  6. ViewportTransform class correctly converts screen ↔ graph coordinates at all zoom levels
-**Plans:** 4 plans
-
-Plans:
-- [ ] 11-01-PLAN.md -- Graph API endpoint + dagre layout + viewport transform
-- [ ] 11-02-PLAN.md -- SVG shapes (13 shapes) + SVG renderer
-- [ ] 11-03-PLAN.md -- Custom renderer orchestrator + live.html integration + toggle + DiagramDOM
-- [ ] 11-04-PLAN.md -- TDD: ViewportTransform + dagre layout tests
-
-#### Phase 12: Server + Browser Integration
-**Goal**: The full data flow works end-to-end: file change → server parses to GraphModel → WebSocket sends graph JSON → browser renders with custom renderer
-**Depends on**: Phase 11
-**Success Criteria** (what must be TRUE):
-  1. GET /api/graph/:file returns GraphModel JSON
-  2. WebSocket sends `graph:update` messages alongside existing `file:changed` (backward compat)
-  3. live.html uses custom renderer for flowchart diagrams, Mermaid fallback for others
-  4. All existing interactions (flags, search, collapse, export) work with the custom renderer via DiagramDOM abstraction
-  5. Status colors, flag badges, and search highlights render correctly on custom SVG
-**Plans:** 3/3 plans complete
-
-Plans:
-- [x] 12-01-PLAN.md — WebSocket graph:update message, serializeGraphModel helper, flags/statuses in API
-- [x] 12-02-PLAN.md — Auto-renderer selection for flowcharts, graph:update browser handler, status colors
-- [x] 12-03-PLAN.md — Interaction module compatibility (search, collapse, edge flags, export) for custom SVG
-
-#### Phase 13: Canvas Interactions
-**Goal**: Developers can select nodes, right-click for context menu, double-click to edit labels inline, and use keyboard shortcuts for diagram manipulation
-**Depends on**: Phase 12
-**Success Criteria** (what must be TRUE):
-  1. Clicking a node selects it with a visual indicator (blue border, corner handles)
-  2. Right-clicking a node shows a context menu with Edit, Delete, Duplicate, Flag, Connect actions
-  3. Double-clicking a node label opens an inline contenteditable overlay for editing
-  4. Delete/Backspace removes selected node and its edges, with .mmd file updated
-  5. Escape deselects; clicking empty space deselects
-  6. Interaction state machine prevents conflicts (can't flag while editing, can't pan while selecting)
-**Plans:** 2 plans
-
-Plans:
-- [x] 13-01-PLAN.md — FSM (interaction-state.js), selection module (selection.js), pan-zoom movement threshold
-- [x] 13-02-PLAN.md — Context menu (context-menu.js), inline edit (inline-edit.js), integration wiring
-
-#### Phase 14: Undo/Redo + Edit Actions
-**Goal**: All diagram edit operations are undoable, and developers can copy/paste/duplicate nodes
-**Depends on**: Phase 13
-**Success Criteria** (what must be TRUE):
-  1. Ctrl+Z undoes the last user action; Ctrl+Shift+Z redoes
-  2. Undo stack only tracks user actions, not AI/filesystem changes
-  3. Ctrl+C copies selected node(s); Ctrl+V pastes with new IDs and offset position
-  4. Ctrl+D duplicates selected node(s) in place
-  5. Folder rename and delete work from file tree context menu
-  6. Command history is capped at 100 entries
-**Plans:** 3/3 plans complete
-
-Plans:
-- [ ] 14-01-PLAN.md -- Command history module, popover extraction, diagram-editor refactor
-- [ ] 14-02-PLAN.md -- POST /rmdir endpoint, folder rename/delete UI in file tree
-- [ ] 14-03-PLAN.md -- Clipboard module, keyboard shortcuts, live.html wiring, history clear on file switch
-
-#### Phase 15: AI Breakpoints + Ghost Paths
-**Goal**: Developers can set breakpoints on diagram nodes that pause AI execution, and discarded reasoning branches appear as ghost paths
-**Depends on**: Phase 12 (custom renderer required for ghost path rendering)
-**Success Criteria** (what must be TRUE):
-  1. `%% @breakpoint NodeId` annotation marks a node as a breakpoint with visual indicator (red circle)
-  2. MCP tool `check_breakpoints()` returns "pause" when AI reaches a breakpoint node
-  3. Browser shows notification bar: "Breakpoint hit on Node X. [Continue] [Remove]"
-  4. Ghost paths (discarded reasoning branches) render as dashed edges at 30% opacity
-  5. A toggle button shows/hides ghost paths
-  6. MCP tool `record_ghost_path()` allows AI to log abandoned paths
-**Plans:** 3/3 plans complete
-
-Plans:
-- [ ] 15-01-PLAN.md — Backend: breakpoint annotations, DiagramService CRUD, ghost store, WS types, REST endpoints
-- [ ] 15-02-PLAN.md — MCP tools: check_breakpoints + record_ghost_path, test coverage
-- [ ] 15-03-PLAN.md — Frontend: breakpoint indicators, notification bar, ghost path rendering, toggle, app wiring
-
-#### Phase 16: Heatmap + Session Recording
-**Goal**: Developers can see AI reasoning patterns as a heatmap overlay and replay how a diagram evolved over time
-**Depends on**: Phase 15
-**Success Criteria** (what must be TRUE):
-  1. `%% @risk NodeId high|medium|low "reason"` annotation adds risk level to nodes
-  2. Heatmap mode colors nodes by execution frequency (cold blue → hot red)
-  3. Session events are recorded as JSONL in `.smartb/sessions/`
-  4. MCP tools `start_session`, `record_step`, `end_session` allow AI to record reasoning
-  5. Timeline scrubber UI replays diagram evolution at 1x/2x/4x speed
-  6. Diff highlighting shows added (green), removed (red), modified (yellow) nodes between frames
-**Plans:** 4/4 plans complete
-
-Plans:
-- [ ] 16-01-PLAN.md — Backend: @risk annotations, SessionStore JSONL persistence, REST endpoints, WebSocket types
-- [ ] 16-02-PLAN.md — MCP tools: start_session, record_step, end_session, set_risk_level + test coverage
-- [ ] 16-03-PLAN.md — Frontend heatmap: risk overlay, execution frequency coloring, toggle button
-- [ ] 16-04-PLAN.md — Frontend session replay: timeline scrubber, playback controls, diff highlighting
+All 8 phases completed. Custom interactive canvas (dagre + SVG), node selection/drag/inline-edit, context menu, undo/redo, copy/paste, folder management, AI breakpoints, ghost paths, risk heatmap, session replay. Foundation refactoring reduced live.html from 1757 to 196 lines.
 
 ### Progress
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 9. Foundation Refactoring | 4/4 | Complete | 2026-02-15 |
-| 10. Graph Model + Parser | 3/3 | Complete    | 2026-02-15 |
+| 10. Graph Model + Parser | 3/3 | Complete | 2026-02-15 |
 | 11. Custom Renderer | 4/4 | Complete | 2026-02-15 |
 | 12. Server + Browser Integration | 3/3 | Complete | 2026-02-15 |
 | 13. Canvas Interactions | 2/2 | Complete | 2026-02-15 |
-| 14. Undo/Redo + Edit Actions | 0/3 | Complete    | 2026-02-16 |
-| 15. AI Breakpoints + Ghost Paths | 0/3 | Complete    | 2026-02-16 |
-| 16. Heatmap + Session Recording | 0/4 | Complete    | 2026-02-16 |
+| 14. Undo/Redo + Edit Actions | 3/3 | Complete | 2026-02-16 |
+| 15. AI Breakpoints + Ghost Paths | 3/3 | Complete | 2026-02-16 |
+| 16. Heatmap + Session Recording | 4/4 | Complete | 2026-02-16 |
+
+</details>
+
+## Phases
+
+**Milestone: v2.1 Stability & Usability**
+
+**Phase Numbering:**
+- Integer phases (17, 18, 19, 20): Planned milestone work
+- Decimal phases (e.g., 17.1): Urgent insertions if needed (marked with INSERTED)
+
+- [ ] **Phase 17: Critical Fixes + Write Safety** - Fix data-destroying MCP bugs and race conditions so every tool call preserves existing data
+- [ ] **Phase 18: Ghost Paths Functional** - Ghost paths persist in .mmd files, are fully manageable from UI, and visible to AI via MCP
+- [ ] **Phase 19: Heatmap Practical** - Heatmap shows useful data without MCP setup, updates in real-time, and supports mode toggling
+- [ ] **Phase 20: Polish** - Code quality compliance, keyboard shortcut fixes, complete exports
+
+## Phase Details
+
+### Phase 17: Critical Fixes + Write Safety
+**Goal**: Every MCP tool call preserves existing developer data, the /save endpoint cannot corrupt files, and FileWatcher correctly classifies events from first startup
+**Depends on**: v2.0 complete (Phase 16)
+**Requirements**: MCP-01, MCP-02, MCP-03, MCP-04, SAFE-01, SAFE-02, SAFE-03
+**Success Criteria** (what must be TRUE):
+  1. Calling update_diagram on a file with existing flags and breakpoints preserves all annotations -- the developer does not lose any flags, breakpoints, or risk annotations they previously set
+  2. Calling get_diagram_context returns a complete picture: ghost paths, breakpoints, and risk annotations are all present in the response alongside the existing diagram content
+  3. The modal prompt for ghost path creation accepts empty/blank label input without blocking -- developers can create ghost paths with optional labels from the UI
+  4. Saving a file via /save while an MCP tool is writing to the same file does not corrupt either write -- the write lock serializes access
+  5. The first file change after server startup triggers a correct "change" event (not "add") for files that already existed when the server started
+**Plans**: TBD
+
+Plans:
+- [ ] 17-01: MCP write safety (update_diagram annotation preservation, /save write lock routing)
+- [ ] 17-02: MCP read completeness (get_diagram_context, DiagramContent types, modal fix, FileWatcher init, watcher cleanup)
+
+### Phase 18: Ghost Paths Functional
+**Goal**: Ghost paths survive server restarts by persisting as @ghost annotations in .mmd files, load automatically on page open, and can be managed (created, deleted individually or in bulk) entirely from the browser UI
+**Depends on**: Phase 17 (MCP write safety must be solid before adding new annotation type)
+**Requirements**: GHOST-01, GHOST-02, GHOST-03, GHOST-04, GHOST-05, GHOST-06, GHOST-07
+**Success Criteria** (what must be TRUE):
+  1. Ghost paths created via MCP or UI appear as `%% @ghost FROM TO "label"` lines in the .mmd file and survive server restarts
+  2. Opening a .mmd file in the browser automatically loads and renders any persisted ghost paths -- no manual fetch or toggle required
+  3. A "Clear All" button removes all ghost paths for the current file, and individual ghost paths can be deleted via context menu or list panel
+  4. The ghost path toggle (G key) respects the user's preference -- if the user explicitly hid ghost paths, auto-show from new data does not override their choice
+  5. Both the backend (annotations.ts) and frontend (annotations.js) correctly parse and serialize @ghost annotations without destroying each other's output
+**Plans**: TBD
+
+Plans:
+- [ ] 18-01: Backend @ghost annotation parsing, serialization, and persistence (annotations.ts, DiagramService)
+- [ ] 18-02: Frontend @ghost parsing, load-on-open, clear/delete UI, toggle preference, G shortcut (annotations.js, ghost-paths.js)
+
+### Phase 19: Heatmap Practical
+**Goal**: The heatmap shows useful data from the moment a user starts clicking on nodes -- no MCP session setup required. During active sessions, data updates in real-time. Users can switch between risk and frequency views.
+**Depends on**: Phase 17 (get_diagram_context completeness needed for heatmap data flow)
+**Requirements**: HEAT-01, HEAT-02, HEAT-03, HEAT-04, HEAT-05
+**Success Criteria** (what must be TRUE):
+  1. Clicking on diagram nodes in the browser automatically accumulates frequency data that the heatmap can display -- no MCP session recording is needed for basic heatmap functionality
+  2. During an active MCP session recording (record_step), the heatmap updates incrementally in real-time rather than waiting for end_session
+  3. A UI control (dropdown or cycle button) lets users toggle between risk mode (annotation-based severity) and frequency mode (click/visit counts)
+  4. Switching files in the file tree re-fetches heatmap data for the newly selected file instead of showing stale data from the previous file
+  5. When heatmap has no data for the current file, a clear empty state message guides the user on how to populate it
+**Plans**: TBD
+
+Plans:
+- [ ] 19-01: Automatic click tracking (interaction-tracker.js, POST /api/heatmap/:file/increment, batch flush)
+- [ ] 19-02: Real-time session updates, mode toggle UI, file-switch re-fetch, empty state guidance
+
+### Phase 20: Polish
+**Goal**: All files comply with the 500-line limit, keyboard shortcuts work correctly in all contexts, PNG export captures the complete visual state, and the public API exports all necessary types
+**Depends on**: Phases 17-19 (polish applies after feature fixes are stable)
+**Requirements**: QUAL-01, QUAL-02, QUAL-03, QUAL-04
+**Success Criteria** (what must be TRUE):
+  1. main.css is split into component-specific files, each under 500 lines, and all styles render identically in the browser
+  2. Pressing 'B' while typing in an input field, textarea, or contenteditable element does not trigger the breakpoint shortcut -- the key is correctly filtered by input context
+  3. Exporting a diagram as PNG includes all visible ghost paths in the exported image
+  4. RiskLevel, RiskAnnotation, and GhostPath types are importable from the smartb-diagrams package public API
+**Plans**: TBD
+
+Plans:
+- [ ] 20-01: CSS splitting, keyboard shortcut fix, PNG ghost path export, type exports
+
+## Progress
+
+**Execution Order:**
+Phases execute in numeric order: 17 → 18 → 19 → 20
+
+| Phase | Plans Complete | Status | Completed |
+|-------|----------------|--------|-----------|
+| 17. Critical Fixes + Write Safety | 0/2 | Not started | - |
+| 18. Ghost Paths Functional | 0/2 | Not started | - |
+| 19. Heatmap Practical | 0/2 | Not started | - |
+| 20. Polish | 0/1 | Not started | - |
