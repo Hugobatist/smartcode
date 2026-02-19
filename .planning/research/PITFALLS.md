@@ -1,428 +1,463 @@
-# Domain Pitfalls: v2 Interactive Canvas + AI Observability
+# Domain Pitfalls: v2.1 Bug Fix Milestone
 
-**Domain:** Replacing static SVG renderer with interactive canvas, adding drag/select/edit capabilities, and building advanced AI observability features on top of an existing diagram tool
-**Researched:** 2026-02-15
-**Confidence:** MEDIUM-HIGH (verified against codebase analysis, community sources, and domain-specific case studies)
+**Domain:** Fixing 18+ bugs across Ghost Paths, Heatmap, MCP tools, and infrastructure in an existing TypeScript/vanilla JS diagram tool
+**Researched:** 2026-02-19
+**Confidence:** HIGH (based on direct codebase analysis of every file involved in each planned fix)
 
 ---
 
 ## Critical Pitfalls
 
-Mistakes that cause rewrites, break existing functionality, or fundamentally derail the project.
+Mistakes that cause regressions, data loss, or cascade failures across backend and frontend.
 
 ---
 
-### Pitfall 1: Big Bang Renderer Replacement -- Breaking Everything at Once
+### Pitfall 1: /save Route Bypasses DiagramService Write Lock -- Routing Through Service Creates Double-Write Loop
 
+**Planned fix:** Route POST /save through DiagramService instead of raw writeFile.
 **What goes wrong:**
-Attempting to replace Mermaid.js with a custom canvas renderer in a single phase. The existing v1 has 6 modules (annotations.js, diagram-editor.js, collapse-ui.js, search.js, ws-client.js, plus 1757 lines in live.html) that ALL depend on Mermaid's SVG DOM output. Every one of these modules queries Mermaid-specific DOM structures: `#preview svg`, `.node`, `.cluster`, `.nodeLabel`, `.edgePath`, and ID patterns like `flowchart-{ID}-{N}` and `subGraph{N}-{ID}-{N}`. A big bang replacement breaks all of them simultaneously.
 
-**Why it happens:**
-The temptation to "just swap the renderer" because the new system is architecturally cleaner. But the old system has deep coupling between rendering output and interaction code. SmartBAnnotations.extractNodeId() traverses the DOM looking for Mermaid-specific class names and ID patterns. SmartBCollapseUI.extractNodeId() does the same. SmartBSearch.search() queries `.nodeLabel` elements. The diagram-editor click handler looks for `flowchart-{ID}-{N}` patterns. All of this breaks the instant Mermaid SVG is replaced.
+The current `/save` route (file-routes.ts:42-58) writes directly via `writeFile(resolved, body.content)`. The plan is to route this through `service.writeDiagram()` to get write lock protection. But `writeDiagram()` triggers `injectAnnotations()` when flags/statuses are provided (service.ts:139-141). The browser's `saveCurrentFile()` (file-tree.js:282-303) sends the FULL editor content -- which already includes the annotation block injected by `annotations.js:injectAnnotations()`. If `writeDiagram()` is called with this content AND annotation parameters, annotations get double-injected. If called without annotation parameters, the raw content (already containing annotations) is written correctly -- but the write lock now serializes saves that were previously concurrent, which changes timing behavior.
+
+The real danger: `saveCurrentFile()` sends `editor.value` which is the output of the browser-side `injectAnnotations()`. This content already has `%% --- ANNOTATIONS ---` markers. If `writeDiagram()` receives this content and calls `injectAnnotations()` again, `stripAnnotations()` runs first (removing the browser-injected block), then re-injects from the passed maps. But the browser does NOT pass flags/statuses as separate parameters -- they are embedded in the content. So annotations are LOST.
 
 **Consequences:**
-- Flags stop working (cannot find nodes in SVG)
-- Search breaks (no `.nodeLabel` elements)
-- Collapse/expand breaks (no `.cluster` elements)
-- Node editing breaks (cannot parse node IDs from SVG)
-- VS Code extension webview breaks (same Mermaid DOM queries)
-- All 119 existing tests that depend on Mermaid output become invalid
-- Months of regression before feature parity with v1
+- Annotations silently disappear after every browser save
+- Flags set by the user vanish after Ctrl+S
+- MCP-set statuses are overwritten by stale browser state
 
 **Prevention:**
-1. **Strangler fig pattern:** Build the new renderer alongside Mermaid, not instead of it. Both should coexist for at least one full phase.
-2. **Abstraction layer first:** Before touching the renderer, extract ALL DOM queries into a `DiagramDOM` interface that both Mermaid SVG and the new canvas system can implement. This means `findNode(id)`, `getNodeBBox(id)`, `getEdgeEndpoints(id)`, `getNodeLabel(id)` -- abstract operations, not DOM queries.
-3. **Feature parity gate:** The new renderer cannot replace Mermaid until it passes the exact same interaction test suite. Build the test suite BEFORE the renderer.
-4. **Parallel rendering mode:** Add a toggle (`?renderer=canvas` query param) so the old Mermaid path and new canvas path can be compared side-by-side during development.
+1. Route `/save` through `writeDiagram()` with content only (no flags/statuses/breakpoints/risks). Since `writeDiagram()` only calls `injectAnnotations()` when `flags || statuses || breakpoints || risks` is truthy (service.ts:139), passing none of these means it writes the content as-is, while still acquiring the write lock.
+2. The call should be: `service.writeDiagram(filePath, body.content)` -- no optional params.
+3. Test: Save from browser, verify annotations persist. Save from MCP, verify browser can still read annotations.
 
 **Detection:**
-- "I'll just quickly replace the render function" appears in any plan
-- A phase plan has "replace Mermaid" as step 1 instead of "abstract DOM queries" as step 1
-- No mention of backwards compatibility or migration path
+- Flags disappear after saving in the browser
+- Annotation block appears doubled (two `ANNOTATION_START` markers)
 
-**Phase to address:** Must be the FIRST thing addressed in the renderer replacement phase. The abstraction layer IS the phase gate.
+**Regression tests required:**
+- `POST /save` with content containing annotations preserves them
+- `POST /save` concurrent with `service.writeDiagram()` from MCP does not corrupt the file
+- Round-trip: browser save followed by MCP read returns same annotations
 
 ---
 
-### Pitfall 2: .mmd Round-Trip Fidelity Loss
+### Pitfall 2: Adding @ghost Annotation Type Breaks Frontend Parser That Is Hardcoded to 4 Types
 
+**Planned fix:** Persist ghost paths via `@ghost` annotations in the .mmd file.
 **What goes wrong:**
-The new interactive editor allows users to drag nodes, resize subgraphs, add edges visually. These visual operations must be serialized back to .mmd text. But Mermaid syntax is lossy -- it encodes topology (what connects to what) and labels, but NOT positions, sizes, or visual styling beyond classDefs. When the custom renderer computes a layout and the user modifies it, writing back to .mmd loses all spatial information. The next render produces a completely different layout.
 
-This is the core architectural tension: .mmd is the source of truth (files on disk, version-controlled, AI-editable), but the interactive canvas needs information that .mmd cannot represent.
+The backend `parseAllAnnotations()` (annotations.ts:26-82) and the frontend `parseAnnotations()` (annotations.js:37-57) are DUPLICATED implementations with the same regexes but different data structures. Adding `@ghost` requires updating BOTH parsers. But the danger is deeper: the frontend `injectAnnotations()` (annotations.js:72-83) only serializes 4 types: flags, statuses from parameter, breakpoints from `state.breakpoints`, and risks from `state.risks`. It does NOT accept ghost paths as a parameter. If the backend writes `@ghost` annotations, the frontend will:
 
-**Why it happens:**
-Mermaid is a declarative language: you describe the graph, and the layout engine decides positions. A visual editor is imperative: the user decides positions. These paradigms conflict. Every existing diagram tool that tried to use a text format as the source of truth while providing visual editing (PlantUML + visual editors, Graphviz + interactive tools) ran into this exact problem.
+1. Parse them (if regex is added to frontend parser) but have nowhere to store them
+2. Call `injectAnnotations()` during any flag/status change (annotations.js:250)
+3. `injectAnnotations()` strips ALL annotations (including `@ghost`) then re-injects only flags/statuses/breakpoints/risks
+4. Ghost annotations are silently destroyed every time the user adds a flag or changes a status
+
+If the regex is NOT added to the frontend parser, the `@ghost` lines fall through to the "unrecognized annotation" debug log on backend (annotations.ts:78). On frontend, they are silently ignored (annotations.js has no fallback logging). But they survive `stripAnnotations()` only if they are OUTSIDE the annotation block -- which they are not.
 
 **Consequences:**
-- User drags a node to a specific position, saves, reloads -- node is in a different position
-- AI agent updates the .mmd file, user's careful layout is destroyed
-- Annotations reference positions that no longer exist after re-layout
-- Users lose trust in the tool ("it keeps moving my stuff around")
+- Ghost path persistence works when only MCP writes to the file
+- Ghost paths vanish the moment a user interacts with flags, statuses, or any annotation feature in the browser
+- This is a silent data loss bug that only manifests through user interaction
 
 **Prevention:**
-1. **Metadata sidecar file:** Store visual layout data in a `.smartb.json` sidecar file alongside each `.mmd` file. Contains node positions, collapsed state, viewport settings. The .mmd file remains the topology source of truth; the sidecar stores the visual presentation.
-2. **Layout pinning:** When a user manually positions a node, pin it. Pinned nodes keep their position across re-renders. Unpinned nodes follow the automatic layout.
-3. **Stable layout algorithm:** Use ELK.js with `elk.algorithm: "layered"` and `elk.layered.crossingMinimization.strategy: "LAYER_SWEEP"` which produces deterministic, stable layouts for the same input graph. Same .mmd input always produces the same visual output.
-4. **Merge strategy for AI updates:** When an AI agent modifies the .mmd, preserve the sidecar layout for nodes that still exist. Only auto-layout new or repositioned nodes.
+1. Add `@ghost` regex and storage to BOTH parsers (annotations.ts AND annotations.js)
+2. Add ghost paths as a parameter to the frontend `injectAnnotations()` function
+3. Store ghost paths in `state` object in annotations.js (alongside flags, statuses, breakpoints, risks)
+4. Update the frontend `mergeIncomingContent()` to include ghost paths in the merge
+5. OR (simpler alternative): Do NOT use annotations for ghost path persistence. Instead, use the existing `.smartb/` directory convention. Ghost paths are already stored in-memory in `GhostPathStore`. Persist them to `.smartb/ghost-paths.json` keyed by file. This avoids touching the annotation parser entirely.
 
 **Detection:**
-- "We'll just re-render the .mmd after each edit" appears in any plan
-- No mention of layout persistence or position storage
-- Tests only verify topology, not visual stability
+- Ghost paths disappear after flagging a node
+- Ghost paths disappear after changing node status
+- Ghost paths disappear after any browser edit that triggers `onFlagsChanged()`
 
-**Phase to address:** Architecture decision needed BEFORE the first interactive feature. The sidecar file format must be designed before any drag/drop capability.
+**Regression tests required:**
+- Write file with @ghost annotation via backend, flag a node in browser, verify @ghost annotation survives
+- Full annotation round-trip test with all 5 types (flags, statuses, breakpoints, risks, ghosts)
+- Frontend `mergeIncomingContent()` preserves ghost paths from incoming content
 
 ---
 
-### Pitfall 3: Vanilla JS Complexity Ceiling in Canvas Interactions
+### Pitfall 3: update_diagram Read-Before-Write Introduces TOCTOU Race With FileWatcher
 
+**Planned fix:** In tools.ts `update_diagram`, read existing annotations before writing to preserve user flags.
 **What goes wrong:**
-Building a full interactive canvas editor (drag, select, multi-select, resize, undo/redo, keyboard shortcuts, context menus, snap-to-grid, zoom-to-cursor) in vanilla JavaScript without a framework. The current codebase already shows strain: live.html is 1757 lines, and the 5 IIFE modules communicate through `window.*` globals and callback hooks. Adding drag interaction requires: hit testing, coordinate transforms (screen to canvas to graph space), event state machines (mousedown+mousemove=drag vs mousedown+mouseup=click), z-order management, and render loop coordination. Each of these is manageable alone, but their interaction is combinatorial.
 
-**Why it happens:**
-The project constraint is "vanilla JS, no framework." This works well for simple UIs (displaying diagrams, handling a few click events). But interactive canvas editing is a fundamentally different complexity class. Framework-free diagram editors exist (draw.io/mxGraph is vanilla JS, roughly 200,000 lines), but they represent person-years of engineering. The risk is not that vanilla JS cannot do it -- it is that the codebase becomes unmaintainable before the feature set is complete.
+The plan is to add a read step before the write in `update_diagram` (tools.ts:63-132). Currently it calls `service.writeDiagram(filePath, content, undefined, statusMap, undefined, riskMap)` which OVERWRITES the entire file including any existing flags. The fix would read existing annotations first, then merge. But this creates a time-of-check/time-of-use (TOCTOU) race:
+
+1. MCP `update_diagram` reads file -- sees flags {A: "review", B: "check"}
+2. User adds flag C in browser, triggers `onFlagsChanged()` which saves via `/save`
+3. MCP `update_diagram` writes file with merged annotations -- but uses the STALE read from step 1, so flag C is lost
+
+This race is real because: (a) MCP tool calls are async, (b) the browser saves are async via fetch, (c) the FileWatcher has an 80ms debounce (file-watcher.ts:17), so the watcher might not have even detected the browser save before MCP writes.
 
 **Consequences:**
-- State management becomes ad-hoc (is the user dragging? selecting? in flag mode? in edge-add mode? -- these states already conflict today)
-- Event handler conflicts between modules (annotations.js, diagram-editor.js, collapse-ui.js, and search.js ALL attach click handlers to the same `#preview-container`)
-- Memory leaks from event listeners that are not properly cleaned up across re-renders
-- Bugs that only appear in specific interaction sequences (drag + zoom + flag mode)
-- The 500-line limit forces splitting files, but the split files share global state through `window.*` -- this is distributed monolith, not modular code
+- User flags intermittently disappear when AI agent is actively updating diagrams
+- The bug is timing-dependent and nearly impossible to reproduce manually
+- Most dangerous during active human+AI collaboration (the exact use case the tool is designed for)
 
 **Prevention:**
-1. **Event bus:** Replace the current callback-hooks pattern (`_initHooks` object passed to each module) with a proper event bus/pubsub. Modules communicate through events, not direct function calls. This decouples the modules and makes the interaction state machine explicit.
-2. **Interaction state machine:** Formalize the interaction modes as a state machine. The current code has implicit states (flagMode, addNode mode, addEdge mode, panning, selecting). Make these explicit: `IDLE -> PANNING -> IDLE`, `IDLE -> FLAG_MODE -> FLAG_PLACING -> IDLE`, etc. Only one interaction mode is active at a time. The state machine prevents conflicting handlers.
-3. **Canvas abstraction layer:** Build a thin `CanvasInteraction` class that handles: hit testing, coordinate transforms, drag detection (mousedown distance threshold), and delegates to the active interaction handler. All modules register with this layer instead of attaching raw DOM events.
-4. **Strongly consider a minimal rendering library:** Even within the "no framework" constraint, a library like Pixi.js (for Canvas2D/WebGL) or Rough.js (for SVG) handles the render loop, hit testing, and event delegation that would otherwise be thousands of lines of manual code. A rendering library is NOT a UI framework -- it is infrastructure, like using `ws` for WebSocket instead of raw TCP.
+1. Use `service.modifyAnnotation()` pattern (service.ts:66-77) which acquires the write lock, reads, modifies, and writes atomically. Do NOT implement read-then-write in tools.ts directly.
+2. Specifically: refactor `update_diagram` to call a new `service.writeDiagramPreservingAnnotations(filePath, content, statusMap, riskMap)` method that internally uses `withWriteLock` to ensure the read-modify-write is atomic.
+3. The method should: read existing file -> extract existing flags/breakpoints -> merge with new statuses/risks -> write atomically.
+4. Do NOT pass the merged data back to tools.ts -- the merge must happen inside the lock.
 
 **Detection:**
-- More than 3 modules attaching click handlers to the same DOM element
-- `window.*` globals used for inter-module communication beyond the existing set
-- Any file exceeding 400 lines in the static/ directory
-- Interaction bugs that require reproducing a specific click sequence
+- Flags sporadically disappear during active AI sessions
+- Running `update_diagram` and flagging a node simultaneously causes flag loss
 
-**Phase to address:** Must be addressed at the START of the canvas phase. If the event bus and interaction state machine are not built first, every subsequent feature adds exponential complexity.
+**Regression tests required:**
+- Concurrent `service.writeDiagram()` and `service.setFlag()` on the same file -- both changes must persist
+- `update_diagram` preserves existing flags when adding new statuses
+- `update_diagram` preserves existing breakpoints and risks when overwriting content
 
 ---
 
-### Pitfall 4: Layout Engine Async + Performance Cliffs
+### Pitfall 4: Switching broadcastAll to broadcast for Ghost Paths Breaks Single-Project Users
 
+**Planned fix:** Change ghost path WebSocket broadcasts from `broadcastAll` to `broadcast(projectName, ...)` for proper multi-project scoping.
 **What goes wrong:**
-ELK.js (the recommended replacement for Mermaid's dagre) runs its layout algorithm asynchronously because the core is a Java library compiled to JavaScript via GWT. Every layout computation returns a Promise. This means: (a) you cannot synchronously compute layout during rendering, (b) rapid diagram updates (AI agent sending 10+ updates/second) queue layout computations that may complete out of order, (c) the layout computation for a 100+ node graph takes 200-500ms, creating visible layout latency.
 
-Meanwhile, dagre (used internally by Mermaid) is synchronous but unmaintained since 2018, makes poor edge routing decisions, and has known bugs with complex subgraph nesting.
+Ghost path broadcasts currently use `broadcastAll()` in three locations:
+- tools.ts:103 (MCP update_diagram)
+- tools.ts:399 (MCP record_ghost_path)
+- ghost-path-routes.ts:56 (REST POST)
+- ghost-path-routes.ts:84 (REST DELETE)
 
-**Why it happens:**
-ELK.js is the industry standard for graph layout. React Flow, Svelte Flow, and many production tools use it. But they all run into the same issues: (1) async layout means the diagram "pops" into position after rendering, creating visual jank, (2) layout for large graphs blocks the main thread (even though the API is async, the computation is CPU-bound in a single tick), (3) the Java API translated to JS has over 150 configuration options, and the wrong combination produces unusable layouts.
+Switching to `broadcast(projectName, ...)` requires knowing which project the file belongs to. But the current `registerGhostPathRoutes()` receives only `ghostStore` and `wsManager` -- it has NO access to project name. The routes decode the file path from the URL, but file path is NOT the same as project name. The WebSocket manager namespaces by project name (websocket.ts:39-44), not by file path.
+
+For the MCP tools path: `registerTools()` also does not receive a project name. The tools are registered once per server, not per project.
+
+For the default single-project case: users connect to `/ws` which maps to namespace `'default'` (websocket.ts:39). So `broadcast('default', ...)` would work. But the moment someone uses multi-project mode (future feature), ghost paths would only broadcast to the default namespace.
 
 **Consequences:**
-- Diagram "flashes" on every update: first renders without positions, then jumps to computed positions
-- AI agent rapid-fire updates cause layout queue buildup, leading to stale layouts being applied
-- Large diagrams (100+ nodes) cause the main thread to freeze during layout computation
-- Edge routing produces crossing edges or routes through nodes with default settings
-- Users report "the diagram keeps jumping around" -- layout instability across updates
+- If changed naively to `broadcast('default', ...)`: works in single-project, breaks in multi-project
+- If changed to use file path as project name: no clients connect with that namespace, broadcasts are silently dropped, ghost paths stop updating in the browser
+- If left as `broadcastAll()`: ghost path updates for one project leak to browsers viewing other projects (a minor issue, since the frontend filters by file anyway)
 
 **Prevention:**
-1. **Layout debouncing with cancellation:** Do not compute layout on every update. Debounce with a 150ms window. Cancel in-flight layout computations when a new update arrives. Only apply the LATEST layout result.
-2. **Incremental layout:** For updates that add/remove 1-3 nodes, do not recompute the full layout. Compute positions for new nodes relative to their neighbors and pin existing nodes. Full layout only on user request (Ctrl+L or "Re-layout" button).
-3. **Web Worker layout:** Move ELK.js computation to a Web Worker. This prevents main thread blocking entirely. The worker receives the graph, computes layout, returns positions. The main thread applies positions to the renderer. Note: ELK.js officially supports Web Worker mode via `elk.bundled.js`.
-4. **Layout caching:** Cache the layout result keyed by a hash of the graph topology. If the same topology is requested again (common during collapse/expand toggling), return the cached layout instantly.
-5. **Deterministic configuration:** Use a fixed, tested ELK configuration. Do not expose all 150 options to users. Recommended starting point:
-   ```json
-   {
-     "elk.algorithm": "layered",
-     "elk.direction": "RIGHT",
-     "elk.spacing.nodeNode": 60,
-     "elk.layered.spacing.edgeNodeBetweenLayers": 40,
-     "elk.edgeRouting": "ORTHOGONAL"
-   }
-   ```
+1. Keep `broadcastAll()` for now. The frontend `SmartBGhostPaths` already filters by file (ghost-paths.js:46-49): `getCurrentPaths()` only returns paths for the current file. Broadcasting to all namespaces is wasteful but correct.
+2. If scoping is truly needed, thread `projectName` through to the route registration. But this requires refactoring `registerGhostPathRoutes()` signature AND the MCP tools to know which project they are operating on. This is a larger architectural change -- do NOT mix it into a bug fix milestone.
+3. The real fix is to add a `projectName` resolver function to the server context that maps file paths to project names. But that is a feature, not a bug fix.
 
 **Detection:**
-- Layout computation on the main thread without a Worker
-- No debounce on layout trigger during rapid updates
-- Users see nodes "jumping" on every AI agent update
-- Edge routing produces overlapping or crossing paths
+- Ghost paths stop appearing in the browser after the change
+- No errors in console (broadcasts to empty namespaces are silent)
+- The bug is invisible from the server side -- only visible in the browser
 
-**Phase to address:** Must be solved in the renderer foundation phase. Retrofitting async layout and Workers into a synchronous rendering pipeline is a rewrite.
-
----
-
-### Pitfall 5: Undo/Redo Done Wrong in a Collaborative-Like System
-
-**What goes wrong:**
-Building undo/redo using the naive approach (store full state snapshots on every action) in a system where BOTH the user AND an AI agent modify the diagram. The undo stack captures user edits, but AI agent updates arrive via WebSocket and modify the same state. When the user undoes, they may undo an AI agent's change, or their undo may conflict with a subsequent AI update. The undo stack becomes a source of confusion and data corruption.
-
-**Why it happens:**
-Undo/redo seems simple (Ctrl+Z goes back) but is actually a distributed systems problem when multiple sources of truth exist. The current system has three mutation sources: (1) user edits in the browser editor, (2) AI agent updates via MCP, (3) file system changes via file watcher. All three modify the same .mmd file content. A naive undo stack does not distinguish between these sources.
-
-**Consequences:**
-- User presses Ctrl+Z and loses an AI agent's important update
-- Redo stack is invalidated when an AI update arrives during an undo sequence
-- File system watcher detects the undo as a "change," triggering a re-render loop
-- "Undo" means different things in different contexts (undo my drag? undo my flag? undo the AI's last step?)
-
-**Prevention:**
-1. **Separate undo stacks by source:** User actions have their own undo stack. AI updates do not. File system changes are treated as external events that fork a new undo branch.
-2. **Command pattern with source tagging:** Each command records its source (`user`, `ai`, `filesystem`). Ctrl+Z only undoes `user` commands. AI commands can be "rolled back" through a separate UI action ("Revert AI change").
-3. **Operational Transform (OT) lite:** When the user undoes an action, check if any AI updates were applied on top. If so, transform the undo to be compatible with the AI updates (similar to how Google Docs handles concurrent edits, but much simpler since the graph model has clear semantics).
-4. **Start without undo:** Seriously consider deferring undo/redo entirely. The .mmd file is version-controlled. The AI agent can regenerate any state. The value of undo in a collaborative observability tool is much lower than in a traditional editor. If undo is deferred, it avoids this entire pitfall class.
-
-**Detection:**
-- Undo implementation does not distinguish between user and AI changes
-- File watcher fires on undo-triggered saves, causing a loop
-- Tests for undo do not include scenarios with concurrent AI updates
-
-**Phase to address:** Design decision needed before implementing any edit capabilities. If undo is deferred, document the decision explicitly so it does not become a "we forgot" bug.
-
----
-
-### Pitfall 6: live.html Is Already 1757 Lines -- Refactoring Under Pressure
-
-**What goes wrong:**
-The main HTML file is already 3.4x the project's 500-line limit. It contains: CSS (582 lines), HTML structure (114 lines), and JavaScript (1061 lines) including Mermaid initialization, rendering, pan/zoom, file sync, file tree, export (SVG + PNG with duplicate Mermaid configs), editor events, keyboard shortcuts, save/delete/rename operations, WebSocket handling, collapse integration, and annotation/search/editor initialization. Adding interactive canvas features (drag handlers, selection rectangle, context menu, property panel, toolbar states) to this file will push it past 3000 lines.
-
-The 5 IIFE modules were extracted as a partial mitigation, but they communicate through `window.*` globals and the `_initHooks` callback object -- this is not true modularity but distributed coupling.
-
-**Why it happens:**
-Organic growth. Each phase added features to live.html because it was the fastest path. The IIFE extraction (annotations.js, diagram-editor.js, etc.) moved code out but not the coupling. The modules still reach into live.html's scope through hooks, and live.html reaches into the modules through `window.SmartBAnnotations`, `window.MmdEditor`, etc.
-
-**Consequences:**
-- Adding new features creates merge conflicts with any other work touching live.html
-- CSS specificity wars between inline styles and external CSS
-- Duplicate Mermaid initialization configs (lines 712-741 and 1281-1345 and 1316-1345 -- the PNG export has its own copy)
-- Global state variables (`zoom`, `panX`, `panY`, `autoSync`, `lastContent`, etc.) create hidden dependencies
-- No unit tests possible for the inline JavaScript
-- New developers cannot understand the system without reading all 3706 lines of static/ code
-
-**Prevention:**
-1. **Refactor BEFORE adding features, not during:** Dedicate a full plan to splitting live.html into proper ES modules BEFORE adding any canvas code. This is not optional cleanup -- it is prerequisite infrastructure.
-2. **Module system migration:** Move from IIFEs + `<script>` tags to ES modules bundled with a tool (esbuild or Vite in library mode). This enables: proper imports/exports, tree shaking, TypeScript for client code, and eliminates `window.*` globals.
-3. **Specific splits:**
-   - `live.html` -> pure HTML skeleton (< 100 lines)
-   - `styles/` -> CSS files by component
-   - `core/state.ts` -> centralized state store
-   - `core/event-bus.ts` -> inter-module communication
-   - `renderer/mermaid-renderer.ts` -> Mermaid-specific rendering
-   - `renderer/canvas-renderer.ts` -> new canvas renderer
-   - `interactions/pan-zoom.ts` -> pan/zoom logic
-   - `interactions/drag-select.ts` -> new drag/select
-   - `ui/toolbar.ts`, `ui/sidebar.ts`, `ui/editor-panel.ts` -> UI components
-4. **Deduplication:** The Mermaid config is duplicated 3 times in live.html. Extract to a single `mermaid-config.ts` module.
-
-**Detection:**
-- Any plan that adds JavaScript to live.html without first refactoring it
-- live.html exceeds 2000 lines
-- New modules added as IIFEs with `window.*` exports
-
-**Phase to address:** FIRST plan of the v2 milestone. The refactoring is the phase gate for all subsequent work.
+**Regression tests required:**
+- Ghost path created via MCP appears in browser (WebSocket receives the message)
+- Ghost path created via REST API appears in browser
+- Ghost path deletion propagates to browser
 
 ---
 
 ## Moderate Pitfalls
 
-Mistakes that cause significant rework or degraded experience but do not require full rewrites.
+Mistakes that cause partial regressions or require rework of the fix itself.
 
 ---
 
-### Pitfall 7: SVG vs Canvas Choice Locks You In
+### Pitfall 5: modal.js Empty Input Guard Removal Breaks Rename/Edit Flows That Depend on It
 
+**Planned fix:** Remove the `if (!val) return;` guard in modal.js showPrompt (line 104-105) to allow submitting empty strings.
 **What goes wrong:**
-Choosing HTML5 Canvas (immediate mode) for the renderer because "canvas is faster" without understanding the tradeoffs. Canvas provides no DOM -- every node, edge, and label is painted pixels. This means: no CSS styling, no native text selection, no screen reader accessibility, no browser dev tools inspection, no SVG export without re-rendering. The current system relies heavily on SVG DOM features: CSS classes for styling (`.flagged`, `.search-match`), DOM IDs for node identification, `getBBox()` for badge positioning, and `outerHTML` for SVG export.
 
-Conversely, choosing SVG for the renderer because "we already use SVG" ignores the performance cliff: SVG hits its ceiling at around 300 DOM elements where layout/paint/compositing costs dominate.
+The `doConfirm()` guard at modal.js:104 prevents confirming with an empty trimmed value. This guard is used by EVERY caller of `SmartBModal.prompt()`:
+
+1. **file-tree.js `createNewFile()`** (line 248-261): Creates a file from user input. Empty name would create `.mmd` (bare extension) or crash path resolution.
+2. **file-tree.js `renameFile()`** (line 333-358): Renames a file. Empty name would create an invalid path.
+3. **file-tree.js `renameFolder()`** (line 361-392): Renames a folder. Empty name would create an invalid directory.
+4. **file-tree.js `createNewFolder()`** (line 264-279): Creates a folder. Empty name would create root-level chaos.
+5. **diagram-editor.js `doEditNodeText()`** (line 249-261): Edits node label. Empty label is technically valid in Mermaid but produces invisible nodes.
+
+Only `doEditNodeText()` has any case for wanting an empty string, and even there it is questionable.
+
+**Consequences:**
+- Removing the guard globally allows empty file/folder names, causing path resolution errors
+- `resolveProjectPath()` may throw or create files at unexpected locations
+- File tree becomes corrupted with unnamed entries
 
 **Prevention:**
-1. **Hybrid approach:** Use SVG for individual node rendering (leverages CSS, DOM inspection, accessibility) but apply pan/zoom transforms at the container level. This is what JointJS, React Flow, and draw.io do.
-2. **Virtualized SVG:** Only render nodes that are in the viewport. Off-screen nodes are removed from the DOM and re-added when scrolled into view. This extends SVG performance to thousands of logical nodes while keeping hundreds of DOM elements.
-3. **Canvas for overview, SVG for detail:** When zoomed out past a threshold, switch to a canvas "minimap" renderer for performance. When zoomed in, use SVG for interactivity. This is the pattern used by large-scale map applications.
+1. Do NOT remove the guard globally. Instead, add an `allowEmpty: true` option to the prompt config:
+   ```javascript
+   function showPrompt(opts) {
+       var allowEmpty = opts.allowEmpty || false;
+       // ...
+       function doConfirm() {
+           var val = input.value.trim();
+           if (!val && !allowEmpty) return;
+           close();
+           if (onConfirm) onConfirm(val);
+       }
+   }
+   ```
+2. Only callers that explicitly need empty values pass `allowEmpty: true`.
+3. All existing callers remain protected by default.
 
-**Phase to address:** Architecture phase. The rendering strategy must be decided before any renderer code is written.
+**Detection:**
+- User confirms an empty rename dialog, file disappears or has broken name
+- File tree shows unnamed entries
+
+**Regression tests required:**
+- Confirm empty prompt with `allowEmpty: false` (default): onConfirm NOT called
+- Confirm empty prompt with `allowEmpty: true`: onConfirm called with empty string
+- All 5 callers tested with empty input to verify they do not crash
 
 ---
 
-### Pitfall 8: Coordinate Transform Bugs in Interactive Canvas
+### Pitfall 6: FileWatcher knownFiles Pre-Population Needs Async Discovery at Construction Time
 
+**Planned fix:** Pre-populate `FileWatcher.knownFiles` with existing .mmd files at startup so first edits are detected as "changed" not "added."
 **What goes wrong:**
-The interactive canvas has three coordinate spaces: screen space (mouse events), viewport space (after accounting for scroll), and graph space (after accounting for pan and zoom). Every interaction -- click, drag, hover, context menu -- must transform between these spaces correctly. The current code has a basic version of this (panX/panY/zoom applied to a CSS transform), but interactive editing requires the REVERSE transform: given a mouse click at screen position (X,Y), what graph node is at that position? This reverse transform must account for: scroll position, CSS transforms on parent elements, devicePixelRatio on high-DPI screens, and the render-time padding applied by the layout engine.
+
+`FileWatcher` constructor (file-watcher.ts:18-51) is synchronous -- it calls `fs.watch()` immediately. Pre-populating `knownFiles` requires discovering existing .mmd files, which means calling `service.listFiles()` (async) or using `fs.readdirSync()` (blocking). The constructor cannot be async.
+
+Option A (sync readdir): `readdirSync` with recursive glob blocks the event loop during startup. For a project with hundreds of .mmd files in nested directories, this could take 100-500ms. During this time, no WebSocket connections are accepted.
+
+Option B (async init): Add an `async init()` method that must be called after construction. But `FileWatcher` is created in `createProjectWatcher()` (server.ts:212-244) which returns the watcher synchronously. The current code pattern is:
+```typescript
+const fileWatcher = createProjectWatcher('default', resolvedDir, service);
+```
+Making this async changes the initialization sequence of `createHttpServer()`.
+
+Option C (lazy discovery): Start watching immediately, populate `knownFiles` asynchronously. Files changed before discovery completes are treated as "added" (harmless -- the browser just receives `file:added` instead of `file:changed`, and `tree:updated` is sent for both).
+
+**Consequences:**
+- Option A: Startup delay, especially for large projects
+- Option B: Requires refactoring `createHttpServer()` and all callers
+- Option C: Brief window where changes are reported as additions (cosmetic issue only)
 
 **Prevention:**
-1. **Single source of truth for transforms:** Create a `ViewportTransform` class with `screenToGraph(x, y)` and `graphToScreen(x, y)` methods. ALL code that needs coordinate transforms uses this class. No ad-hoc `(x - panX) / zoom` calculations scattered across modules.
-2. **Unit test the transforms:** Coordinate transforms are mathematically deterministic. Test them with known inputs/outputs at various zoom levels and pan positions, including edge cases (zoom < 1, negative pan, high-DPI displays).
-3. **Use `getScreenCTM()` for SVG:** If using SVG rendering, the `getScreenCTM()` method provides the exact current transformation matrix. Use its inverse for screen-to-SVG coordinate conversion. This handles all parent transforms and scroll automatically.
+1. Use Option C (lazy): Start the watcher immediately, then asynchronously populate `knownFiles`:
+   ```typescript
+   constructor(...) {
+       this.watcher = watch(...);
+       // Async pre-populate (non-blocking)
+       discoverMmdFiles(projectDir).then(files => {
+           for (const f of files) this.knownFiles.add(f);
+       }).catch(() => {});
+   }
+   ```
+2. The window of incorrect "added" events is at most a few hundred milliseconds and has no functional impact -- `file:added` triggers `refreshFileList()` in the browser just like `file:changed`.
+3. Do NOT use synchronous file system calls in the constructor.
 
-**Phase to address:** First interaction feature. The transform class must exist before any hit testing or drag logic.
+**Detection:**
+- First file edit after server start triggers `file:added` instead of `file:changed`
+- No functional impact, but may confuse debug logs
+
+**Regression tests required:**
+- FileWatcher with pre-populated knownFiles reports changes (not additions) for existing files
+- FileWatcher correctly reports truly new files as additions
+- Large project directory does not cause startup delay
 
 ---
 
-### Pitfall 9: Session Recording Blows Up Storage
+### Pitfall 7: Auto Heatmap Tracking in Browser Causes requestAnimationFrame Loop
 
+**Planned fix:** Auto-track heatmap data in the browser (node visit counts) without explicit user action.
 **What goes wrong:**
-Recording AI reasoning sessions (every diagram state, every interaction, timestamps) for replay features. A single AI agent session can produce 50-200 diagram updates over 5-30 minutes. If each update stores the full .mmd content (roughly 5-50KB depending on diagram complexity), a 30-minute session generates 1-10MB of recording data. Over a workday of active development, this accumulates to 50-100MB. Since the tool is local-first, this data lives on the developer's machine with no automatic cleanup.
+
+The current `SmartBHeatmap` module (heatmap.js) is purely passive -- it receives visit count data from the server via `updateVisitCounts()` (heatmap.js:177-183) and applies SVG fill colors. Auto-tracking would require detecting which nodes the user "visits" (views, clicks, hovers) and sending this data to the server.
+
+The naive approach is to listen for `diagram:rendered` events and count visible nodes. But `diagram:rendered` fires on EVERY re-render, and heatmap application itself triggers SVG mutations that could trigger intersection observers or mutation observers, creating a feedback loop. Specifically:
+
+1. `diagram:rendered` fires
+2. Auto-tracker counts visible nodes, sends to server
+3. Server broadcasts `heatmap:update` via WebSocket
+4. Browser `updateVisitCounts()` calls `restoreFills(); saveFills(); applyFrequencyHeatmap();` (heatmap.js:180-181)
+5. `applyFrequencyHeatmap()` modifies SVG attributes
+6. If any observer watches the SVG, it fires, potentially triggering another count
+
+Even without observers, the `diagram:rendered -> heatmap:update -> diagram re-render?` chain must be carefully broken.
+
+**Consequences:**
+- Continuous WebSocket messages flooding the server
+- Browser performance degradation from rapid SVG mutations
+- Server-side heatmap data inflated by automated counts (not real user interaction)
 
 **Prevention:**
-1. **Delta storage:** Store only the diff between consecutive states, not full snapshots. Graph topology changes are typically small (1-5 node additions/modifications per update). A diff-based recording reduces storage by 90%+.
-2. **Configurable retention:** Default to 7 days of recordings. Provide a `smartb cleanup` CLI command. Show storage usage in `smartb status`.
-3. **Opt-in recording:** Do not record by default. Recording should be explicitly enabled per session. Most users want live visualization, not replay.
-4. **Cap per session:** Maximum 1000 events per recording, maximum 10MB per recording file. Older events are evicted when the cap is reached.
+1. Track meaningful interactions only: click on a node, select a node, open a node's context menu. Do NOT track "visible in viewport."
+2. Debounce tracking events: batch node visits and send at most once per 5 seconds.
+3. Break the feedback loop: the `heatmap:update` WebSocket handler should NOT trigger any tracking. Add a guard flag:
+   ```javascript
+   var _isApplyingHeatmap = false;
+   function updateVisitCounts(counts) {
+       _isApplyingHeatmap = true;
+       // ... apply colors ...
+       _isApplyingHeatmap = false;
+   }
+   ```
+4. Do NOT send heatmap data back to the server from the browser. The heatmap should be computed server-side from session recording data. The browser is a display-only consumer.
 
-**Phase to address:** When session recording is implemented. This is a later-phase concern, but the storage format design should be decided early.
+**Detection:**
+- WebSocket message flood visible in browser DevTools Network tab
+- CPU usage spikes in browser tab
+- Heatmap data grows unrealistically fast
+
+**Regression tests required:**
+- Heatmap activation does not cause WebSocket message flood
+- Node interaction tracking is debounced
+- Heatmap update from server does not trigger additional tracking
 
 ---
 
-### Pitfall 10: Feature Dependency Chains Create Unshippable Phases
+### Pitfall 8: Frontend Annotation Parser Drift -- 5 Types in Backend, 4 Types in Frontend After @ghost Addition
 
+**Planned fix:** Multiple fixes touch annotations (ghost persistence, read-before-write, heatmap tracking).
 **What goes wrong:**
-Advanced observability features (ghost paths, AI breakpoints, heatmaps, session replay) each depend on a chain of prerequisites. Ghost paths require: layout engine (positions) + historical state storage + diff computation + semi-transparent rendering. AI breakpoints require: MCP bidirectional communication + session recording + breakpoint state management + resume protocol. If any link in the chain is missing, the feature is unshippable. Planning these as "Phase N: Add ghost paths, breakpoints, heatmaps, and replay" creates a phase that can never be completed because the prerequisites were not addressed in earlier phases.
+
+This is the overarching integration risk for the entire milestone. The annotation system is the MOST COUPLED component in the codebase -- it bridges backend (TypeScript) and frontend (vanilla JS) with duplicated parsing logic.
+
+Current state of duplication:
+
+| Feature | Backend (annotations.ts) | Frontend (annotations.js) |
+|---------|--------------------------|---------------------------|
+| Regex definitions | Lines 6-9 (4 regexes) | Lines 11-14 (4 regexes, identical) |
+| Parser function | `parseAllAnnotations()` (lines 26-82) | `parseAnnotations()` (lines 37-57) |
+| Strip function | `stripAnnotations()` (lines 108-138) | `stripAnnotations()` (lines 59-70) |
+| Inject function | `injectAnnotations()` (lines 145-196) | `injectAnnotations()` (lines 72-83) |
+| Data structures | `Map<string, Flag>`, typed | `new Map()`, untyped |
+| Serialization order | flags, statuses, breakpoints, risks | flags, statuses, breakpoints, risks |
+
+The functions behave ALMOST identically but with subtle differences:
+- Backend `injectAnnotations()` adds `\n` at the end (line 195); frontend does NOT (line 82)
+- Backend treats `breakpoints` and `risks` as optional params; frontend reads from `state.*` globals
+- Backend `stripAnnotations()` ensures single trailing newline; frontend strips trailing blanks and does NOT ensure trailing newline
+
+These differences mean that a file written by the backend and then re-saved by the frontend will have subtly different whitespace. This whitespace difference triggers the `FileWatcher` (80ms debounce), which broadcasts a `file:changed`, which triggers the browser to re-sync, which may cause an unnecessary re-render.
+
+Adding ANY new annotation type (@ghost) must update BOTH parsers identically, and the inject functions must serialize in the same order. If they serialize in different order, the FileWatcher detects a "change" on every save even when content is identical.
+
+**Consequences:**
+- Ghost paths silently lost when browser saves (Pitfall 2 above)
+- Infinite save-sync loop: backend writes with trailing newline, browser re-saves without it, watcher detects change, broadcasts, browser re-syncs, re-saves...
+- Annotations reordered on every save, watcher treats it as a change
 
 **Prevention:**
-1. **One feature per phase:** Each observability feature gets its own phase with explicit prerequisites listed.
-2. **Prerequisites first, feature second:** A phase plan should read: "Phase N-1: Build the diff engine. Phase N: Add ghost paths using the diff engine." Not "Phase N: Build diff engine AND ghost paths."
-3. **Vertical slices, not horizontal layers:** Instead of building all infrastructure then all features, build one complete vertical slice (e.g., "session recording for a single diagram" end-to-end) before expanding horizontally (multi-diagram recording, replay controls, sharing).
-4. **Feature flags:** Advanced features ship behind flags. Users who do not need them never see them. This allows shipping incomplete-but-functional phases.
+1. Before ANY annotation changes, normalize the trailing whitespace behavior: both backend and frontend `stripAnnotations()` must produce identical output for identical input.
+2. Both `injectAnnotations()` must serialize annotation types in the exact same order.
+3. Add a cross-validation test: feed the same input to both parsers (via test helper that runs the JS function), verify outputs match.
+4. Long-term: eliminate the duplication entirely. Generate the frontend parser from the backend TypeScript (or move the frontend to use a shared module via build step).
 
-**Phase to address:** Roadmap planning. The phase structure must be designed around dependency chains, not feature groupings.
+**Detection:**
+- Browser DevTools Network tab shows repeated /save or file:changed WebSocket messages in a loop
+- File modification timestamp updates every few seconds without user action
+- `git diff` shows only whitespace changes in .mmd files
 
----
-
-### Pitfall 11: VS Code Extension Diverges from Browser UI
-
-**What goes wrong:**
-The VS Code webview and the browser UI (live.html) share the same rendering and interaction code, but diverge as features are added to one but not the other. The canvas renderer works in the browser but breaks in the webview CSP. The drag interaction works in the browser but conflicts with VS Code's own drag handlers. The keyboard shortcuts work in the browser but clash with VS Code keybindings. Over time, the two UIs become separate products that must be maintained independently.
-
-**Prevention:**
-1. **Single rendering core:** The renderer must be a standalone module with NO DOM dependencies beyond what it is given. It receives a container element and renders into it. Both live.html and the VS Code webview provide the container.
-2. **CSP-compatible from day one:** VS Code webviews enforce Content Security Policy. All rendering code must work with `nonce`-based CSP. No inline styles via `element.style.cssText = ...` (the current code does this extensively). No dynamic code evaluation.
-3. **Keyboard shortcut abstraction:** Define shortcuts as a map (`{ "mod+z": "undo", "mod+shift+z": "redo" }`) that both environments interpret. The browser registers them directly. The VS Code extension registers them as `keybinding` contributions in package.json.
-4. **Test in both environments:** Every interaction feature must be tested in both live.html and the VS Code webview. Add a CI step that loads the webview in a VS Code test harness.
-
-**Phase to address:** Must be a constraint from the first line of new renderer code. Not something to "fix later."
+**Regression tests required:**
+- Backend `injectAnnotations()` output is byte-identical to frontend `injectAnnotations()` output for the same input
+- File saved by backend, re-saved by frontend with no user changes: file content is identical (no watcher trigger)
+- All 5 annotation types round-trip through both parsers
 
 ---
 
 ## Minor Pitfalls
 
-Issues that cause friction or minor bugs but are straightforward to fix.
+Issues that cause friction or cosmetic bugs but are straightforward to fix once identified.
 
 ---
 
-### Pitfall 12: Hit Testing Complexity in Graph Rendering
+### Pitfall 9: Modal.js Loads After App-Init.js in Script Order -- But Is Now a Dependency
 
 **What goes wrong:**
-Determining which node or edge the user clicked in a custom renderer. Nodes are rectangles (easy). But edges are curves (splines, beziers) -- testing if a click is "on" a curve requires distance-to-curve computation. Labels on edges need separate hit testing. Subgraph containers overlap with their children. The z-order of overlapping elements determines which one receives the click.
+Looking at live.html script loading order (lines 198-234), modal.js loads at line 233, app-init.js at line 234. But diagram-editor.js (line 213) calls `SmartBModal.prompt()` in `doEditNodeText()`. This works today because `doEditNodeText()` is only called via user click (by which time modal.js has loaded). But if any initialization code in app-init.js needs to programmatically trigger a modal (e.g., for a first-run wizard or error dialog), `SmartBModal` will be undefined.
 
 **Prevention:**
-Use SVG-based rendering where hit testing is free (browser handles it via DOM events). If using Canvas, use a hidden "hit canvas" where each element is drawn with a unique color -- the color at the mouse position identifies the element. This is the standard technique used by Pixi.js, Konva.js, and Canvas-based map renderers.
-
-**Phase to address:** Renderer implementation phase. This is a known-solved problem.
+Move modal.js to load before diagram-editor.js in the script order (before line 213, not after line 232). Since modal.js has zero dependencies on other modules (it only depends on modal.css), it can safely be loaded early.
 
 ---
 
-### Pitfall 13: Export Regression When Switching Renderers
+### Pitfall 10: Ghost Path Persistence May Conflict With .smartb/ Directory Git Ignore
 
 **What goes wrong:**
-SVG and PNG export currently work through Mermaid's rendered SVG (with a workaround for Canvas taint using `htmlLabels: false`). A custom renderer that does not produce SVG natively breaks export. Canvas-based renderers can export to PNG via `canvas.toBlob()` but not to SVG without a separate rendering path.
+If ghost paths are persisted to `.smartb/ghost-paths.json`, and the user has `.smartb/` in their `.gitignore` (likely, since it contains local state), ghost paths are NOT version-controlled. This is probably desired for in-memory session ghost paths. But if `@ghost` annotations are used in the .mmd file, they ARE version-controlled, which means other developers see ghost paths from someone else's AI session. This is unexpected and noisy in code review.
 
 **Prevention:**
-Maintain the ability to render to SVG even if the primary interactive renderer uses Canvas or a hybrid approach. The export path can use a non-interactive SVG renderer (headless Mermaid, or a dedicated SVG export function in the custom renderer).
-
-**Phase to address:** Export must be explicitly tested after any renderer change. Add export regression tests.
+Persist ghost paths in `.smartb/` (not in .mmd annotations). Ghost paths are session-local data, not diagram metadata. They should not pollute the .mmd file or appear in git diffs.
 
 ---
 
-### Pitfall 14: Mermaid Initialization Duplication
+### Pitfall 11: Zod v4 Is Already Compatible -- No Action Needed
 
-**What goes wrong:**
-The current codebase has the Mermaid configuration duplicated 3 times in live.html (lines 712-741 for initial setup, lines 1281-1345 for PNG export with `htmlLabels: false`, and lines 1316-1407 for restore after export). Any change to theme or configuration must be applied in all three places. This is already a source of drift and will worsen when adding a second renderer.
+**What goes wrong (or rather, does NOT go wrong):**
+The milestone context flags "Zod v4 may conflict with MCP SDK's Zod v3" as a pain point. But inspection of the actual installed packages shows:
+- `zod@4.3.6` is installed and used by schemas.ts
+- MCP SDK `@modelcontextprotocol/sdk@^1.26.0` declares `"zod": "^3.25 || ^4.0"` in peerDependencies
+- The SDK uses the hoisted zod (no nested node_modules/zod)
+- Everything is already compatible
 
 **Prevention:**
-Extract the Mermaid config into a single constant/module BEFORE adding any new rendering code. This is a 15-minute fix that prevents a class of subtle styling bugs.
-
-**Phase to address:** Refactoring phase (first plan of v2).
+No action needed. But document this finding so it is not re-investigated in every milestone.
 
 ---
 
-## Phase-Specific Warnings
+## Phase-Specific Warnings for Each Planned Fix
 
-| Phase Topic | Likely Pitfall | Mitigation |
-|-------------|---------------|------------|
-| live.html refactoring | Breaking existing features during split | Write comprehensive integration tests BEFORE splitting. Test every interaction (flag, search, collapse, export, file tree, editor, pan/zoom) |
-| DOM abstraction layer | Abstraction too thin (leaky) or too thick (slow) | Define the interface from the consumer side (what do annotations, search, and collapse NEED?), not from the implementation side |
-| Custom renderer MVP | Trying to match Mermaid styling exactly | Accept visual differences. The custom renderer should look BETTER, not identical. Do not waste weeks matching Mermaid's exact font metrics |
-| ELK.js integration | Layout configuration paralysis (150+ options) | Start with the recommended 6-option config from Pitfall 4. Only add options when a specific layout problem is reported |
-| Drag and drop | Drag interferes with pan (both use mousedown+mousemove) | Require a modifier key for drag (hold Shift to drag) or detect target first (drag on a node = move node, drag on background = pan). Do not make both use bare mousedown |
-| Multi-select | Selection state management complexity | Start with single-select only. Multi-select (Shift+click, rubber band) is a separate phase. Attempting both at once doubles the interaction state machine |
-| Session recording | Recording changes WebSocket message format | Keep recording as a DECORATOR on the existing WebSocket handler, not an inline modification. The recording layer wraps messages, the rendering layer is unaware of recording |
-| AI breakpoints | Blocking AI agent execution from the browser | This requires bidirectional MCP communication (not currently supported -- MCP tools are request/response). Research MCP notifications/sampling before planning this feature |
-| Ghost paths | Rendering semi-transparent "what could have been" paths | Requires the graph model to support multiple concurrent "versions" of the same subgraph. This is essentially a branch/merge data structure. Do not underestimate the data model complexity |
-| Heatmap overlay | Performance of rendering heatmap on every frame | Pre-compute the heatmap as a static overlay image. Do not recalculate on every render. Update when underlying data changes, not when viewport changes |
+| Fix | Specific Risk | Severity | Mitigation |
+|-----|---------------|----------|------------|
+| modal.js empty guard removal | Breaks 5 callers (file create/rename/delete) | HIGH | Add `allowEmpty` option instead of removing guard |
+| tools.ts read-before-write | TOCTOU race with browser saves | CRITICAL | Use `withWriteLock` internally, not read+write in tools.ts |
+| Ghost path @ghost annotation | Frontend parser drops @ghost on any flag change | CRITICAL | Use .smartb/ persistence instead of annotations |
+| FileWatcher knownFiles | Sync readdir blocks startup | MEDIUM | Use async discovery with lazy population |
+| /save through DiagramService | Double-injection of annotations | HIGH | Pass content only, no annotation params |
+| Auto heatmap tracking | requestAnimationFrame feedback loop | MEDIUM | Track clicks only, debounce, break feedback loop |
+| broadcastAll to broadcast | Ghost paths stop appearing in browser | HIGH | Keep broadcastAll; frontend already filters by file |
 
-## Existing Technical Debt Interaction
+## Integration Risk Matrix
 
-The v1 has specific technical debt that will interact dangerously with v2 features:
+The 7 fixes interact with each other. This matrix shows which pairs are dangerous to implement simultaneously:
 
-| Existing Debt | v2 Feature It Conflicts With | Resolution |
-|--------------|------------------------------|------------|
-| live.html at 1757 lines (3.4x limit) | Any new UI feature | MUST refactor before adding canvas code |
-| 5 IIFE modules with `window.*` globals | Event bus / state management | Replace with ES modules during refactoring |
-| Mermaid SVG DOM coupling in all interaction modules | Custom renderer | Build DOM abstraction layer first |
-| Duplicate Mermaid configs (3 copies) | Renderer configuration | Extract to single config module |
-| `innerHTML` usage in renderTree() and renderPanel() | Security / CSP in VS Code webview | Replace with DOM API calls |
-| `renderFileList()` referenced at line 1649 but never defined (uses `renderTree()`) | Build errors after refactoring | Fix dead code before splitting |
-| No client-side TypeScript | Type safety in complex interaction code | Migrate static/ to TypeScript as part of ES module migration |
-| No client-side tests | Regression detection during refactoring | Write integration tests before any refactoring |
+| Fix A | Fix B | Interaction Risk |
+|-------|-------|------------------|
+| /save through Service | read-before-write in tools.ts | CRITICAL: Both modify the write path. If /save acquires write lock and tools.ts read-before-write also acquires write lock, they are safe. But if tools.ts does read OUTSIDE the lock, /save may interleave. Implement /save routing FIRST, then tools.ts read-before-write. |
+| @ghost annotations | read-before-write in tools.ts | HIGH: If @ghost is added to annotation parser, read-before-write must also preserve ghost annotations during merge. |
+| /save through Service | @ghost annotations | HIGH: If /save routes through `writeDiagram()` AND @ghost changes the annotation format, the browser save flow must serialize all 5 types correctly. |
+| Auto heatmap | broadcastAll to broadcast | LOW: Heatmap uses a different WS message type than ghost paths. Independent. |
+| FileWatcher knownFiles | /save through Service | MEDIUM: Pre-populating knownFiles uses `service.listFiles()`. If /save is being refactored simultaneously, ensure listFiles is stable. |
+| modal.js guard | All others | NONE: modal.js is UI-only, no backend interaction. |
 
-## Recovery Strategies
+## Recommended Fix Order
 
-| Pitfall | Recovery Cost | Recovery Steps |
-|---------|---------------|----------------|
-| Big bang renderer replacement | VERY HIGH | Revert to Mermaid, build abstraction layer, implement new renderer behind feature flag, migrate module by module |
-| .mmd round-trip loss | HIGH | Design sidecar file format, migrate existing position data, update all save/load paths |
-| Vanilla JS complexity explosion | HIGH | Introduce ES module bundler, migrate IIFE modules, build event bus -- essentially a rewrite of the client architecture |
-| Layout engine blocking main thread | MEDIUM | Move to Web Worker -- requires serializing graph data across worker boundary but does not change the API surface |
-| Undo/redo conflicts with AI updates | MEDIUM | Redesign undo stack with source tagging; requires touching all mutation paths but not the UI |
-| live.html monolith | MEDIUM | Split into modules incrementally; requires comprehensive test coverage first to avoid regressions |
-| VS Code / browser divergence | HIGH | Unify the rendering core -- may require rewriting VS Code webview if it diverged too far |
+Based on dependency analysis, implement fixes in this order to minimize integration risk:
+
+1. **modal.js `allowEmpty` option** -- Zero dependencies, pure frontend, safe to ship independently
+2. **FileWatcher knownFiles pre-population** -- Infrastructure change, no impact on other fixes
+3. **Zod v4 confirmation** -- Document "no action needed" and close the issue
+4. **`/save` route through DiagramService** -- Must be done BEFORE read-before-write, establishes the write lock foundation
+5. **`update_diagram` read-before-write** -- Depends on /save routing being stable, uses the write lock pattern
+6. **Ghost path persistence decision** -- Decide .smartb/ vs @ghost annotation BEFORE implementing
+7. **broadcastAll vs broadcast** -- Keep broadcastAll, document the rationale, close as won't-fix or defer
+8. **Auto heatmap tracking** -- Last, because it is the most performance-sensitive and benefits from all other fixes being stable
 
 ## Sources
 
-### Rendering Performance and Architecture
-- [SVG vs Canvas vs WebGL for Diagram Viewers (Medium, Dec 2025)](https://medium.com/@codetip.top/svg-vs-canvas-vs-webgl-for-diagram-viewers-tradeoffs-bottlenecks-and-how-to-measure-8cedbd3b7499) -- MEDIUM confidence
-- [SVG versus Canvas: Which to Choose (JointJS)](https://www.jointjs.com/blog/svg-versus-canvas) -- MEDIUM confidence
-- [Optimising HTML5 Canvas Rendering (AG Grid)](https://blog.ag-grid.com/optimising-html5-canvas-rendering-best-practices-and-techniques/) -- MEDIUM confidence
-- [SVG vs Canvas Performance (Boris Smus)](https://smus.com/canvas-vs-svg-performance/) -- MEDIUM confidence
+### Codebase Analysis (HIGH confidence -- primary source)
+- `src/diagram/annotations.ts` -- Backend annotation parser (197 lines)
+- `static/annotations.js` -- Frontend annotation parser (350 lines, duplicated logic)
+- `src/diagram/service.ts` -- DiagramService with write locks (247 lines)
+- `src/mcp/tools.ts` -- MCP tool registrations including update_diagram (478 lines)
+- `src/server/file-routes.ts` -- /save route implementation (162 lines)
+- `src/server/ghost-path-routes.ts` -- Ghost path REST endpoints (93 lines)
+- `src/server/websocket.ts` -- WebSocket manager with broadcastAll/broadcast (125 lines)
+- `src/watcher/file-watcher.ts` -- FileWatcher with knownFiles set (86 lines)
+- `static/modal.js` -- Modal prompt with empty guard (171 lines)
+- `static/file-tree.js` -- File CRUD using SmartBModal (462 lines)
+- `static/diagram-editor.js` -- Node editing using SmartBModal (368 lines)
+- `static/ghost-paths.js` -- Frontend ghost path rendering (388 lines)
+- `static/heatmap.js` -- Heatmap overlay (217 lines)
+- `static/ws-handler.js` -- WebSocket message dispatch (113 lines)
+- `static/app-init.js` -- Bootstrap and initialization (471 lines)
+- `static/live.html` -- Script loading order (234 script tags)
+- `test/diagram/annotations.test.ts` -- Annotation tests (477 lines, backend only)
 
-### Layout Engines
-- [ELK.js GitHub Repository](https://github.com/kieler/elkjs) -- HIGH confidence (primary source)
-- [ELK Layout Options Reference](https://eclipse.dev/elk/reference/options.html) -- HIGH confidence (official docs)
-- [React Flow Layout Overview](https://reactflow.dev/learn/layouting/layouting) -- MEDIUM confidence
-- [ELK.js with React Flow (Medium)](https://medium.com/@armanaryanpour/auto-layout-positioning-in-react-flow-using-elkjs-eclipse-layout-kernel-with-typescript-and-6389a2cc0119) -- MEDIUM confidence
-
-### Undo/Redo Architecture
-- [Undo, Redo, and the Command Pattern (esveo)](https://www.esveo.com/en/blog/undo-redo-and-the-command-pattern/) -- MEDIUM confidence
-- [Designing a Lightweight Undo History with TypeScript (JitBlox)](https://www.jitblox.com/blog/designing-a-lightweight-undo-history-with-typescript) -- MEDIUM confidence
-- [Intro to Undo/Redo Systems in JavaScript (Medium)](https://medium.com/fbbd/intro-to-writing-undo-redo-systems-in-javascript-af17148a852b) -- MEDIUM confidence
-
-### Diagram Editor Libraries and Patterns
-- [JavaScript SVG Diagram Editor (CodeX, Medium)](https://medium.com/codex/javascript-svg-diagram-editor-which-weighs-6-5-less-than-bootstrap-open-source-library-b753feaaf835) -- MEDIUM confidence
-- [Top JavaScript Diagramming Libraries 2026 (JointJS)](https://www.jointjs.com/blog/javascript-diagramming-libraries) -- MEDIUM confidence
-- [Mermaid.js Renderer Configuration](https://github.com/mermaid-js/mermaid/issues/2029) -- HIGH confidence (primary source)
-
-### Feature Creep and Developer Tools
-- [Feature Creep Is Killing Your Software (DesignRush)](https://www.designrush.com/agency/software-development/trends/feature-creep) -- MEDIUM confidence
-- [Feature Creep Management (Tempo)](https://www.tempo.io/glossary/feature-creep) -- LOW confidence
-
-### Refactoring and Technical Debt
-- [Refactoring JavaScript Legacy Code (Delicious Brains)](https://deliciousbrains.com/refactoring-legacy-javascript/) -- MEDIUM confidence
-- [How to Refactor Complex Codebases (freeCodeCamp)](https://www.freecodecamp.org/news/how-to-refactor-complex-codebases) -- MEDIUM confidence
-
-### SmartB Diagrams Codebase Analysis
-- Codebase inspection: `static/live.html` (1757 lines), `static/annotations.js` (421 lines), `static/diagram-editor.js` (403 lines), `static/collapse-ui.js` (290 lines), `static/search.js` (296 lines), `static/ws-client.js` (71 lines) -- HIGH confidence (primary source)
-- Total static/ code: 3706 lines across 8 files
-- All 5 IIFE modules use `window.*` global exports and `_initHooks` callback pattern
-- Mermaid config duplicated 3 times in live.html
+### Dependency Versions (HIGH confidence -- package.json + node_modules inspection)
+- zod@4.3.6 installed
+- @modelcontextprotocol/sdk@^1.26.0 with peerDep "zod": "^3.25 || ^4.0"
+- MCP SDK uses hoisted zod (no version conflict)
 
 ---
-*Pitfalls research for: SmartB Diagrams v2 -- Interactive Canvas Renderer + Advanced AI Observability*
-*Researched: 2026-02-15*
+*Pitfalls research for: SmartB Diagrams v2.1 -- Bug Fix Milestone*
+*Researched: 2026-02-19*

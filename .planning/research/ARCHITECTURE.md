@@ -1,1132 +1,908 @@
-# Architecture Patterns
+# Architecture Patterns: v2.1 Integration Analysis
 
-**Domain:** Interactive canvas renderer + advanced AI observability features for SmartB Diagrams
-**Researched:** 2026-02-15
-**Confidence:** HIGH for graph model and renderer architecture (verified against dagre/elkjs docs, existing codebase patterns); MEDIUM for session recording and ghost paths (novel domain, patterns adapted from existing observability tools)
+**Domain:** Bug fixes and stability improvements across backend, frontend, and MCP layers
+**Researched:** 2026-02-19
+**Confidence:** HIGH -- based on direct codebase analysis of every file in the change surface
+**Previous:** v2.0 architecture research (2026-02-15) covered the full custom renderer pipeline. This v2.1 research covers ONLY the changes needed for bug fixes within the existing architecture.
 
 ---
 
 ## Table of Contents
 
 1. [Current Architecture Snapshot](#current-architecture-snapshot)
-2. [Target Architecture](#target-architecture)
-3. [New Components](#new-components)
-4. [Modified Components](#modified-components)
-5. [Graph Model Design](#graph-model-design)
-6. [Renderer Architecture](#renderer-architecture)
-7. [Bidirectional .mmd Sync](#bidirectional-mmd-sync)
-8. [Session Recording Data Flow](#session-recording-data-flow)
-9. [Ghost Paths and Heatmap Data Flow](#ghost-paths-and-heatmap-data-flow)
-10. [WebSocket Protocol Extensions](#websocket-protocol-extensions)
-11. [MCP Tool Extensions](#mcp-tool-extensions)
-12. [VS Code Extension Impact](#vs-code-extension-impact)
-13. [Build Order](#build-order)
+2. [Integration Challenges Overview](#integration-challenges-overview)
+3. [Component Modification Map](#component-modification-map)
+4. [Fix 1: @ghost Annotation System](#fix-1-ghost-annotation-system)
+5. [Fix 2: update_diagram Preserves Annotations](#fix-2-update_diagram-preserves-annotations)
+6. [Fix 3: /save Through DiagramService](#fix-3-save-through-diagramservice)
+7. [Fix 4: Auto-Tracking for Heatmap](#fix-4-auto-tracking-for-heatmap)
+8. [Fix 5: Project-Scoped Ghost Path Broadcast](#fix-5-project-scoped-ghost-path-broadcast)
+9. [CSS Splitting](#css-splitting)
+10. [Coupling Risk Matrix](#coupling-risk-matrix)
+11. [Safe Integration Order](#safe-integration-order)
+12. [Data Flow Diagrams](#data-flow-diagrams)
+13. [Patterns to Follow](#patterns-to-follow)
 14. [Anti-Patterns to Avoid](#anti-patterns-to-avoid)
+15. [Scalability Considerations](#scalability-considerations)
+16. [Test Strategy](#test-strategy)
 
 ---
 
 ## Current Architecture Snapshot
 
+The v2.1 milestone does NOT change the system architecture. All fixes operate within the existing component boundaries.
+
 ```
                     SINGLE NODE.JS PROCESS
   +-----------------------------------------------------------+
   |                                                           |
-  |  MCP Server    HTTP Server (3333)    File Watcher         |
-  |  (stdio)       (node:http)          (chokidar)           |
+  |  MCP Server    HTTP Server (3333)    FileWatcher          |
+  |  (stdio)       (node:http)          (fs.watch recursive)  |
   |      |              |                    |                |
   |      +------+-------+----+--------------+                |
   |             |            |                                |
   |      DiagramService   WebSocketManager                    |
   |      (read/write .mmd)  (ws, namespaces)                 |
+  |      (write locks)      (broadcast per project)          |
   |             |            |                                |
-  +-------------|------------|--------------------------------+
-                |            |
-     .mmd files on disk    WS broadcast
-                             |
-              +--------------+--------------+
-              |                             |
-        Browser (live.html)          VS Code Extension
-        - Mermaid.js renders         - Mermaid.js renders
-          .mmd text -> SVG             .mmd text -> SVG
-        - Pan/zoom on SVG           - Flag interaction
-        - Flag/status annotations   - File navigation
-        - Collapse/expand (text
-          manipulation + re-render)
-```
-
-### Current Data Flow (file change -> screen update)
-
-```
-.mmd file changed on disk
-  -> chokidar detects change
-  -> server reads file content (raw text)
-  -> WebSocket broadcasts { type: 'file:changed', file, content }
-  -> browser receives raw .mmd text
-  -> strips annotations (%% @flag, %% @status)
-  -> injects classDef styles for statuses
-  -> calls mermaid.render(id, styledMermaidText)
-  -> Mermaid internally: parse text -> dagre layout -> SVG generation
-  -> sets #preview content to the SVG string
-  -> applies pan/zoom transform
-  -> overlays flag badges on SVG nodes
-```
-
-### Key Limitation: Mermaid is a Black Box
-
-The entire rendering pipeline lives inside `mermaid.render()`. The browser receives text, hands it to Mermaid, and gets back an opaque SVG string. This means:
-
-- **No internal graph model** -- nodes/edges exist only as text patterns or SVG DOM elements
-- **No node position data** -- positions are computed by Mermaid's internal dagre, never exposed
-- **No incremental updates** -- any change requires full text -> SVG re-render
-- **No drag/drop** -- moving a node would require reverse-engineering SVG positions back to .mmd text
-- **No heatmap overlay** -- no coordinate system to map execution counts onto
-- **Collapse is text manipulation** -- the collapser.ts rewrites .mmd text, not a graph model
-
----
-
-## Target Architecture
-
-```
-                    SINGLE NODE.JS PROCESS
-  +-----------------------------------------------------------+
+  |      GhostPathStore   SessionStore                        |
+  |      (in-memory cache)  (.smartb/sessions/)              |
   |                                                           |
-  |  MCP Server    HTTP Server (3333)    File Watcher         |
-  |  (stdio)       (node:http)          (chokidar)           |
-  |      |              |                    |                |
-  |      +------+-------+----+--------------+                |
-  |             |            |                                |
-  |      DiagramService   WebSocketManager                    |
-  |      + GraphModel*      (ws, namespaces)                 |
-  |      + SessionStore*    + new message types*              |
-  |             |            |                                |
-  +-------------|------------|--------------------------------+
+  +-----------------------------------------------------------+
                 |            |
      .mmd files on disk    WS broadcast
-     .smartb/ session data*  |
+     (annotations block)     |
               +--------------+--------------+
               |                             |
         Browser (live.html)          VS Code Extension
-        - GraphModel (shared type)   - GraphModel (shared type)
-        - Custom Renderer*           - Custom Renderer*
-          (graph model -> SVG)         (graph model -> SVG)
-        - InteractionManager*        - Basic interaction
-        - SessionRecorder*
-        - HeatmapOverlay*
-        - GhostPathRenderer*
-
-  * = NEW component
+        - 30+ vanilla JS modules     - WebView panel
+        - window.* globals           - WS connection
+        - SmartBEventBus             - diagram rendering
 ```
 
-### Target Data Flow (file change -> screen update)
+### Key Architectural Invariants
 
-```
-.mmd file changed on disk
-  -> chokidar detects change
-  -> server reads file content (raw text)
-  -> server parses into GraphModel (nodes, edges, subgraphs, metadata)
-  -> WebSocket broadcasts { type: 'graph:update', file, graph: GraphModel }
-  -> browser receives GraphModel
-  -> layout engine computes positions (dagre)
-  -> custom renderer generates SVG from positioned graph
-  -> applies pan/zoom transform
-  -> overlays flags, heatmaps, ghost paths
-```
+1. **Single source of truth:** .mmd files on disk. All state persists as `%% @annotation` lines.
+2. **Write lock serialization:** DiagramService.withWriteLock() serializes writes per file path.
+3. **Annotation block format:** Between `ANNOTATION_START` and `ANNOTATION_END` markers.
+4. **Dual parsing:** Backend (annotations.ts) and frontend (annotations.js) parse identically.
+5. **modifyAnnotation pattern:** Read-all -> mutate -> write-all, always under write lock.
+6. **Event flow:** File change -> FileWatcher -> WS broadcast -> Browser updates.
 
-### Target Data Flow (user drags node)
+### The Exception: Ghost Paths
 
-```
-User drags node in browser
-  -> InteractionManager captures drag delta
-  -> updates node position in local GraphModel
-  -> renderer moves SVG element (no full re-render)
-  -> on drag end: GraphModel -> serialize to .mmd text
-  -> POST /save with new .mmd content
-  -> file watcher detects change
-  -> broadcasts to other clients (loop closed)
-```
+Ghost paths currently violate invariant #1. They exist only in:
+- `GhostPathStore` (in-memory Map, server/ghost-store.ts)
+- REST API (ghost-path-routes.ts)
+- WebSocket broadcast (broadcastAll -- bug: not project-scoped)
+- Frontend state (ghost-paths.js, ghostPathsByFile object)
+
+They are **not** persisted to .mmd files. This is the fundamental design issue v2.1 must fix.
 
 ---
 
-## New Components
+## Integration Challenges Overview
 
-### 1. GraphModel (shared between server + browser)
+| # | Challenge | Risk | Files Touched | Complexity |
+|---|-----------|------|---------------|------------|
+| 1 | Add @ghost annotation type | HIGH | 8+ files, backend+frontend sync | Medium |
+| 2 | update_diagram preserves flags/breakpoints | HIGH | 2 files, behavior change | Low |
+| 3 | Route /save through DiagramService | MEDIUM | 2 files, flow change | Low |
+| 4 | Auto-tracking for heatmap | MEDIUM | 3+ frontend files | Medium |
+| 5 | Project-scoped ghost broadcast | LOW | 3 files, parameter threading | Low |
 
-**Location:** `src/diagram/graph-model.ts` (server) + `static/core/graph-model.js` (browser copy)
-**Responsibility:** In-memory representation of a diagram's structure
-**Communicates with:** DiagramService (parse/serialize), Renderer (layout/draw), InteractionManager (mutations)
+---
 
-The graph model is the single most important new component. It replaces "raw .mmd text as data" with a structured, queryable, mutable object.
+## Component Modification Map
+
+### Per-Fix File Impact
+
+#### Fix 1: @ghost Annotation System (8 files)
+
+| File | Change Type | What Changes |
+|------|-------------|--------------|
+| `src/diagram/annotations.ts` | **MODIFY** | Add GHOST_REGEX, parse @ghost in parseAllAnnotations, serialize in injectAnnotations |
+| `static/annotations.js` | **MODIFY** | Mirror: add GHOST_REGEX, parse @ghost, serialize @ghost |
+| `src/diagram/service.ts` | **MODIFY** | Add ghost path methods (getGhosts, setGhost, removeGhost) via modifyAnnotation pattern |
+| `src/mcp/tools.ts` | **MODIFY** | update_diagram: persist ghostPaths as @ghost annotations instead of GhostPathStore |
+| `src/mcp/tools.ts` | **MODIFY** | get_diagram_context: include ghost paths from annotations |
+| `src/server/ghost-path-routes.ts` | **MODIFY** | Read/write via DiagramService instead of GhostPathStore |
+| `static/ghost-paths.js` | **MODIFY** | Load ghost paths from annotations (editor content), not just REST/WS |
+| `src/diagram/types.ts` | **NO CHANGE** | GhostPath type already exists |
+
+#### Fix 2: update_diagram Preserves Annotations (2 files)
+
+| File | Change Type | What Changes |
+|------|-------------|--------------|
+| `src/diagram/service.ts` | **MODIFY** | Add updateDiagramPreservingAnnotations method |
+| `src/mcp/tools.ts` | **MODIFY** | Use new method instead of writeDiagram |
+| `test/mcp/tool-handlers.test.ts` | **MODIFY** | Add test: update_diagram on flagged file preserves flags |
+
+#### Fix 3: /save Through DiagramService (2 files)
+
+| File | Change Type | What Changes |
+|------|-------------|--------------|
+| `src/diagram/service.ts` | **MODIFY** | Add writeRaw method (write under lock without annotation processing) |
+| `src/server/file-routes.ts` | **MODIFY** | POST /save calls service.writeRaw() instead of raw writeFile() |
+
+#### Fix 4: Auto-Tracking for Heatmap (4 files)
+
+| File | Change Type | What Changes |
+|------|-------------|--------------|
+| `static/interaction-tracker.js` | **NEW** | Passive tracking IIFE module (accumulate + flush counts) |
+| `static/app-init.js` | **MODIFY** | Init SmartBTracker module |
+| `src/server/session-routes.ts` | **MODIFY** | Accept browser-originated heatmap increments |
+| `static/live.html` | **MODIFY** | Add script tag for interaction-tracker.js |
+
+#### Fix 5: Project-Scoped Ghost Broadcast (3 files)
+
+| File | Change Type | What Changes |
+|------|-------------|--------------|
+| `src/server/ghost-path-routes.ts` | **MODIFY** | Change broadcastAll() to broadcast('default', ...) |
+| `src/mcp/tools.ts` | **MODIFY** | Change broadcastAll() to broadcast('default', ...) for ghost:update |
+| `src/mcp/session-tools.ts` | **MODIFY** | Same change for session-related broadcasts |
+
+---
+
+## Fix 1: @ghost Annotation System
+
+### Current State
+
+```
+GhostPathStore (in-memory)
+     |
+  add(file, ghost) --- REST POST /api/ghost-paths/:file
+     |                          |
+  get(file) ---------- REST GET /api/ghost-paths/:file
+     |
+  broadcastAll() ----- WS ghost:update ----- Frontend updates ghostPathsByFile
+```
+
+Ghost paths are lost on server restart. They exist in a parallel universe from the annotation system.
+
+### Target State
+
+```
+.mmd file
+  %% @ghost fromNodeId toNodeId "optional label"
+     |
+  parseAllAnnotations() --- reads ghost paths alongside flags/statuses/etc.
+     |
+  injectAnnotations() ---- serializes ghost paths back to @ghost lines
+     |
+  DiagramService.modifyAnnotation() --- atomic read-modify-write under lock
+     |
+  FileWatcher ---- WS file:changed ---- Frontend parses annotations (including ghosts)
+```
+
+### Annotation Format
+
+```
+Existing:
+  %% @flag nodeId "message"                    -> Map<string, Flag>
+  %% @status nodeId ok|problem|in-progress|discarded  -> Map<string, NodeStatus>
+  %% @breakpoint nodeId                        -> Set<string>
+  %% @risk nodeId high|medium|low "reason"     -> Map<string, RiskAnnotation>
+
+New:
+  %% @ghost fromNodeId toNodeId "label"        -> Map<string, GhostAnnotation>
+```
+
+### Implementation Details
+
+**Backend: annotations.ts**
+
+Add regex (after RISK_REGEX at line 9):
 
 ```typescript
-// src/diagram/graph-model.ts
-
-export interface GraphNode {
-  id: string;
-  label: string;
-  shape: 'rect' | 'rounded' | 'circle' | 'diamond' | 'hexagon' | 'stadium' | 'subroutine';
-  // Position (computed by layout engine, or manually set)
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
-  // Metadata
-  status?: NodeStatus;
-  flag?: Flag;
-  subgraphId?: string; // which subgraph this node belongs to
-  // AI observability
-  executionCount?: number;   // for heatmaps
-  lastVisited?: number;      // timestamp
-}
-
-export interface GraphEdge {
-  id: string;          // generated: `${from}->${to}`
-  from: string;
-  to: string;
-  label?: string;
-  type: 'arrow' | 'open' | 'dotted' | 'thick';
-  // AI observability
-  executionCount?: number;   // for heatmaps
-  isGhostPath?: boolean;     // for alternative paths
-}
-
-export interface GraphSubgraph {
-  id: string;
-  label: string;
-  parentId: string | null;
-  nodeIds: string[];
-  childSubgraphIds: string[];
-  collapsed: boolean;
-}
-
-export interface GraphModel {
-  diagramType: string;      // 'flowchart', 'graph', etc.
-  direction: 'TB' | 'LR' | 'BT' | 'RL';
-  nodes: Map<string, GraphNode>;
-  edges: GraphEdge[];
-  subgraphs: Map<string, GraphSubgraph>;
-  classDefs: Map<string, string>;  // style definitions
-  // Metadata
-  filePath: string;
-  flags: Map<string, Flag>;
-  statuses: Map<string, NodeStatus>;
-  validation: ValidationResult;
-}
+export const GHOST_REGEX = /^%%\s*@ghost\s+(\S+)\s+(\S+)(?:\s+"([^"]*)")?$/;
 ```
 
-**Why a class, not just an interface:** The GraphModel should be a class with mutation methods (`addNode`, `removeNode`, `moveNode`, `updateEdge`) that maintain invariants (e.g., removing a node also removes its edges). This aligns with the existing `DiagramService` pattern of encapsulating operations.
-
-### 2. MermaidParser (enhanced parser)
-
-**Location:** `src/diagram/mermaid-parser.ts`
-**Responsibility:** Parse .mmd text into a GraphModel
-**Communicates with:** DiagramService (called during readDiagram), GraphModel (produces one)
-
-The existing `parser.ts` does minimal work (strip annotations, detect type). The existing `collapser.ts` does regex-based subgraph parsing. The new parser consolidates and extends both into a proper parser that extracts nodes, edges, subgraphs, styles, and direction.
-
-**Approach:** Use the existing regex patterns from `collapser.ts` as a foundation but extend them to capture all node shapes, edge types, and style directives. Do NOT use `@mermaid-js/parser` because it does not support flowchart/graph diagrams (confirmed in `validator.ts` line 22-25: "v0.6 only supports info, packet, pie, architecture, gitGraph, radar and does NOT support flowchart").
+New type (add to types.ts or annotations.ts):
 
 ```typescript
-// Key exports
-export function parseMermaidToGraph(content: string, filePath: string): GraphModel;
-export function serializeGraphToMermaid(graph: GraphModel): string;
-```
-
-### 3. MermaidSerializer (graph -> .mmd text)
-
-**Location:** `src/diagram/mermaid-serializer.ts`
-**Responsibility:** Convert a GraphModel back to valid .mmd text
-**Communicates with:** DiagramService (called during writeDiagram from visual edits)
-
-This is the inverse of the parser. Critical for the bidirectional sync: when a user drags a node or adds an edge visually, the graph model changes and must be written back as .mmd text.
-
-**Key design decision:** The serializer should produce clean, readable .mmd text that closely matches the original formatting. Use a "preserve original when possible" strategy -- if only positions changed (which .mmd does not encode), the text should be identical to the original.
-
-### 4. LayoutEngine (dagre wrapper)
-
-**Location:** `static/core/layout-engine.js`
-**Responsibility:** Compute x/y positions for all nodes in a GraphModel
-**Communicates with:** GraphModel (reads nodes/edges, writes positions), Renderer (positions used for SVG placement)
-
-Use `@dagrejs/dagre` directly (the same layout engine Mermaid uses internally). This ensures visual continuity -- diagrams laid out by the custom renderer will look similar to Mermaid's output.
-
-```javascript
-// static/core/layout-engine.js
-
-function computeLayout(graph, options) {
-  const g = new dagre.graphlib.Graph({ compound: true });
-  g.setGraph({
-    rankdir: graph.direction || 'TB',
-    nodesep: options?.nodeSep || 60,
-    ranksep: options?.rankSep || 80,
-    marginx: 20,
-    marginy: 20,
-  });
-  g.setDefaultEdgeLabel(() => ({}));
-
-  // Add nodes with measured dimensions
-  for (const [id, node] of graph.nodes) {
-    g.setNode(id, {
-      label: node.label,
-      width: node.width || measureNodeWidth(node),
-      height: node.height || measureNodeHeight(node),
-    });
-  }
-
-  // Add edges
-  for (const edge of graph.edges) {
-    g.setEdge(edge.from, edge.to, { label: edge.label || '' });
-  }
-
-  // Add subgraph containment
-  for (const [id, sg] of graph.subgraphs) {
-    g.setNode(id, { label: sg.label, clusterLabelPos: 'top' });
-    if (sg.parentId) g.setParent(id, sg.parentId);
-    for (const nodeId of sg.nodeIds) {
-      g.setParent(nodeId, id);
-    }
-  }
-
-  dagre.layout(g);
-
-  // Write positions back to graph model
-  for (const [id, node] of graph.nodes) {
-    const layoutNode = g.node(id);
-    if (layoutNode) {
-      node.x = layoutNode.x;
-      node.y = layoutNode.y;
-      node.width = layoutNode.width;
-      node.height = layoutNode.height;
-    }
-  }
-
-  return graph;
-}
-```
-
-**Why dagre over elkjs:** Dagre is what Mermaid uses internally, so the visual output will be familiar. Dagre is also smaller (~30KB vs elkjs ~1.3MB). elkjs is more powerful (ports, advanced routing) but overkill for flowchart-style diagrams. If advanced layout is needed later, elkjs can be added as an alternative.
-
-### 5. SVGRenderer (custom renderer)
-
-**Location:** `static/core/svg-renderer.js`
-**Responsibility:** Generate SVG elements from a positioned GraphModel
-**Communicates with:** GraphModel (reads positioned nodes/edges), DOM (#preview element), InteractionManager (attaches event listeners)
-
-```javascript
-// static/core/svg-renderer.js
-
-const SVGRenderer = {
-  // Create or update SVG from positioned graph model
-  render(graph, container) {
-    const svg = this.getOrCreateSVG(container);
-    this.renderNodes(svg, graph.nodes);
-    this.renderEdges(svg, graph.edges);
-    this.renderSubgraphs(svg, graph.subgraphs);
-  },
-
-  // Incremental update: move a single node without re-rendering everything
-  moveNode(nodeId, x, y) {
-    const group = this.svg.querySelector('[data-node-id="' + nodeId + '"]');
-    if (group) group.setAttribute('transform', 'translate(' + x + ',' + y + ')');
-    this.updateConnectedEdges(nodeId);
-  },
-
-  // Update a single node's appearance (status color, label, etc.)
-  updateNode(nodeId, changes) { /* ... */ },
-};
-```
-
-**Key design principles:**
-- Each node is an SVG `<g>` element with `data-node-id` attribute
-- Each edge is an SVG `<path>` element with `data-edge-id` attribute
-- Subgraphs are SVG `<rect>` backgrounds with `<text>` labels
-- Use SVG `<defs>` for arrow markers
-- Support incremental updates (move/restyle single elements) without full re-render
-
-### 6. InteractionManager (drag/select/edit)
-
-**Location:** `static/core/interaction-manager.js`
-**Responsibility:** Handle mouse/touch events for node dragging, selection, edge creation
-**Communicates with:** SVGRenderer (moves elements), GraphModel (updates positions), DiagramService via HTTP (persists changes)
-
-```javascript
-// static/core/interaction-manager.js
-
-const InteractionManager = {
-  mode: null,  // null | 'drag' | 'select' | 'connect' | 'flag'
-
-  init(svg, graph, renderer) {
-    this.svg = svg;
-    this.graph = graph;
-    this.renderer = renderer;
-    this.attachListeners();
-  },
-
-  attachListeners() {
-    this.svg.addEventListener('mousedown', this.onMouseDown.bind(this));
-    document.addEventListener('mousemove', this.onMouseMove.bind(this));
-    document.addEventListener('mouseup', this.onMouseUp.bind(this));
-  },
-
-  onMouseDown(e) {
-    const nodeEl = e.target.closest('[data-node-id]');
-    if (nodeEl && this.mode !== 'flag') {
-      this.startDrag(nodeEl, e);
-    }
-  },
-
-  startDrag(nodeEl, e) {
-    this.dragging = {
-      nodeId: nodeEl.dataset.nodeId,
-      startX: e.clientX,
-      startY: e.clientY,
-    };
-  },
-
-  onMouseMove(e) {
-    if (!this.dragging) return;
-    const dx = (e.clientX - this.dragging.startX) / zoom;
-    const dy = (e.clientY - this.dragging.startY) / zoom;
-    this.renderer.moveNode(this.dragging.nodeId, dx, dy);
-  },
-
-  onMouseUp(e) {
-    if (!this.dragging) return;
-    // Update graph model with final position
-    // Note: .mmd files do not encode positions, so drag is ephemeral
-    // until position storage is added (see .smartb/ metadata)
-    this.dragging = null;
-  },
-};
-```
-
-**Critical architectural decision about drag persistence:** Mermaid .mmd files do NOT encode node positions -- positions are computed by the layout engine. This means dragging a node only changes the visual display for the current session. To persist drag positions, we need a sidecar metadata file (see `.smartb/` directory below). This is how tools like Excalidraw handle it.
-
-### 7. SessionStore (server-side session data)
-
-**Location:** `src/session/session-store.ts`
-**Responsibility:** Store and retrieve session recording data, execution traces, heatmap data
-**Communicates with:** DiagramService (reads diagram context), MCP tools (AI writes execution data), WebSocket (broadcasts session updates)
-
-```typescript
-// src/session/session-store.ts
-
-export interface SessionEvent {
-  timestamp: number;
-  type: 'node:visited' | 'edge:traversed' | 'decision:made' | 'backtrack' | 'status:changed';
-  nodeId?: string;
-  edgeId?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface Session {
-  id: string;
-  diagramFile: string;
-  startedAt: number;
-  events: SessionEvent[];
-  // Computed from events
-  nodeVisitCounts: Map<string, number>;
-  edgeTraversalCounts: Map<string, number>;
-  ghostPaths: GhostPath[];
-}
-
-export interface GhostPath {
-  id: string;
+export interface GhostAnnotation {
   fromNodeId: string;
   toNodeId: string;
-  label: string;
-  reason: string;  // why this path was abandoned
-  timestamp: number;
-}
-
-export class SessionStore {
-  private sessions: Map<string, Session> = new Map();
-  private dataDir: string;  // .smartb/ in project root
-
-  constructor(projectRoot: string) {
-    this.dataDir = path.join(projectRoot, '.smartb', 'sessions');
-  }
-
-  async createSession(diagramFile: string): Promise<Session>;
-  async addEvent(sessionId: string, event: SessionEvent): Promise<void>;
-  async getSession(sessionId: string): Promise<Session | null>;
-  async getSessionsForDiagram(diagramFile: string): Promise<Session[]>;
-  async getHeatmapData(diagramFile: string): Promise<Map<string, number>>;
+  label?: string;
 }
 ```
 
-**Storage location:** `.smartb/sessions/` directory in the project root. JSON files, one per session. This directory should be `.gitignore`d by default (session data is ephemeral and developer-specific).
-
-### 8. HeatmapOverlay (browser-side visualization)
-
-**Location:** `static/overlays/heatmap-overlay.js`
-**Responsibility:** Render execution count data as color intensity on nodes/edges
-**Communicates with:** SVGRenderer (overlays on existing SVG), SessionStore via REST API (fetches heatmap data)
-
-```javascript
-// static/overlays/heatmap-overlay.js
-
-const HeatmapOverlay = {
-  enabled: false,
-  data: new Map(),  // nodeId -> count
-
-  async loadData(diagramFile) {
-    const resp = await fetch('/api/sessions/heatmap/' + encodeURIComponent(diagramFile));
-    this.data = new Map(Object.entries(await resp.json()));
-  },
-
-  apply(svg) {
-    if (!this.enabled || this.data.size === 0) return;
-    const maxCount = Math.max(...this.data.values());
-    for (const [nodeId, count] of this.data) {
-      const nodeEl = svg.querySelector('[data-node-id="' + nodeId + '"]');
-      if (!nodeEl) continue;
-      const intensity = count / maxCount;  // 0..1
-      const color = this.intensityToColor(intensity);
-      const rect = nodeEl.querySelector('rect, polygon, circle');
-      if (rect) {
-        rect.style.fill = color;
-        rect.style.fillOpacity = String(0.3 + intensity * 0.5);
-      }
-    }
-  },
-
-  intensityToColor(t) {
-    // Cold (blue) to hot (red) gradient
-    const r = Math.round(255 * t);
-    const b = Math.round(255 * (1 - t));
-    return 'rgb(' + r + ', 80, ' + b + ')';
-  },
-};
-```
-
-### 9. GhostPathRenderer (browser-side visualization)
-
-**Location:** `static/overlays/ghost-path-renderer.js`
-**Responsibility:** Render abandoned/alternative reasoning paths as dashed/faded edges
-**Communicates with:** SVGRenderer (overlays ghost edges), SessionStore via REST API (fetches ghost path data)
-
-```javascript
-// static/overlays/ghost-path-renderer.js
-
-const GhostPathRenderer = {
-  enabled: false,
-  paths: [],
-
-  async loadPaths(diagramFile) {
-    const resp = await fetch('/api/sessions/ghost-paths/' + encodeURIComponent(diagramFile));
-    this.paths = await resp.json();
-  },
-
-  render(svg, graph) {
-    if (!this.enabled || this.paths.length === 0) return;
-    const ghostGroup = this.getOrCreateGroup(svg, 'ghost-paths');
-    // Clear previous ghost paths
-    while (ghostGroup.firstChild) ghostGroup.removeChild(ghostGroup.firstChild);
-
-    for (const ghost of this.paths) {
-      const fromNode = graph.nodes.get(ghost.fromNodeId);
-      const toNode = graph.nodes.get(ghost.toNodeId);
-      if (!fromNode || !toNode) continue;
-
-      const ns = 'http://www.w3.org/2000/svg';
-      const pathEl = document.createElementNS(ns, 'path');
-      pathEl.setAttribute('d', this.computeEdgePath(fromNode, toNode));
-      pathEl.setAttribute('stroke', '#9ca3af');
-      pathEl.setAttribute('stroke-width', '2');
-      pathEl.setAttribute('stroke-dasharray', '8,4');
-      pathEl.setAttribute('fill', 'none');
-      pathEl.setAttribute('opacity', '0.5');
-      pathEl.setAttribute('data-ghost-id', ghost.id);
-
-      // Tooltip with reason for abandonment
-      const title = document.createElementNS(ns, 'title');
-      title.textContent = 'Abandoned: ' + ghost.reason;
-      pathEl.appendChild(title);
-
-      ghostGroup.appendChild(pathEl);
-    }
-  },
-};
-```
-
----
-
-## Modified Components
-
-### DiagramService (src/diagram/service.ts) -- MODIFIED
-
-**Current:** Reads raw .mmd text, delegates parsing to simple parser/annotations modules.
-**Change:** Add `readGraph()` method that returns a `GraphModel` instead of raw text. Keep existing methods for backward compatibility.
+Update AllAnnotations interface:
 
 ```typescript
-// New method added to DiagramService
-async readGraph(filePath: string): Promise<GraphModel> {
-  const diagram = await this.readDiagram(filePath);
-  return parseMermaidToGraph(
-    diagram.mermaidContent, filePath, diagram.flags, diagram.statuses
-  );
-}
-
-// New method for writing from visual edits
-async writeFromGraph(filePath: string, graph: GraphModel): Promise<void> {
-  const mermaidText = serializeGraphToMermaid(graph);
-  await this.writeDiagram(filePath, mermaidText, graph.flags, graph.statuses);
+export interface AllAnnotations {
+  flags: Map<string, Flag>;
+  statuses: Map<string, NodeStatus>;
+  breakpoints: Set<string>;
+  risks: Map<string, RiskAnnotation>;
+  ghosts: Map<string, GhostAnnotation>;  // keyed by "from->to"
 }
 ```
 
-### WebSocketManager (src/server/websocket.ts) -- MODIFIED
+Map keyed by `${from}->${to}` because: unlike flags (per-node), ghost paths are per-edge. The frontend's dedupPaths() in ghost-paths.js already deduplicates by from->to key. Using a Map gives natural deduplication.
 
-**Current:** Broadcasts `file:changed` with raw text content.
-**Change:** Add new message types for graph model updates, session events, and heatmap data.
+Add parsing in parseAllAnnotations() (after risk matching block):
 
 ```typescript
-// Extended WsMessage type
-export type WsMessage =
-  | { type: 'file:changed'; file: string; content: string }    // keep for backward compat
-  | { type: 'graph:update'; file: string; graph: SerializedGraphModel }  // NEW
-  | { type: 'session:event'; sessionId: string; event: SessionEvent }     // NEW
-  | { type: 'heatmap:update'; file: string; data: Record<string, number> } // NEW
-  | { type: 'file:added'; file: string }
-  | { type: 'file:removed'; file: string }
-  | { type: 'tree:updated'; files: string[] }
-  | { type: 'connected'; project: string };
+match = GHOST_REGEX.exec(trimmed);
+if (match) {
+  const key = `${match[1]!}->${match[2]!}`;
+  ghosts.set(key, { fromNodeId: match[1]!, toNodeId: match[2]!, label: match[3] });
+  continue;
+}
 ```
 
-### Routes (src/server/routes.ts) -- MODIFIED
+Update injectAnnotations signature and body:
 
-**Current:** REST API returns raw mermaid content.
-**Change:** Add endpoints for graph model, sessions, heatmaps, ghost paths.
+```typescript
+export function injectAnnotations(
+  content: string,
+  flags: Map<string, Flag>,
+  statuses?: Map<string, NodeStatus>,
+  breakpoints?: Set<string>,
+  risks?: Map<string, RiskAnnotation>,
+  ghosts?: Map<string, GhostAnnotation>,  // NEW parameter
+): string {
+  // ... existing code ...
+  const hasGhosts = ghosts !== undefined && ghosts.size > 0;
+  // ... existing checks updated to include hasGhosts ...
 
-New endpoints:
-- `GET /api/graph/:file` -- returns GraphModel JSON
-- `POST /api/graph/:file/move` -- update node positions (persists to .smartb/ metadata)
-- `POST /api/sessions` -- create a new session
-- `POST /api/sessions/:id/events` -- add events to a session
-- `GET /api/sessions/heatmap/:file` -- get aggregated heatmap data
-- `GET /api/sessions/ghost-paths/:file` -- get ghost paths for a diagram
-- `POST /api/sessions/ghost-paths` -- add a ghost path (from MCP tool)
-
-### live.html -- MAJOR REFACTOR
-
-**Current:** 1533 lines, monolithic. Mermaid.render() is the rendering engine.
-**Change:** Replace Mermaid rendering with custom renderer. Extract inline JS into modules. live.html becomes a shell that loads modules.
-
-Refactored structure:
-```
-static/
-  live.html              <- reduced to ~200 lines (HTML structure + script imports)
-  core/
-    graph-model.js       <- shared graph model (browser copy)
-    layout-engine.js     <- dagre wrapper
-    svg-renderer.js      <- custom SVG generation
-    interaction-manager.js <- drag/select/edit
-    mermaid-fallback.js  <- optional: use Mermaid for unsupported diagram types
-  overlays/
-    heatmap-overlay.js   <- heatmap visualization
-    ghost-path-renderer.js <- ghost path visualization
-    session-player.js    <- session recording playback
-  ui/
-    annotations.js       <- existing, minimal changes
-    collapse-ui.js       <- simplified (graph model handles collapse state)
-    diagram-editor.js    <- simplified (InteractionManager handles visual editing)
-    search.js            <- existing, minimal changes
-    ws-client.js         <- existing, extended for new message types
-  annotations.css        <- existing
-  search.css             <- existing
-```
-
-### VS Code Extension webview (vscode-extension/src/webview/main.ts) -- MODIFIED
-
-**Current:** Uses Mermaid.js to render diagrams.
-**Change:** Use the same custom renderer (graph-model.js + layout-engine.js + svg-renderer.js). The webview bundles these as inline scripts or separate files included via webview URI.
-
----
-
-## Graph Model Design
-
-### Design Principles
-
-1. **Single source of truth**: The GraphModel is THE representation of a diagram's structure. Both .mmd text and SVG are derived from it.
-
-2. **Serializable**: The GraphModel can be JSON-serialized for WebSocket transmission and REST API responses. Use plain objects and arrays (not Map/Set) in the serialized form.
-
-3. **Immutable-friendly mutations**: Mutation methods return new state (or mutate in place with event emission). This enables undo/redo later.
-
-4. **Backward compatible**: The existing .mmd file format remains the canonical storage format. The GraphModel adds runtime structure on top of it but does not change what is stored on disk.
-
-### Parse -> Model -> Serialize Round-Trip
-
-```
-Original .mmd text
-  |
-  v
-parseMermaidToGraph()  -- parser
-  |
-  v
-GraphModel (in memory)
-  |
-  v
-serializeGraphToMermaid()  -- serializer
-  |
-  v
-Reconstructed .mmd text (should be semantically identical)
-```
-
-**Round-trip fidelity requirement:** `parse(serialize(parse(text)))` must produce the same GraphModel as `parse(text)`. The serialized text does not need to be character-for-character identical to the original (whitespace/ordering may differ), but it must be semantically equivalent (same nodes, edges, subgraphs, styles).
-
-### Position Metadata (.smartb/ sidecar)
-
-Since .mmd files do not encode positions, user-customized positions (from drag operations) are stored in a sidecar file:
-
-```
-project-root/
-  .smartb/
-    positions/
-      diagram-name.positions.json   <- { nodeId: { x, y } }
-    sessions/
-      session-id.json               <- session recording data
-    .gitignore                      <- auto-generated, ignores sessions/
-```
-
-The `.smartb/positions/` data is optional. If present, the layout engine uses these positions as overrides. If absent, dagre computes positions automatically.
-
----
-
-## Renderer Architecture
-
-### Rendering Pipeline (Detailed)
-
-```
-GraphModel
-  |
-  v
-[1] Layout Phase: dagre computes positions
-  - Input: nodes with dimensions, edges, subgraph containment
-  - Output: x, y coordinates on each node
-  - Skipped if positions already exist (user-dragged)
-  |
-  v
-[2] SVG Generation Phase: create SVG elements
-  - Each node -> <g data-node-id="..."><rect/><text/></g>
-  - Each edge -> <path data-edge-id="..."> with arrow marker
-  - Subgraphs -> <rect> background + <text> label
-  - Ghost paths -> dashed <path> elements
-  |
-  v
-[3] Overlay Phase: apply visual overlays
-  - Status colors (classDef styles)
-  - Flag badges (red circles with "!")
-  - Heatmap intensity (fill opacity)
-  - Search highlights
-  |
-  v
-[4] Interaction Phase: attach event handlers
-  - Mousedown/move/up for drag
-  - Click for flag mode
-  - Double-click for focus mode
-  - Wheel for zoom
-```
-
-### Incremental vs Full Render
-
-Most updates should be **incremental** (update one element) rather than **full re-render** (regenerate entire SVG):
-
-| Change | Render Strategy |
-|--------|----------------|
-| Node dragged | Incremental: update `<g>` transform, update connected edge paths |
-| Status changed | Incremental: update `<rect>` fill color |
-| Flag added/removed | Incremental: add/remove badge `<g>` |
-| Heatmap toggled | Incremental: update all node fill opacities |
-| Node added/removed | Full re-render (layout changes) |
-| Edge added/removed | Full re-render (layout changes) |
-| .mmd file changed externally | Full re-render (layout changes) |
-| Subgraph collapsed/expanded | Full re-render (layout changes) |
-
-### Mermaid Fallback Strategy
-
-The custom renderer targets **flowchart/graph** diagrams only (the primary use case for AI observability). For other diagram types (sequence, class, state, ER, gantt, pie, gitgraph, mindmap, timeline), fall back to Mermaid.js rendering.
-
-```javascript
-function renderDiagram(graph, container) {
-  if (graph.diagramType === 'flowchart' || graph.diagramType === 'graph') {
-    return customRenderer.render(graph, container);
-  } else {
-    // Fallback to Mermaid for non-flowchart types
-    return mermaidFallback.render(graph.rawMermaidContent, container);
+  // Serialize ghosts (after risks block):
+  if (hasGhosts) {
+    for (const [, ghost] of ghosts!) {
+      const labelPart = ghost.label
+        ? ` "${ghost.label.replace(/"/g, "''")}"` : '';
+      lines.push(`%% @ghost ${ghost.fromNodeId} ${ghost.toNodeId}${labelPart}`);
+    }
   }
 }
 ```
 
-This preserves full backward compatibility while enabling interactive features for the primary diagram type.
+**Frontend: annotations.js -- MUST MIRROR EXACTLY**
 
----
+This is the highest-risk coupling point. The regex, parsing logic, and serialization format must be byte-identical between backend and frontend.
 
-## Bidirectional .mmd Sync
-
-### Architecture Pattern: Model as Mediator
-
-```
-.mmd text on disk  <-->  GraphModel  <-->  SVG in browser
-       ^                     ^                    ^
-       |                     |                    |
-   File System          Single Source          Visual
-   (persistent)         of Truth             (ephemeral)
+Add GHOST_REGEX (line 14):
+```javascript
+var GHOST_REGEX = /^%%\s*@ghost\s+(\S+)\s+(\S+)(?:\s+"([^"]*)")?$/;
 ```
 
-All mutations flow through the GraphModel:
-- **Text edit** (editor panel): parse new text into model, re-render
-- **Visual edit** (drag/add/remove): mutate model, serialize to text, save to disk
-- **External change** (file watcher): read new text, parse into model, re-render
-- **MCP tool** (AI): mutate via API, save to disk, file watcher broadcasts
-
-### Conflict Resolution
-
-When the user is dragging a node and an external change arrives:
-
-1. **Pause sync during drag** -- buffer incoming updates
-2. **On drag end** -- apply buffered updates, re-parse if structural changes occurred
-3. **Structural vs cosmetic** -- if the incoming change only affects statuses/flags (not nodes/edges), merge without interrupting. If structural, full re-render.
-
-### Debounce Strategy
-
-The existing system re-renders on every file change. With the custom renderer + layout, this is more expensive. Apply debouncing:
-
-- File changes: 50ms debounce (matches current WS latency target)
-- Editor typing: 300ms debounce (user is still typing)
-- Drag position updates: 0ms (immediate SVG moves, no layout or save)
-- Drag end save: 0ms (save immediately on mouseup)
-
----
-
-## Session Recording Data Flow
-
-```
-AI Tool (via MCP)                    Browser
-  |                                    |
-  | record_event tool                  | Session Player UI
-  |----> MCP Server                    |
-  |        |                           |
-  |        v                           |
-  |    SessionStore                    |
-  |    (writes to .smartb/sessions/)   |
-  |        |                           |
-  |        v                           |
-  |    WebSocket broadcast             |
-  |    { type: 'session:event', ... }  |
-  |        |                           |
-  |        +-------------------------->|
-  |                                    |
-  |                              Session Player
-  |                              - shows current step
-  |                              - highlights active node
-  |                              - animates transitions
+Add to state (line 24):
+```javascript
+ghosts: new Map(),  // key: "from->to", value: { fromNodeId, toNodeId, label }
 ```
 
-### MCP Tools for Session Recording
+Add in parseAnnotations() (after risk matching):
+```javascript
+var gm = trimmed.match(GHOST_REGEX);
+if (gm) { ghosts.set(gm[1] + '->' + gm[2], { fromNodeId: gm[1], toNodeId: gm[2], label: gm[3] || '' }); continue; }
+```
 
-New MCP tools that AI agents call to record their reasoning:
+Add in injectAnnotations() serialization (after risks block):
+```javascript
+state.ghosts.forEach(function(val) {
+    var labelPart = val.label ? ' "' + val.label.replace(/"/g, "''") + '"' : '';
+    lines.push('%% @ghost ' + val.fromNodeId + ' ' + val.toNodeId + labelPart);
+});
+```
+
+**DiagramService: service.ts**
+
+Add ghost CRUD methods following modifyAnnotation pattern:
 
 ```typescript
-// New tools to register in src/mcp/tools.ts
+async getGhosts(filePath: string): Promise<Map<string, GhostAnnotation>> {
+  const resolved = this.resolvePath(filePath);
+  const raw = await readFile(resolved, 'utf-8');
+  return parseAllAnnotations(raw).ghosts;
+}
 
-// Tool: start_session
-// Input: { diagramFile: string }
-// Output: { sessionId: string }
+async setGhost(filePath: string, fromNodeId: string, toNodeId: string, label?: string): Promise<void> {
+  return this.modifyAnnotation(filePath, (data) => {
+    const key = `${fromNodeId}->${toNodeId}`;
+    data.ghosts.set(key, { fromNodeId, toNodeId, label });
+  });
+}
 
-// Tool: record_step
-// Input: { sessionId: string, nodeId: string, action: string, metadata?: object }
-// Output: { ok: true }
+async removeGhost(filePath: string, fromNodeId: string, toNodeId: string): Promise<void> {
+  return this.modifyAnnotation(filePath, (data) => {
+    data.ghosts.delete(`${fromNodeId}->${toNodeId}`);
+  });
+}
 
-// Tool: record_ghost_path
-// Input: { sessionId: string, fromNodeId: string, toNodeId: string, reason: string }
-// Output: { ok: true }
-
-// Tool: end_session
-// Input: { sessionId: string }
-// Output: { summary: { nodesVisited: number, edgesTraversed: number, ghostPaths: number } }
+async clearGhosts(filePath: string): Promise<void> {
+  return this.modifyAnnotation(filePath, (data) => {
+    data.ghosts.clear();
+  });
+}
 ```
+
+Update `AnnotationData` interface (line 13-20) to include `ghosts: Map<string, GhostAnnotation>`.
+Update `readAllAnnotations` (line 53-59) to read ghosts.
+Update `_writeDiagramInternal` (line 128-145) to accept and pass ghosts.
+Update `modifyAnnotation` (line 66-77) to pass data.ghosts.
+
+### Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Backend/frontend regex drift | CRITICAL | Extract test fixtures that both must parse identically |
+| injectAnnotations signature change breaks callers | HIGH | Update all callers atomically in one commit |
+| GhostPathStore removal breaks REST API | MEDIUM | Migrate routes to use DiagramService, keep REST interface identical |
+| Ghost paths accumulate without cleanup | LOW | Cap at 100 ghost annotations per file |
 
 ---
 
-## Ghost Paths and Heatmap Data Flow
+## Fix 2: update_diagram Preserves Annotations
 
-### Ghost Paths (alternative reasoning paths the AI considered but abandoned)
+### Current Behavior (Bug)
 
-```
-AI decides NOT to take path A -> B
-  |
-  v
-Calls record_ghost_path(sessionId, "A", "B", "Requirement changed")
-  |
-  v
-SessionStore saves ghost path event
-  |
-  v
-WebSocket broadcasts to browser
-  |
-  v
-GhostPathRenderer draws dashed edge from A to B
-with tooltip: "Abandoned: Requirement changed"
+```typescript
+// tools.ts line 80 -- the critical bug
+await service.writeDiagram(filePath, content, undefined, statusMap, undefined, riskMap);
 ```
 
-### Heatmap Data (execution frequency visualization)
+`flags: undefined` becomes `new Map()` in injectAnnotations. All existing flags are lost.
+`breakpoints: undefined` means existing breakpoints are lost.
+This is a silent data-destroying bug.
+
+### Fix: Atomic Read-Merge-Write
+
+The fix MUST be atomic -- read and write under the same lock to avoid TOCTOU races. If we read outside the lock and write inside, another operation could modify the file between our read and write.
+
+**New method on DiagramService:**
+
+```typescript
+async updateDiagramPreservingAnnotations(
+  filePath: string,
+  content: string,
+  newStatuses?: Map<string, NodeStatus>,
+  newRisks?: Map<string, RiskAnnotation>,
+  newGhosts?: Map<string, GhostAnnotation>,
+): Promise<void> {
+  return this.withWriteLock(filePath, async () => {
+    // Read existing annotations (ignore errors for new files)
+    let existingFlags = new Map<string, Flag>();
+    let existingBreakpoints = new Set<string>();
+    let existingGhosts = new Map<string, GhostAnnotation>();
+    try {
+      const data = await this.readAllAnnotations(filePath);
+      existingFlags = data.flags;
+      existingBreakpoints = data.breakpoints;
+      existingGhosts = data.ghosts;
+    } catch { /* new file, no existing annotations */ }
+
+    // Merge: new overrides by key, existing preserved
+    const mergedGhosts = new Map([...existingGhosts, ...(newGhosts ?? new Map())]);
+
+    await this._writeDiagramInternal(
+      filePath, content,
+      existingFlags,       // PRESERVED from file
+      newStatuses,          // MCP OVERRIDES
+      existingBreakpoints,  // PRESERVED from file
+      newRisks,             // MCP OVERRIDES
+      mergedGhosts,         // MERGED: existing + new
+    );
+  });
+}
+```
+
+**Update tools.ts to use new method:**
+
+```typescript
+// Replace line 80:
+await service.updateDiagramPreservingAnnotations(
+  filePath, content, statusMap, riskMap, ghostMap,
+);
+```
+
+### Why readAllAnnotations Must Stay Private
+
+`readAllAnnotations` is private because it returns raw internal data. The new `updateDiagramPreservingAnnotations` lives on DiagramService itself, accessing the private method directly. No visibility change needed.
+
+### Risk Assessment
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| TOCTOU race without atomic read-write | HIGH | Fixed: uses withWriteLock |
+| Nested lock deadlock | HIGH | Uses _writeDiagramInternal (no lock) inside locked context |
+| Statuses/risks from MCP overwriting old | MEDIUM | By design: MCP is authoritative for statuses/risks |
+
+---
+
+## Fix 3: /save Through DiagramService
+
+### Current Behavior (Bug)
+
+```typescript
+// file-routes.ts lines 49-51 -- bypasses write lock
+const resolved = resolveProjectPath(projectDir, body.filename);
+await mkdir(path.dirname(resolved), { recursive: true });
+await writeFile(resolved, body.content, 'utf-8');
+```
+
+If the browser saves while MCP update_diagram is writing, both writes hit the filesystem without coordination. Data loss.
+
+### Fix: writeRaw Method
+
+The browser sends FULL content including annotations. We cannot route through `writeDiagram` because it would strip and re-inject annotations (destroying the exact user content). We need a raw write under the lock.
+
+```typescript
+// New method on DiagramService:
+async writeRaw(filePath: string, content: string): Promise<void> {
+  return this.withWriteLock(filePath, async () => {
+    const resolved = this.resolvePath(filePath);
+    await mkdir(dirname(resolved), { recursive: true });
+    await writeFile(resolved, content, 'utf-8');
+  });
+}
+```
+
+Then in file-routes.ts:
+
+```typescript
+// Replace lines 49-51 with:
+await service.writeRaw(body.filename, body.content);
+```
+
+Write lock serialization without annotation processing. The browser is the authority on content when saving via /save.
+
+---
+
+## Fix 4: Auto-Tracking for Heatmap
+
+### Current State
+
+Heatmap only gets data when MCP sessions are explicitly started/recorded/ended. Browser interactions generate zero heatmap data. The heatmap is always empty for typical users.
+
+### New Module: `static/interaction-tracker.js`
+
+Separate from `heatmap.js` (which handles visualization). The tracker handles data collection.
 
 ```
-AI visits node "step_3" for the 5th time
+Browser (interaction-tracker.js)
+  |
+  | Passive listeners on #preview container:
+  |   - click on .node/.smartb-node -> increment count
+  |   - pointerenter + 500ms dwell -> increment count
+  |
+  | Accumulates counts in local Map: { nodeId: number }
+  |
+  | Every 30 seconds (or on file switch):
+  v
+POST /api/heatmap/:file/increment  { counts: { nodeId: count, ... } }
   |
   v
-Calls record_step(sessionId, "step_3", "revisit")
+Server: sessionStore.mergeHeatmapCounts(file, counts)
   |
   v
-SessionStore increments visit count for step_3
+Write to .smartb/heatmap.json
   |
   v
-WebSocket broadcasts { type: 'heatmap:update', data: { step_3: 5 } }
-  |
-  v
-HeatmapOverlay updates step_3's fill opacity from 0.3 to 0.8
-(cold blue -> warm red gradient based on relative frequency)
+broadcast('default', { type: 'heatmap:update', file, data })
 ```
 
-### Data Aggregation
-
-Heatmap data is aggregated across all sessions for a given diagram file. The REST endpoint `GET /api/sessions/heatmap/:file` returns:
+**Server-side storage format (`.smartb/heatmap.json`):**
 
 ```json
 {
-  "step_1": 12,
-  "step_2": 8,
-  "step_3": 5,
-  "step_4": 1,
-  "decision_point": 15
+  "diagrams/plan.mmd": { "A": 15, "B": 8, "C": 3 },
+  "diagrams/flow.mmd": { "step1": 22 }
 }
 ```
 
-The browser normalizes these counts to 0..1 range for color mapping.
+Also emit via EventBus for cross-module tracking:
+
+```javascript
+// In annotations.js onFlagsChanged():
+if (window.SmartBEventBus) {
+    SmartBEventBus.emit('tracking:node-touched', { nodeId: nodeInfo.id });
+}
+
+// In diagram-editor.js applyEdit():
+if (window.SmartBEventBus) {
+    SmartBEventBus.emit('tracking:node-touched', { nodeId: editedNodeId });
+}
+```
+
+The tracker listens to these events plus direct click/hover interactions.
 
 ---
 
-## WebSocket Protocol Extensions
+## Fix 5: Project-Scoped Ghost Path Broadcast
 
-### New Message Types
+### Current Bug
 
-| Message Type | Direction | Payload | Purpose |
-|-------------|-----------|---------|---------|
-| `graph:update` | Server -> Client | `{ file, graph: SerializedGraphModel }` | Full graph model update (replaces `file:changed` for custom renderer clients) |
-| `session:event` | Server -> Client | `{ sessionId, event: SessionEvent }` | Real-time session recording event |
-| `heatmap:update` | Server -> Client | `{ file, data: Record<string, number> }` | Incremental heatmap count update |
-| `ghost:added` | Server -> Client | `{ file, ghostPath: GhostPath }` | New ghost path added |
-| `node:moved` | Client -> Server | `{ file, nodeId, x, y }` | User dragged a node (future) |
+`broadcastAll()` sends to ALL namespaces. Ghost paths for project A leak into project B.
 
-### Backward Compatibility
+### Fix
 
-The existing `file:changed` message continues to be sent alongside `graph:update`. This ensures:
-- VS Code extension works without changes initially
-- Browser UI can fall back to Mermaid rendering for unsupported types
-- Third-party consumers of the WebSocket API continue to work
+Replace `broadcastAll()` with `broadcast('default', ...)` for all non-global messages:
 
-New clients should prefer `graph:update` when available. The server sends both during the transition period.
+```
+src/server/ghost-path-routes.ts  -- lines 56, 84
+src/mcp/tools.ts                  -- lines 87, 103, 329, 342, 397
+src/mcp/session-tools.ts          -- lines 62, 117, 170, 210
+```
+
+Hardcoding `'default'` is acceptable because multi-project is not a current use case. Can be parameterized in v3 by threading project name through the MCP tool options.
 
 ---
 
-## MCP Tool Extensions
+## CSS Splitting
 
-### New Tools
+**Component:** `static/main.css` (577 lines, exceeds 500-line limit)
+**Change type:** File reorganization (no new architecture)
 
-| Tool | Input | Purpose |
-|------|-------|---------|
-| `start_session` | `{ diagramFile }` | Begin recording AI reasoning session |
-| `record_step` | `{ sessionId, nodeId, action, metadata? }` | Record a step in the reasoning process |
-| `record_ghost_path` | `{ sessionId, fromNodeId, toNodeId, reason }` | Record an abandoned reasoning path |
-| `end_session` | `{ sessionId }` | End recording, compute summary |
-| `get_heatmap` | `{ diagramFile }` | Get aggregated visit counts |
-| `get_sessions` | `{ diagramFile }` | List all sessions for a diagram |
+```
+BEFORE (1 file, 577 lines):
+  main.css: topbar + toolbar + zoom + toast + kbd + help + breadcrumb
+            + collapse notice + focus mode + context menu + selection
+            + sidebar tabs + MCP session cards
 
-### Existing Tools (unchanged)
+AFTER (4 files):
+  main.css:          ~210 lines (reset, body, toast, kbd, help, collapse, focus, selection, tabs)
+  toolbar.css:       ~160 lines (topbar, toolbar groups, buttons, badges, workspace, status)
+  context-menu.css:  ~30 lines  (context menu, items, separators, risk colors)
+  mcp-sessions.css:  ~90 lines  (session cards, headers, file lists, dividers, empty state)
+```
 
-All 5 existing MCP tools (`update_diagram`, `read_flags`, `get_diagram_context`, `update_node_status`, `get_correction_context`) remain unchanged. They continue to work on .mmd text and the DiagramService handles the translation.
-
----
-
-## VS Code Extension Impact
-
-### Phase 1: No Changes (Mermaid fallback)
-
-Initially, the VS Code extension continues using Mermaid.js for rendering. The existing WebSocket messages (`file:changed`) still work. This means the extension gets none of the interactive features (drag, heatmap, ghost paths) but remains functional.
-
-### Phase 2: Shared Renderer
-
-When the custom renderer is stable, the VS Code webview is updated to use it:
-
-1. Bundle `graph-model.js`, `layout-engine.js`, `svg-renderer.js` as webview assets
-2. Listen for `graph:update` WS messages instead of `file:changed`
-3. Render using custom renderer instead of Mermaid
-4. Add heatmap overlay toggle to webview UI
-
-**Key constraint:** The VS Code webview is sandboxed. It cannot load npm packages directly. The renderer modules must be browser-compatible vanilla JS (which they are, since they also run in live.html).
-
-### Phase 3: Interactive Features in VS Code
-
-Add interaction capabilities to the VS Code webview:
-- Click-to-flag (already exists)
-- Heatmap overlay toggle
-- Ghost path visibility toggle
-- Session replay controls (play/pause/step)
-
-Drag-and-drop is intentionally NOT added to VS Code (the sidebar panel is too small for meaningful node dragging; that is a browser-only feature).
+No CSS specificity changes needed -- all selectors are flat class-based (`.toolbar-btn`, `.context-menu-item`, `.mcp-session-card`). No nesting or combinators affected by file ordering.
 
 ---
 
-## Build Order
+## Coupling Risk Matrix
 
-The dependency chain dictates this build order. Each step produces a usable intermediate state.
+| Coupling Point | Components | Risk Level | Why Dangerous |
+|----------------|------------|------------|---------------|
+| **Annotation regex sync** | annotations.ts + annotations.js | CRITICAL | Any drift = data corruption. Backend writes format that frontend cannot read. |
+| **injectAnnotations signature** | annotations.ts + service.ts + tools.ts + annotations.js | HIGH | Adding ghosts parameter touches the core write path. All callers must update. |
+| **GhostPathStore removal** | ghost-store.ts + ghost-path-routes.ts + tools.ts + app-init.js | HIGH | Must replace all 4 consumers atomically. Partial migration = inconsistent state. |
+| **Write lock integration** | file-routes.ts + service.ts | MEDIUM | Must not deadlock. Never nest withWriteLock on same file. |
+| **Heatmap endpoint** | session-routes.ts + interaction-tracker.js | LOW | New additive endpoint. Existing heatmap consumers unchanged. |
+| **broadcastAll -> broadcast** | tools.ts + session-tools.ts + ghost-path-routes.ts | LOW | Mechanical replacement. All callers pattern-identical. |
 
-### Step 1: Graph Model + Parser + Serializer (server-side)
+### The Critical Coupling: Backend/Frontend Annotation Sync
 
-**Build:** `graph-model.ts`, `mermaid-parser.ts`, `mermaid-serializer.ts`
-**Test:** Round-trip: parse -> model -> serialize -> parse -> compare
-**Depends on:** Nothing new (uses existing types and patterns)
-**Validates:** .mmd parsing correctness, model completeness
-**Outcome:** Server can produce GraphModel from .mmd files
+The annotation format is duplicated between `src/diagram/annotations.ts` and `static/annotations.js`. Both define:
+- The same regex patterns (FLAG, STATUS, BREAKPOINT, RISK -- and now GHOST)
+- The same ANNOTATION_START / ANNOTATION_END markers
+- The same parse / strip / inject functions
 
-### Step 2: Layout Engine (browser-side)
+Adding @ghost means adding a 5th regex, ghost parsing, and ghost serialization to BOTH files. They must produce byte-identical output for the same input.
 
-**Build:** `layout-engine.js` (dagre wrapper)
-**Test:** Layout a simple graph, verify positions are reasonable
-**Depends on:** Step 1 (GraphModel type definition)
-**Validates:** dagre integration, position computation
-**Outcome:** Browser can compute node positions from a GraphModel
+**Mitigation strategy:**
+1. Write the backend implementation first
+2. Write a test that serializes ghost annotations and verifies the exact output format
+3. Copy the exact regex and format strings to the frontend
+4. Create a shared test fixture .mmd file that both backend tests and manual browser testing use
 
-### Step 3: SVG Renderer (browser-side)
+---
 
-**Build:** `svg-renderer.js`
-**Test:** Render a positioned graph to SVG, compare visually with Mermaid output
-**Depends on:** Steps 1 + 2
-**Validates:** SVG generation, visual correctness
-**Outcome:** Browser can render a diagram without Mermaid
+## Safe Integration Order
 
-### Step 4: Integration (wire up server + browser)
+### Dependency Graph
 
-**Build:** New REST endpoint (`/api/graph/:file`), update WS to send `graph:update`, update live.html to use custom renderer
-**Test:** File change -> graph model -> WS -> browser render (end-to-end)
-**Depends on:** Steps 1-3
-**Validates:** Full data flow works
-**Outcome:** live.html renders diagrams using custom renderer
+```
+Fix 5 (broadcast scoping)  --- independent, no dependencies
+         |
+Fix 3 (/save write lock)   --- independent, no dependencies
+         |
+Fix 1 (@ghost annotations) --- core change, Fix 2 depends on this
+         |
+Fix 2 (preserve annotations) -- depends on Fix 1 (needs ghost field)
+         |
+Fix 4 (auto-tracking)      --- independent of 1-3
+```
 
-### Step 5: Interaction Manager (drag/select)
+### Recommended Build Order
 
-**Build:** `interaction-manager.js`, position metadata `.smartb/positions/`
-**Test:** Drag a node, verify it moves, verify edges update
-**Depends on:** Step 4
-**Validates:** Drag mechanics, edge re-routing
-**Outcome:** Users can drag nodes in the browser
+**Phase A: Zero-Risk Mechanical Fixes (do first)**
 
-### Step 6: live.html Refactor
+1. **Fix 5: Project-scoped broadcast** -- Pure find-and-replace. Grep for broadcastAll, replace with broadcast('default', ...).
 
-**Build:** Extract inline JS from live.html into modules, reduce to ~200 line shell
-**Test:** All existing features still work (regression)
-**Depends on:** Step 4 (custom renderer is in place)
-**Validates:** No regressions from refactor
-**Outcome:** live.html is maintainable, under 500 lines
+2. **Fix 3: /save through DiagramService** -- Add writeRaw method, change one line in file-routes.ts.
 
-### Step 7: Session Store + MCP Tools
+**Phase B: Core Annotation Extension (highest risk, highest value)**
 
-**Build:** `session-store.ts`, new MCP tools, new REST endpoints
-**Test:** AI agent records a session via MCP, data persists in .smartb/
-**Depends on:** Step 4 (graph model exists for node references)
-**Validates:** Session recording, data persistence
-**Outcome:** AI agents can record reasoning sessions
+3. **Fix 1: @ghost annotation system** -- Must be atomic across backend and frontend. Sub-order:
+   - a. Add GHOST_REGEX + ghost parsing to annotations.ts
+   - b. Add ghost serialization to injectAnnotations in annotations.ts
+   - c. Update AllAnnotations interface to include ghosts
+   - d. Update _writeDiagramInternal and injectAnnotations to accept ghosts
+   - e. Add getGhosts/setGhost/removeGhost to DiagramService
+   - f. Write backend tests
+   - g. Mirror all regex/parsing/serialization changes in annotations.js
+   - h. Update ghost-path-routes.ts to use DiagramService instead of GhostPathStore
+   - i. Update tools.ts ghost path handling
+   - j. Update ghost-paths.js to read from annotations state
 
-### Step 8: Heatmap + Ghost Path Overlays
+4. **Fix 2: update_diagram preserves annotations** -- Add updateDiagramPreservingAnnotations to DiagramService. Update tools.ts.
 
-**Build:** `heatmap-overlay.js`, `ghost-path-renderer.js`
-**Test:** Session data renders as visual overlays
-**Depends on:** Steps 3 + 7
-**Validates:** Visual overlays, color mapping
-**Outcome:** Users can see AI reasoning patterns visually
+**Phase C: Browser Enhancement (independent)**
 
-### Step 9: VS Code Extension Update
+5. **Fix 4: Auto-tracking for heatmap** -- New interaction-tracker.js module, server endpoint, EventBus wiring.
 
-**Build:** Update webview to use custom renderer, add overlay toggles
-**Test:** Diagram renders in VS Code sidebar with custom renderer
-**Depends on:** Steps 3 + 4 (renderer is stable)
-**Validates:** Webview integration, asset bundling
-**Outcome:** VS Code extension uses custom renderer
+**Phase D: Polish**
+
+6. **CSS splitting** -- Pure file reorganization. No functional impact.
+
+### Why This Order
+
+- **Fix 5 first** because trivially safe. Reduces noise in testing.
+- **Fix 3 second** because it establishes write-lock discipline for safer testing of subsequent fixes.
+- **Fix 1 third** because it is the foundation. Fix 2 cannot be done correctly without ghost annotations in the system.
+- **Fix 2 fourth** because it requires the full annotation system (including ghosts).
+- **Fix 4 last** because purely additive, no dependencies on other fixes.
+- **CSS splitting** any time, completely independent.
+
+---
+
+## Data Flow Diagrams
+
+### Current: Ghost Path Flow (Broken)
+
+```
+MCP: record_ghost_path          Browser: Create Ghost Path
+         |                              |
+    GhostPathStore.add()         POST /api/ghost-paths/:file
+         |                              |
+    broadcastAll(ghost:update)   GhostPathStore.add()
+         |                       broadcastAll(ghost:update)
+         v                              |
+    ALL browsers get update             v
+    (including wrong projects)    ALL browsers get update
+                                         |
+                                  SERVER RESTART
+                                         |
+                                  ALL GHOST PATHS LOST
+```
+
+### Target: Ghost Path Flow (Fixed)
+
+```
+MCP: update_diagram              Browser: Create Ghost Path
+  (with ghostPaths param)              |
+         |                       SmartBAnnotations state update
+    DiagramService                 (ghosts Map)
+      .updateDiagramPreserving         |
+      Annotations()              injectAnnotations()
+         |                         (includes @ghost lines)
+    writeFile (atomic,                  |
+      under lock)                POST /save (full content)
+         |                              |
+    FileWatcher triggers         DiagramService.writeRaw()
+         |                         (under write lock)
+    broadcast('default',                |
+      file:changed)              FileWatcher triggers
+         |                              |
+         v                       broadcast('default',
+    Correct project browsers       file:changed)
+    parse @ghost from content           |
+         |                              v
+    Ghost paths rendered         Ghost paths rendered
+    from annotation state        from annotation state
+         |                              |
+    PERSISTED IN .mmd FILE       PERSISTED IN .mmd FILE
+    (survives restart)           (survives restart)
+```
+
+### Target: update_diagram Annotation Preservation
+
+```
+MCP: update_diagram(filePath, newContent, statuses, risks, ghosts)
+         |
+    DiagramService.updateDiagramPreservingAnnotations()
+         |
+    withWriteLock(filePath, async () => {
+         |
+         +-- readAllAnnotations(filePath)
+         |     -> existingFlags, existingBreakpoints, existingGhosts
+         |
+         +-- merge:
+         |     flags = existingFlags             (PRESERVED)
+         |     breakpoints = existingBreakpoints (PRESERVED)
+         |     statuses = newStatuses ?? existing (MCP OVERRIDES)
+         |     risks = newRisks ?? existing       (MCP OVERRIDES)
+         |     ghosts = {...existing, ...new}     (MERGED)
+         |
+         +-- _writeDiagramInternal(filePath, newContent, merged...)
+    })
+```
+
+---
+
+## Patterns to Follow
+
+### Pattern 1: Annotation Read-Modify-Write via modifyAnnotation()
+
+**What:** The `DiagramService.modifyAnnotation()` private method encapsulates the read-modify-write cycle for annotations.
+
+**When:** Any time an annotation is added, updated, or removed.
+
+**Why:** Handles write locking, file reading, annotation parsing, and re-injection in a single atomic operation.
+
+**Example (existing, from service.ts line 66-77):**
+
+```typescript
+private async modifyAnnotation(
+  filePath: string,
+  modifyFn: (data: AnnotationData) => void,
+): Promise<void> {
+  return this.withWriteLock(filePath, async () => {
+    const data = await this.readAllAnnotations(filePath);
+    modifyFn(data);
+    await this._writeDiagramInternal(
+      filePath, data.mermaidContent, data.flags, data.statuses,
+      data.breakpoints, data.risks, data.ghosts,  // ADD data.ghosts
+    );
+  });
+}
+```
+
+All ghost CRUD methods use modifyAnnotation exactly like setFlag, setStatus, setBreakpoint, setRisk.
+
+### Pattern 2: IIFE Module with Global Export
+
+**What:** All browser-side modules follow the IIFE pattern with a `window.*` export.
+
+**When:** Adding any new browser-side functionality.
+
+```javascript
+(function() {
+    'use strict';
+    var state = {};
+    function init() { /* ... */ }
+    window.SmartBModuleName = { init: init };
+})();
+```
+
+### Pattern 3: Event Bus Integration
+
+**What:** Modules hook into SmartBEventBus for lifecycle events like `diagram:rendered`.
+
+**When:** A module needs to respond to diagram re-renders.
+
+```javascript
+function init() {
+    if (window.SmartBEventBus) {
+        SmartBEventBus.on('diagram:rendered', onDiagramRendered);
+    }
+}
+```
 
 ---
 
 ## Anti-Patterns to Avoid
 
-### Anti-Pattern 1: Dual Source of Truth
-**What:** Keeping both .mmd text AND GraphModel as independent sources that can diverge.
-**Why bad:** Leads to sync bugs where visual state disagrees with file content.
-**Instead:** GraphModel is always derived from .mmd text. Mutations go through model -> serialize -> save -> re-parse loop. The .mmd file is the persistent source of truth; the GraphModel is a runtime projection.
+### Anti-Pattern 1: Partial Ghost Migration
 
-### Anti-Pattern 2: Direct SVG DOM Manipulation for Structural Changes
-**What:** Adding/removing nodes by directly creating/deleting SVG elements without updating the GraphModel.
-**Why bad:** The SVG becomes inconsistent with the model. Next full render will "undo" the visual change.
-**Instead:** All structural changes (add/remove node/edge) go through GraphModel first, then re-render. Only cosmetic changes (drag position, highlight) can be applied directly to SVG.
+**What:** Migrating ghost paths to annotations in some code paths but leaving GhostPathStore in others.
 
-### Anti-Pattern 3: Blocking Layout in the Render Loop
-**What:** Computing dagre layout synchronously in the main thread on every update.
-**Why bad:** dagre layout for 100+ nodes can take 50-200ms, causing visible jank.
-**Instead:** Use requestAnimationFrame or a Web Worker for layout computation. Cache layout results and only recompute when the graph structure changes (not on cosmetic updates).
+**Why bad:** Ghost paths exist in two places. Some operations read from annotations, others from GhostPathStore. User sees inconsistent data.
 
-### Anti-Pattern 4: Sending Full GraphModel on Every WS Update
-**What:** Broadcasting the entire serialized GraphModel (could be 50KB+) on every file change.
-**Why bad:** Wastes bandwidth, causes slow updates for large diagrams.
-**Instead:** Send deltas when possible (node added, edge removed). Fall back to full model only when needed (initial load, major restructure).
+**Instead:** Remove GhostPathStore entirely. All ghost operations go through DiagramService.
 
-### Anti-Pattern 5: Coupling Session Data to .mmd Files
-**What:** Storing heatmap counts and ghost paths inside the .mmd file as annotations.
-**Why bad:** Pollutes the diagram source with runtime data. AI tools would need to re-write the file constantly. Multiple sessions would conflict.
-**Instead:** Session data lives in `.smartb/` sidecar directory. The .mmd file contains only diagram structure and flags/statuses.
+### Anti-Pattern 2: Reading Outside Write Lock (TOCTOU)
 
-### Anti-Pattern 6: Building Custom Renderer for All Diagram Types
-**What:** Implementing custom renderers for sequence diagrams, ER diagrams, gantt charts, etc.
-**Why bad:** Massive scope expansion. These diagram types have fundamentally different layout algorithms. Mermaid handles them well.
-**Instead:** Custom renderer for flowchart/graph only. Mermaid fallback for everything else. This covers the primary AI observability use case.
+**What:** Reading file annotations, then calling writeDiagram separately.
+
+**Why bad:** Between read and write, another operation could modify the file. The write overwrites those changes.
+
+**Instead:** Always use withWriteLock or methods that internally use it (modifyAnnotation, updateDiagramPreservingAnnotations).
+
+### Anti-Pattern 3: Frontend State as Source of Truth
+
+**What:** Treating the browser's in-memory annotation state as authoritative over the file.
+
+**Why bad:** Browser crashes lose unsaved state. Multiple tabs have divergent state.
+
+**Instead:** The .mmd file is always the source of truth. Browser state is a cache.
+
+### Anti-Pattern 4: Ghost Parsing Without Tests
+
+**What:** Copying the regex to the frontend and assuming it works.
+
+**Why bad:** Subtle typos in serialization format cause parse failures.
+
+**Instead:** Test fixtures with @ghost annotations. Verify round-trip: serialize -> parse -> serialize = identical.
+
+### Anti-Pattern 5: Nested Write Locks
+
+**What:** Calling a write-locked method from within another write-locked context.
+
+**Why bad:** Deadlock. Inner call waits for outer lock, outer lock waits for inner call.
+
+**Instead:** Use _writeDiagramInternal (no lock) when already inside a locked context.
+
+### Anti-Pattern 6: Ghost Paths in Sidecar File
+
+**What:** Storing ghost paths in `.smartb/ghost-paths.json` instead of in the `.mmd` annotation block.
+
+**Why bad:** Dual source of truth. File rename/move/copy breaks the sidecar.
+
+**Instead:** Use the annotation block. Ghost paths are diagram metadata, like flags and risks.
+
+### Anti-Pattern 7: Real-Time Interaction Streaming via WebSocket
+
+**What:** Sending every click/hover to the server in real-time via WebSocket.
+
+**Why bad:** Massive traffic for data that only needs aggregation.
+
+**Instead:** Accumulate counts client-side, flush via HTTP POST every 30 seconds.
 
 ---
 
 ## Scalability Considerations
 
-| Concern | At 50 nodes | At 200 nodes | At 1000 nodes |
-|---------|-------------|--------------|---------------|
-| Layout time | <10ms (dagre) | 50-100ms (dagre) | 500ms+ (consider Web Worker) |
-| SVG render | <5ms | 20-50ms | 100ms+ (virtualize off-screen nodes) |
-| WS payload | ~5KB | ~20KB | ~100KB (use delta updates) |
-| Session events | In-memory | In-memory + periodic flush | Stream to disk immediately |
-| Heatmap overlay | Direct apply | Direct apply | Batch apply with requestAnimationFrame |
+| Concern | Current State | v2.1 Impact |
+|---------|--------------|-------------|
+| Ghost path count per file | Max 100 in-memory | Same limit for persisted annotations (100 @ghost lines max) |
+| Annotation block size | ~20 lines typical | Up to ~120 lines with max ghost paths. Negligible I/O impact |
+| Heatmap data accumulation | Session-only (bounded) | Continuous browser tracking. Needs periodic reset or cap |
+| CSS load time | 8 files, ~1732 lines | 11 files, same total lines. HTTP/2 multiplexing handles it |
+| Write lock contention | Rare (MCP only) | More frequent (browser save + MCP + ghost writes). Promise chain handles gracefully |
 
-### Web Worker Strategy (for 200+ nodes)
+### Heatmap Data Growth Mitigation
 
-Move layout computation to a Web Worker to avoid blocking the main thread:
+Browser interaction tracking is continuous -- counts grow over days/weeks:
+1. Cap counts at 10000 per node (sufficient for relative heatmap intensity)
+2. Add `smartb cleanup --heatmap` CLI command (defer to later milestone)
+3. Store timestamp with data for future "last 7 days" filtering
 
-```javascript
-// layout-worker.js
-self.onmessage = function(e) {
-  var graph = e.data.graph;
-  var options = e.data.options;
-  var positioned = computeLayout(graph, options);
-  self.postMessage({ graph: positioned });
-};
-```
+---
 
-The main thread sends the graph model to the worker, and receives positioned results asynchronously. The renderer applies positions when available.
+## Test Strategy
+
+### Unit Tests (vitest)
+
+| Test | File | What to Verify |
+|------|------|---------------|
+| Ghost regex parsing | test/diagram/annotations.test.ts | @ghost with label, without label, edge cases |
+| Ghost round-trip | test/diagram/annotations.test.ts | parse(inject(content, ghosts)) === original ghosts |
+| Ghost in parseAllAnnotations | test/diagram/annotations.test.ts | Ghosts alongside flags/statuses/etc. |
+| DiagramService ghost CRUD | test/diagram/service.test.ts | setGhost, getGhosts, removeGhost |
+| update_diagram preserves flags | test/mcp/tool-handlers.test.ts | Write flagged file, update_diagram, flags present |
+| update_diagram preserves breakpoints | test/mcp/tool-handlers.test.ts | Same for breakpoints |
+| writeRaw under lock | test/server/file-routes.test.ts | Concurrent writeRaw + writeDiagram serialize |
+| broadcast scoping | test/server/websocket.test.ts | broadcast('default', msg) only reaches default |
+
+### Integration Tests (manual or E2E)
+
+| Scenario | Steps | Expected |
+|----------|-------|----------|
+| Ghost persistence | Create ghost -> restart server -> load file | Ghost visible |
+| MCP preserves flags | Set flag in browser -> update_diagram via MCP | Flags still present |
+| /save race condition | Rapidly save from browser while MCP updates | No data corruption |
+| Heatmap auto-tracking | Click nodes in browser | Non-zero heatmap counts |
+| Cross-project isolation | Open 2 projects, create ghost in A | Ghost NOT in B |
 
 ---
 
 ## Sources
 
-- [dagrejs/dagre - GitHub](https://github.com/dagrejs/dagre) -- layout algorithm
-- [dagre API Reference](https://github.com/dagrejs/dagre/wiki) -- dagre graph API
-- [graphlib API Reference](https://github.com/dagrejs/graphlib/wiki/API-Reference) -- underlying graph library
-- [kieler/elkjs - GitHub](https://github.com/kieler/elkjs) -- alternative layout engine (not recommended for initial implementation)
-- [ELK JSON Format](https://eclipse.dev/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html) -- elkjs I/O format reference
-- [@mermaid-js/parser - npm](https://www.npmjs.com/package/@mermaid-js/parser) -- official parser (does NOT support flowchart)
-- [Mermaid Layout Engines](https://mermaid.ai/open-source/config/layouts.html) -- how Mermaid uses dagre internally
-- [SVG Interactive Dragging](https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/) -- vanilla JS SVG drag pattern
-- [Graphviz Visual Editor](https://deepwiki.com/magjac/graphviz-visual-editor) -- bidirectional text/visual editor reference
-- [Terrastruct D2](https://terrastruct.com/) -- bidirectional diagram editor reference architecture
-- [ReTrace: Interactive Visualizations for Reasoning Traces](https://arxiv.org/pdf/2511.11187) -- AI reasoning trace visualization
+- Direct codebase analysis (HIGH confidence -- all verified against source)
+- `src/diagram/annotations.ts` -- annotation parsing/serialization (197 lines)
+- `src/diagram/service.ts` -- DiagramService write lock pattern (247 lines)
+- `src/diagram/types.ts` -- type definitions including GhostPath (82 lines)
+- `src/server/ghost-store.ts` -- GhostPathStore in-memory (37 lines)
+- `src/server/ghost-path-routes.ts` -- REST API for ghost paths (93 lines)
+- `src/server/file-routes.ts` -- POST /save handler (162 lines)
+- `src/server/server.ts` -- server setup (323 lines)
+- `src/server/websocket.ts` -- WebSocketManager (126 lines)
+- `src/mcp/tools.ts` -- MCP tool handlers (478 lines)
+- `src/mcp/session-tools.ts` -- session MCP tools (234 lines)
+- `src/mcp/schemas.ts` -- Zod input schemas (168 lines)
+- `src/watcher/file-watcher.ts` -- native fs.watch (87 lines)
+- `static/annotations.js` -- frontend annotation system (350 lines)
+- `static/ghost-paths.js` -- frontend ghost path rendering (388 lines)
+- `static/diagram-editor.js` -- visual diagram editor (368 lines)
+- `static/ws-handler.js` -- WebSocket message routing (113 lines)
+- `static/app-init.js` -- bootstrap and initialization (471 lines)
+- `test/mcp/tool-handlers.test.ts` -- MCP tool tests (641 lines)
+- [IntersectionObserver API (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/IntersectionObserver) -- Browser viewport tracking
+
+---
+*Architecture research for: SmartB Diagrams v2.1 -- Bug Fixes & Usability*
+*Researched: 2026-02-19*

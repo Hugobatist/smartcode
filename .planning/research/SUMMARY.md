@@ -1,177 +1,68 @@
-# Research Summary: SmartB Diagrams v2.0
+# Research Summary: SmartB Diagrams v2.1
 
-**Synthesized:** 2026-02-15
-**Sources:** STACK.md, FEATURES.md, ARCHITECTURE.md, PITFALLS.md
+**Domain:** Bug fixes & usability improvements for Ghost Paths, Heatmap, MCP tools, CSS
+**Researched:** 2026-02-19
+**Overall confidence:** HIGH
+**Previous:** v2.0 research (2026-02-15) covered custom renderer + interactive canvas. This v2.1 is a focused bug-fix milestone.
 
 ---
 
 ## Executive Summary
 
-v2.0 replaces Mermaid.js as a black-box renderer with a custom interactive SVG pipeline, enabling direct manipulation of diagram elements and advanced AI observability features. The core architecture shift: `.mmd file → Custom Parser → GraphModel → dagre layout → Custom SVG Renderer → Interactive DOM`. Mermaid.js remains as fallback for non-flowchart diagram types.
+The v2.1 milestone fixes four specific problems in the existing codebase: (1) ghost paths are lost on server restart because they are stored only in-memory, (2) the `/save` endpoint bypasses the write lock, enabling concurrent corruption, (3) heatmap data requires explicit MCP session recording with no automatic tracking, and (4) `main.css` exceeds the 500-line file limit at 577 lines.
 
-The research identified 6 critical pitfalls, with #1 being "big bang renderer replacement" — all existing UI modules (annotations, search, collapse, editor) are deeply coupled to Mermaid's SVG DOM output. The recommended approach is strangler fig: build new renderer alongside Mermaid, abstract DOM queries first, migrate module by module.
+All four fixes can be implemented with ZERO new npm dependencies. The ghost path persistence extends the existing annotation regex system (which already handles `@flag`, `@status`, `@breakpoint`, and `@risk`). The write lock fix is a 3-line change routing `/save` through the existing `DiagramService.writeDiagram()`. Automatic heatmap tracking uses native browser APIs (`IntersectionObserver`, `PointerEvent`). CSS splitting follows the project's established pattern of one CSS file per component.
 
-Estimated scope: 49-70 developer-days across 15 features. The recommended phasing groups these into Foundation (refactoring + graph model + renderer), Canvas Interactions (select, context menu, edit, undo), AI Observability (breakpoints, ghost paths, heatmap), and Advanced features (session replay, pattern memory).
+The primary risk identified is the **dual annotation parser problem**: the annotation system is duplicated between backend TypeScript (`annotations.ts`) and frontend vanilla JS (`annotations.js`). Adding a 5th annotation type (`@ghost`) requires updating both parsers identically, or ghost paths will be silently destroyed when users interact with flags in the browser. The recommended mitigation is to either (a) update both parsers and add cross-validation tests, or (b) persist ghost paths in `.smartb/ghost-paths.json` instead of the annotation block -- avoiding the parser entirely.
 
-## Stack Decisions
+## Key Findings
 
-| Component | Choice | Rationale |
-|-----------|--------|-----------|
-| Layout engine | **dagre** (not ELK.js) | Same engine Mermaid uses; visual continuity; 30KB vs 1.3MB; synchronous; compound graph support |
-| SVG rendering | **Native SVG DOM API** | No library needed; full control; CSS styling; browser hit testing for free |
-| .mmd parsing | **Custom regex parser** | @mermaid-js/parser does NOT support flowchart (confirmed in validator.ts); extend existing patterns |
-| Heatmap | **simpleheat** (3KB) | Canvas overlay; zero deps; by Mourner (Leaflet/Mapbox) |
-| Undo/redo | **Command pattern** (custom) | Domain-specific commands; ~150 lines; source-tagged (user vs AI) |
-| Session replay | **Custom JSONL event stream** | Lightweight; semantic events not DOM recording; ~50-100 bytes/event |
-| Ghost paths | **SVG + CSS animations** | Dashed paths with opacity; no library needed |
-| Breakpoints | **SVG circles + CSS pulse** | Visual indicator on nodes; extends existing annotation system |
+**Stack:** No new dependencies needed. All fixes use existing Node.js APIs, the existing annotation regex pattern, existing write lock infrastructure, and native browser APIs.
 
-### What NOT to Add
+**Architecture:** No architectural changes. All fixes operate within existing component boundaries. The annotation system extension follows the exact same pattern used for the 4 existing annotation types.
 
-- No React/Vue/Svelte (vanilla JS constraint)
-- No D3.js/Cytoscape.js (too heavy for our needs)
-- No Konva/Fabric.js (Canvas-based; we need SVG)
-- No rrweb (records DOM, not diagram semantics)
-- No ELK.js initially (dagre is sufficient; ELK adds 1.3MB)
+**Critical pitfall:** The frontend annotation parser (`annotations.js`) duplicates the backend parser (`annotations.ts`). Adding `@ghost` to the backend without updating the frontend causes silent data loss -- the frontend's `injectAnnotations()` strips `@ghost` lines whenever the user adds a flag or changes a status. This is the highest-risk issue in the milestone.
 
-## Architecture Shift
+## Implications for Roadmap
 
-### v1 Data Flow (current)
-```
-.mmd text → browser → Mermaid.render() → opaque SVG string → DOM
-```
-**Problem:** No internal graph model. Positions computed by Mermaid's internal dagre, never exposed. No incremental updates. No drag/drop. Collapse is text manipulation.
+Based on research, suggested phase structure:
 
-### v2 Data Flow (target)
-```
-.mmd text → server parses to GraphModel → WebSocket sends graph JSON
-→ browser receives GraphModel → dagre computes positions → custom SVG renderer
-→ interactive SVG in DOM (each element has data-node-id, event handlers)
-```
-**Benefits:** Full control over rendering, incremental updates, hit testing, drag support, overlay system.
+1. **Phase 1: CSS Splitting + Write Safety** -- Zero-risk compliance fix + critical 3-line bug fix
+   - Addresses: `main.css` over 500 lines, `/save` bypassing write lock
+   - Avoids: No pitfalls -- these are independent, low-risk changes
 
-### New Components
+2. **Phase 2: Ghost Path Persistence** -- Core feature fix, requires careful annotation system work
+   - Addresses: Ghost paths lost on server restart, ghost paths not loading on file open
+   - Avoids: Pitfall 2 (frontend parser stripping `@ghost`) by updating BOTH parsers or using `.smartb/` storage
 
-| Component | Location | Purpose |
-|-----------|----------|---------|
-| GraphModel | `src/diagram/graph-model.ts` + `static/core/` | Shared graph representation |
-| MermaidParser | `src/diagram/mermaid-parser.ts` | .mmd → GraphModel |
-| MermaidSerializer | `src/diagram/mermaid-serializer.ts` | GraphModel → .mmd |
-| LayoutEngine | `static/core/layout-engine.js` | dagre wrapper |
-| SVGRenderer | `static/core/svg-renderer.js` | GraphModel → SVG DOM |
-| InteractionManager | `static/core/interaction-manager.js` | Drag/select/edit |
-| ViewportTransform | `static/core/viewport-transform.js` | Screen ↔ graph coords |
-| SessionStore | `src/session/session-store.ts` | Session recording data |
-| HeatmapOverlay | `static/overlays/heatmap-overlay.js` | Execution frequency viz |
-| GhostPathRenderer | `static/overlays/ghost-path-renderer.js` | Discarded path viz |
+3. **Phase 3: Automatic Heatmap Tracking** -- Differentiator feature, new browser module + server endpoint
+   - Addresses: Heatmap requires explicit MCP sessions, no passive data collection
+   - Avoids: Pitfall 7 (requestAnimationFrame feedback loop) by tracking clicks only with 30s flush
 
-### live.html Refactoring (PREREQUISITE)
+**Phase ordering rationale:**
+- CSS splitting and write safety are independent, zero-risk, and should ship first to clean the codebase
+- Ghost path persistence is the core fix but has the highest integration risk (annotation parser duplication). It should be done second with thorough testing
+- Automatic heatmap tracking is additive (new module + endpoint) and benefits from all other fixes being stable. It should be done last
 
-Current state: 1757 lines, monolithic, 5 IIFE modules with `window.*` globals.
+**Research flags for phases:**
+- Phase 2: NEEDS careful implementation. The annotation parser duplication between backend and frontend is the primary risk area. Cross-validation tests are essential.
+- Phase 1 and 3: Standard patterns, unlikely to need additional research.
 
-Target structure:
-```
-static/
-  live.html              ← reduced to ~200 lines (HTML shell + script imports)
-  core/                  ← graph model, layout, renderer, interactions
-  overlays/              ← heatmap, ghost paths, session player
-  ui/                    ← annotations, collapse, search, editor, file-tree
-  styles/                ← CSS files by component
-```
+## Confidence Assessment
 
-## Feature Priority
+| Area | Confidence | Notes |
+|------|------------|-------|
+| Stack | HIGH | Zero new deps. All patterns verified in existing codebase |
+| Features | HIGH | Bug fixes with clear scope. No novel concepts |
+| Architecture | HIGH | No changes to architecture. Extensions of existing patterns |
+| Pitfalls | HIGH | All pitfalls identified from direct codebase analysis |
 
-### Phase A: Foundation (must ship first)
-1. live.html refactoring → ES modules, < 500 lines each
-2. DOM abstraction layer → decouple from Mermaid SVG structure
-3. Graph model + parser + serializer
-4. Custom SVG renderer + dagre layout
-5. Server integration (API + WebSocket for graph model)
+## Gaps to Address
 
-### Phase B: Canvas Interactions
-6. Node selection with visual feedback (blue border, handles)
-7. Context menu (right-click: Edit, Delete, Duplicate, Flag, Connect)
-8. Inline edit (double-click label → contenteditable overlay)
-9. Undo/redo (Command pattern, user-only stack)
-10. Copy/paste/duplicate (Ctrl+C/V/D)
-11. Keyboard shortcuts (Delete, Escape, Ctrl+A)
-
-### Phase C: AI Observability
-12. AI Breakpoints — `%% @breakpoint NodeId`, MCP `check_breakpoints()` tool
-13. Ghost Paths — discarded reasoning branches at 30% opacity, dashed
-14. Risk Heatmap — `%% @risk NodeId high|medium|low "reason"`, color overlay
-
-### Phase D: Advanced
-15. Session Replay — JSONL event stream, timeline scrubber UI
-16. Pattern Memory — flag history learning, fuzzy label matching
-17. Property Panel — right sidebar for node properties
-
-### Deferred to v3
-- Drag-to-reposition with layout persistence
-- Multi-cursor collaboration
-- Executable contract validation
-- Custom shapes beyond Mermaid syntax
-
-## Critical Pitfalls
-
-### 1. Big Bang Renderer Replacement (CRITICAL)
-**Risk:** Replacing Mermaid at once breaks all 5 interaction modules (annotations, search, collapse, editor, diagram-editor).
-**Prevention:** Strangler fig pattern. Build alongside Mermaid. Abstract DOM queries into `DiagramDOM` interface first. Toggle between renderers via `?renderer=canvas`.
-
-### 2. .mmd Round-Trip Fidelity Loss (CRITICAL)
-**Risk:** .mmd doesn't encode positions. User drags node, saves, reloads — node in different position.
-**Prevention:** Sidecar `.smartb/positions/` metadata. Layout pinning for manually positioned nodes. Stable dagre config for deterministic layouts.
-
-### 3. Vanilla JS Complexity Ceiling (CRITICAL)
-**Risk:** live.html already 1757 lines. 5 modules share state via `window.*` globals. Adding canvas interactions exponentially increases complexity.
-**Prevention:** Event bus for inter-module communication. Explicit interaction state machine (IDLE → PANNING → IDLE, IDLE → FLAG_MODE → FLAG_PLACING → IDLE). Single CanvasInteraction class for hit testing + coordinate transforms.
-
-### 4. Layout Engine Performance (MODERATE)
-**Risk:** dagre layout for 100+ nodes: 50-200ms. Blocks main thread during rapid AI updates.
-**Prevention:** Layout debouncing (150ms). Incremental layout for small changes. Web Worker for large graphs. Layout caching by topology hash.
-
-### 5. Undo/Redo in Collaborative System (MODERATE)
-**Risk:** User undo conflicts with AI agent updates arriving via WebSocket.
-**Prevention:** Source-tagged commands (user vs AI vs filesystem). Ctrl+Z only undoes user commands. Separate "Revert AI change" action.
-
-### 6. VS Code / Browser Divergence (MODERATE)
-**Risk:** Two UIs diverge as features added to one but not other.
-**Prevention:** Single rendering core module. CSP-compatible from day one. Keyboard shortcut abstraction map.
-
-## Key Types
-
-```typescript
-interface GraphNode {
-  id: string; label: string;
-  shape: 'rect' | 'rounded' | 'circle' | 'diamond' | 'hexagon' | 'stadium';
-  x?: number; y?: number; width?: number; height?: number;
-  status?: NodeStatus; flag?: Flag; subgraphId?: string;
-  executionCount?: number; breakpoint?: boolean; ghostPath?: boolean;
-}
-
-interface GraphEdge {
-  id: string; from: string; to: string;
-  label?: string; type: 'arrow' | 'open' | 'dotted' | 'thick';
-  executionCount?: number; isGhostPath?: boolean;
-}
-
-interface GraphModel {
-  diagramType: string; direction: 'TB' | 'LR' | 'BT' | 'RL';
-  nodes: Map<string, GraphNode>; edges: GraphEdge[];
-  subgraphs: Map<string, GraphSubgraph>;
-  filePath: string; flags: Map<string, Flag>; statuses: Map<string, NodeStatus>;
-}
-```
-
-## Build Constraints
-
-- Vanilla JS in browser (no React/Vue)
-- All files < 500 lines
-- 131 existing tests must continue passing
-- Backward compatible with existing .mmd files and flags
-- Custom renderer targets flowchart/graph only; Mermaid fallback for others
-- VS Code extension must work with both renderers during transition
+- **Frontend annotation parser sync:** The decision of whether to update the frontend parser (annotations.js) for `@ghost` or use `.smartb/` storage should be made before implementation begins. Both approaches are documented in ARCHITECTURE.md.
+- **Heatmap data growth:** Browser interaction tracking is continuous. A cleanup strategy (cap per node, TTL) should be designed but can be deferred to implementation.
+- **Ghost path count limits:** The in-memory `GhostPathStore` caps at 100 per file. The annotation-based persistence should enforce the same limit to prevent annotation blocks from growing unbounded.
 
 ---
-*Synthesized: 2026-02-15*
-*Ready for roadmap: yes*
+*Research complete. Files ready for roadmap creation.*
+*Researched: 2026-02-19*

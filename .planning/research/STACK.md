@@ -1,333 +1,477 @@
 # Technology Stack
 
-**Project:** SmartB Diagrams v2 -- Interactive Canvas + AI Observability
-**Researched:** 2026-02-15
-**Scope:** NEW stack additions for v2 milestone only. Existing stack (ws, commander, chokidar, zod, MCP SDK, tsup, vitest) is validated and not re-researched.
+**Project:** SmartB Diagrams v2.1 -- Bug Fixes & Usability Improvements
+**Researched:** 2026-02-19
+**Scope:** NO new npm dependencies. Internal patterns only: annotation persistence, write serialization, browser-side interaction tracking, CSS splitting. All solutions use existing stack (Node.js fs, vanilla JS, CSS).
 
 ---
 
-## Recommended Stack Additions
+## Overview: Zero New Dependencies
 
-### Graph Layout Engine
+This milestone adds NO new packages. Every fix uses existing Node.js APIs, the existing annotation regex system, and vanilla browser APIs. The project constraint of minimal dependencies is fully respected.
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **elkjs** | ^0.11.0 | Automatic graph layout (node positioning) | ELK (Eclipse Layout Kernel) is the gold standard for hierarchical/layered graph layout. It replaces Mermaid's internal Dagre-based layout with a far more configurable engine. Supports layered, force, stress, radial, and box algorithms. 8MB unpacked but only the `elk.bundled.js` (~1.2MB minified) is needed in browser. Zero runtime dependencies. Web Worker support for non-blocking layout on large graphs. Used by Mermaid itself via `@mermaid-js/layout-elk`, React Flow, Svelte Flow, Eclipse GLSP, and Sprotty. |
+| Fix Area | Technology | Already Available |
+|----------|-----------|-------------------|
+| Ghost path persistence | `%% @ghost` annotation + existing `parseAllAnnotations` | `node:fs/promises`, existing regex parser |
+| Write safety | Promise-chain write lock (already in DiagramService) | Existing `withWriteLock` pattern |
+| Automatic heatmap tracking | `IntersectionObserver` + `PointerEvent` | Browser native APIs |
+| CSS modularization | Plain CSS file splitting | `<link>` tags in live.html |
 
-**Why ELK.js over alternatives:**
+---
 
-| Engine | Verdict | Reason |
-|--------|---------|--------|
-| **ELK.js** | **USE THIS** | Best hierarchical layout quality. Ports support (future: typed edges). Compound graphs (subgraphs). Web Worker support. Active maintenance (Kiel University). |
-| dagre / @dagrejs/dagre | REJECT | Unmaintained since 2015. Codebase frozen. Limited layout options. No compound graph support. 830KB unpacked but produces inferior layouts for complex diagrams. |
-| d3-force | REJECT | Physics-based, non-deterministic. Produces different layouts each run. Not suitable for AI reasoning diagrams that need stable, reproducible layouts. Good for social networks, bad for flowcharts. |
-| d3-hierarchy | REJECT | Requires single root node. Assigns uniform width/height to all nodes. Too restrictive for our varied diagram types. |
-| Cytoscape.js | REJECT | Full graph visualization framework (280KB+ minified). Includes its own rendering, events, styling. We need layout-only; adding Cytoscape means fighting its rendering system or using it as an overweight layout calculator. |
+## 1. Ghost Path Persistence -- `@ghost` Annotation Format
 
-### .mmd Parsing to Graph Model
+### The Problem
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **@mermaid-js/parser** | ^0.6.3 | Parse .mmd text to AST | Already a devDependency. Produces a structured AST from Mermaid flowchart syntax using Langium (Chevrotain-based lexer/parser). Move to runtime dependency for server-side AST extraction. The AST is the source of truth for building our internal graph model that feeds ELK.js. |
-| **Custom AST-to-ELK transformer** | n/a (built in-house) | Convert Mermaid AST to ELK JSON graph | No library exists for this. Write a ~200-line transformer: `MermaidAST -> { children: ElkNode[], edges: ElkEdge[] }`. Maps node shapes, edge types, subgraph hierarchy to ELK's `children`/`edges`/`layoutOptions` format. |
+Ghost paths are stored only in-memory (`GhostPathStore` -- a `Map<string, GhostPath[]>`). Server restart loses all ghost paths. The MCP `record_ghost_path` tool writes to memory but never touches the `.mmd` file.
 
-**Why not regex parsing:** The existing `src/diagram/parser.ts` uses regex for simple node/edge extraction. This works for annotation injection but is too fragile for full graph model construction. `@mermaid-js/parser` uses a proper grammar (Langium) and handles all Mermaid flowchart syntax edge cases (quoted labels, special characters, nested subgraphs, multiple edge types).
+### The Solution: Extend the Existing Annotation System
 
-**Why not Mermaid's internal parser (mermaid.mermaidAPI.parse):** Requires browser DOM. Cannot run server-side. Also, the internal `parser.yy` API is undocumented and changes between Mermaid versions. `@mermaid-js/parser` is the official, stable, server-side parsing solution.
+Add `%% @ghost` as a new annotation type inside the existing `%% --- ANNOTATIONS ---` block, following the exact same pattern as `@flag`, `@status`, `@breakpoint`, and `@risk`.
 
-### SVG Rendering (Custom Canvas)
+**Format:**
 
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Native SVG DOM API** | n/a (built-in) | Render nodes, edges, labels as SVG elements | No library needed. The browser's native `document.createElementNS('http://www.w3.org/2000/svg', ...)` API is sufficient for creating `<rect>`, `<text>`, `<path>`, `<g>` elements. Vanilla JS constraint means no React/Vue. SVG.js (2.6MB) adds convenience but not enough value for our specific use case where we control all shapes. Custom rendering gives us full control over node appearance, interaction targets, and data attributes for observability features. |
-| **elkjs-svg** | Reference only | SVG generation from ELK JSON | Study its approach (~32KB, zero deps) but do NOT use directly. It produces static SVG without interactivity. Instead, build a custom renderer inspired by its pattern: iterate ELK's layouted JSON, create SVG elements with positions from layout. Our renderer adds interaction handlers, data attributes, CSS classes, and animation support that elkjs-svg lacks. |
-
-**Why not SVG.js / @svgdotjs/svg.js:**
-- 2.6MB unpacked. Adds a fluent API (`draw.rect(100,50).fill('#f06')`) that looks nice but creates an abstraction layer between us and the DOM.
-- Every SVG element becomes a wrapper object. For a diagram with 100+ nodes, that is 100+ wrapper objects we do not need.
-- The native SVG API is well-documented, performant, and gives us direct access to element properties.
-- Our static JS files are vanilla -- adding SVG.js means either a CDN load or bundling it, increasing page weight.
-
-**Why not Snap.svg:**
-- Abandoned. Last significant update was years ago.
-- Adobe stopped maintaining it.
-
-### Heatmap / Overlay Rendering
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **simpleheat** | ^0.4.0 | Canvas-based heatmap rendering | Tiny (3KB), zero dependencies, by Mourner (Leaflet/Mapbox). Renders heatmap on a `<canvas>` element that overlays our SVG diagram. Canvas is transparent by default so it layers perfectly. API: `simpleheat(canvas).data(points).radius(r).draw()`. Points are `[x, y, intensity]` triples -- maps directly to node visit counts. Used in production by Leaflet.heat. |
-
-**Integration approach:** Position a `<canvas>` element absolutely over the SVG diagram container. When heatmap mode is active, map each node's `(cx, cy)` from the SVG layout to canvas coordinates, with intensity proportional to visit count / execution frequency. The SVG shows through the transparent canvas, and the heatmap gradient overlays it.
-
-**Why not pure SVG heatmap:** SVG does not support radial gradients that blend between arbitrary points efficiently. Canvas with simpleheat produces smooth, performant heatmaps even with 200+ data points. SVG-based approaches require one `<radialGradient>` per point, which tanks performance.
-
-**Why not heatmap.js:** 36KB, more features than needed (click events, legend, etc.). simpleheat is the rendering core that heatmap.js itself wraps.
-
-### Undo/Redo System
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Custom Command Pattern** | n/a (built in-house) | Undo/redo for all diagram mutations | No library. The Command Pattern is straightforward to implement in ~150 lines. Each command has `execute()` and `undo()` methods. A `CommandHistory` manager maintains two stacks (undo/redo). Batching support for compound operations (e.g., "move node" = position change + edge re-route). This is the standard approach used by three.js editor, VS Code, Figma, and every serious editor. |
-
-**Why not a library (e.g., `undo-manager`, `immer` patches):**
-- Undo-manager npm packages are typically <100 lines and unmaintained.
-- Immer patches track object mutations but do not understand graph semantics (adding a node must also undo edge connections).
-- Our commands are domain-specific: `AddNodeCommand`, `MoveNodeCommand`, `AddEdgeCommand`, `ChangeStatusCommand`, `SetBreakpointCommand`. These encode graph-level intent, not generic object diffs.
-
-### Session Recording / Replay
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **Custom event stream** | n/a (built in-house) | Record diagram state changes over time | Lightweight JSON event log, not DOM recording. Each event is `{ timestamp, type, payload }` -- e.g., `{ ts: 1234, type: 'node:status', payload: { id: 'A', status: 'ok' } }`. Store as JSONL (one event per line) on disk. Replay by replaying events at recorded timestamps. ~50-100 bytes per event. |
-
-**Why not rrweb:** rrweb records full DOM snapshots and mutations (clicks, scrolls, CSS changes). It is designed for user session replay of web pages. We need AI agent action replay -- a stream of diagram state changes (node status updates, edge additions, flag annotations). rrweb would capture irrelevant UI interactions (scrolling, panel resizing) and miss the semantic meaning of diagram changes. Our event stream is 100x smaller and directly meaningful.
-
-**Data format:**
-```jsonl
-{"ts":1708012345000,"type":"session:start","payload":{"file":"plan.mmd","nodes":12}}
-{"ts":1708012345100,"type":"node:status","payload":{"id":"A","status":"in-progress"}}
-{"ts":1708012345500,"type":"node:status","payload":{"id":"A","status":"ok"}}
-{"ts":1708012346000,"type":"edge:add","payload":{"from":"A","to":"B","label":"next"}}
-{"ts":1708012347000,"type":"node:status","payload":{"id":"B","status":"problem"}}
-{"ts":1708012348000,"type":"flag:add","payload":{"nodeId":"B","message":"Wrong approach"}}
+```
+%% @ghost fromNodeId toNodeId "optional label"
 ```
 
-### Ghost Path / Breakpoint Rendering
-
-| Technology | Version | Purpose | Why |
-|------------|---------|---------|-----|
-| **SVG animations + CSS** | n/a (built-in) | Ghost path animation, breakpoint indicators | Ghost paths (showing alternative/discarded reasoning paths) are rendered as dashed SVG `<path>` elements with reduced opacity and CSS animation (`stroke-dashoffset` animation). Breakpoint indicators are SVG circles with pulsing CSS animation overlaid on nodes. No library needed -- CSS animations on SVG elements are well-supported in all modern browsers and performant. |
-
-**Ghost path rendering approach:**
-- When the AI discards a reasoning path, the nodes along that path get `status: 'discarded'`.
-- The renderer draws edges to discarded nodes with `stroke-dasharray: "8,4"`, `opacity: 0.3`, and a CSS class `.ghost-edge`.
-- Optional: animate `stroke-dashoffset` for a "flowing" ghost effect.
-
-**Breakpoint rendering approach:**
-- A breakpoint is a flag annotation with `type: 'breakpoint'`.
-- The renderer adds a red circle SVG indicator at the node's top-right corner.
-- When the AI reaches a breakpoint node, execution pauses (MCP tool returns a "paused at breakpoint" status).
-- The indicator pulses via CSS `@keyframes`.
-
----
-
-## Internal Graph Model (New Type Definitions)
-
-These types bridge the Mermaid AST and ELK layout engine. They are the core data model for v2.
+**Regex (follows existing patterns):**
 
 ```typescript
-// ─── Graph Model (replaces DiagramNode/DiagramEdge for v2) ───
+// Existing patterns for reference:
+// FLAG_REGEX   = /^%%\s*@flag\s+(\S+)\s+"([^"]*)"$/
+// STATUS_REGEX = /^%%\s*@status\s+(\S+)\s+(\S+)$/
+// RISK_REGEX   = /^%%\s*@risk\s+(\S+)\s+(high|medium|low)\s+"([^"]*)"$/
 
-interface GraphNode {
-  id: string;
-  label: string;
-  shape: 'rect' | 'rounded' | 'circle' | 'diamond' | 'hexagon' | 'stadium';
-  status?: NodeStatus;
-  width: number;    // computed from label text
-  height: number;   // computed from label text
-  // After layout:
-  x?: number;
-  y?: number;
-  // Observability:
-  visitCount?: number;      // for heatmap
-  breakpoint?: boolean;     // for breakpoint indicator
-  ghostPath?: boolean;      // for ghost rendering
-}
+// New:
+const GHOST_REGEX = /^%%\s*@ghost\s+(\S+)\s+(\S+)(?:\s+"([^"]*)")?$/;
+//                                   ^from   ^to       ^label (optional)
+```
 
-interface GraphEdge {
-  id: string;
-  source: string;
-  target: string;
-  label?: string;
-  type: 'arrow' | 'open' | 'dotted' | 'thick';
-  // After layout:
-  sections?: ElkEdgeSection[];
-  // Observability:
-  ghostPath?: boolean;
-}
+**Example .mmd file with ghost annotations:**
 
-interface GraphGroup {
-  id: string;
-  label: string;
-  children: string[];       // node IDs
-  childGroups: string[];    // nested group IDs
-  parent?: string;
-  collapsed?: boolean;
-}
+```mermaid
+graph TD
+    A["Start"] --> B["Analyze"]
+    B --> C["Solution A"]
 
-interface DiagramGraph {
-  nodes: Map<string, GraphNode>;
-  edges: GraphEdge[];
-  groups: Map<string, GraphGroup>;
-  metadata: {
-    diagramType: string;
-    direction: 'LR' | 'RL' | 'TB' | 'BT';
-  };
-}
+%% --- ANNOTATIONS (auto-managed by SmartB Diagrams) ---
+%% @status A ok
+%% @status B in-progress
+%% @ghost B D "Rejected: too complex"
+%% @ghost B E "Rejected: insufficient data"
+%% --- END ANNOTATIONS ---
+```
 
-// ─── ELK Integration Types ───
+### CRITICAL: Dual Parser Problem
 
-interface ElkLayoutResult {
-  nodes: Map<string, { x: number; y: number; width: number; height: number }>;
-  edges: Map<string, { sections: ElkEdgeSection[] }>;
-  groups: Map<string, { x: number; y: number; width: number; height: number }>;
-}
+The annotation system is **duplicated** between backend TypeScript and frontend vanilla JS:
 
-// ─── Undo/Redo Types ───
+| Component | Backend | Frontend |
+|-----------|---------|----------|
+| Regex definitions | `annotations.ts` lines 6-9 | `annotations.js` lines 11-14 |
+| Parser | `parseAllAnnotations()` (annotations.ts:26-82) | `parseAnnotations()` (annotations.js:37-57) |
+| Stripper | `stripAnnotations()` (annotations.ts:108-138) | `stripAnnotations()` (annotations.js:59-70) |
+| Injector | `injectAnnotations()` (annotations.ts:145-196) | `injectAnnotations()` (annotations.js:72-83) |
 
-interface Command {
-  type: string;
-  execute(): void;
-  undo(): void;
-  description: string;    // for UI display
-}
+**The frontend `injectAnnotations()` (annotations.js:72-83) only serializes 4 types: flags, statuses, breakpoints, risks.** It does NOT know about ghost paths. Whenever the browser saves via `injectAnnotations()` (e.g., when a user adds a flag, changes a status, or triggers any annotation save), `stripAnnotations()` removes the entire annotation block -- including `@ghost` lines -- and `injectAnnotations()` re-writes only the 4 types it knows about. **Ghost paths are silently destroyed.**
 
-interface CommandHistory {
-  undoStack: Command[];
-  redoStack: Command[];
-  maxSize: number;         // prevent unbounded memory growth
-}
+This means adding `@ghost` to the backend alone is NOT sufficient. The frontend parser must ALSO be updated.
 
-// ─── Session Recording Types ───
+**Required changes in both parsers:**
 
-interface SessionEvent {
-  ts: number;              // Unix timestamp ms
-  type: string;            // e.g., 'node:status', 'edge:add', 'flag:add'
-  payload: Record<string, unknown>;
-}
+1. Add `GHOST_REGEX` to `annotations.js` (1 line)
+2. Add `state.ghosts` array to `annotations.js` state object
+3. Add ghost parsing inside `parseAnnotations()` in `annotations.js` (4 lines)
+4. Add ghost serialization inside `injectAnnotations()` in `annotations.js` (3 lines)
+5. Mirror all changes in `annotations.ts` (backend)
+6. Write cross-validation test: feed same input to both parsers, verify identical output
 
-interface Session {
-  id: string;
-  file: string;
-  startedAt: number;
-  events: SessionEvent[];
-}
+### Alternative: `.smartb/ghost-paths.json` (Avoids Dual Parser)
 
-// ─── Heatmap Types ───
+If the dual-parser risk is deemed too high for this milestone, an alternative is to persist ghost paths in `.smartb/ghost-paths.json` keyed by file path. This avoids touching either parser.
 
-interface HeatmapData {
-  points: Array<[number, number, number]>;  // [x, y, intensity]
-  maxIntensity: number;
+```json
+{
+  "diagrams/plan.mmd": [
+    { "fromNodeId": "B", "toNodeId": "D", "label": "Rejected: too complex", "timestamp": 1708012345000 },
+    { "fromNodeId": "B", "toNodeId": "E", "label": "Rejected: insufficient data", "timestamp": 1708012346000 }
+  ]
 }
 ```
+
+| Approach | Verdict | Tradeoff |
+|----------|---------|----------|
+| `@ghost` in annotation block | **PREFERRED** (if both parsers are updated) | Consistent with existing pattern. Single source of truth. Version-controlled. Requires updating both parsers. |
+| `.smartb/ghost-paths.json` | **SAFE ALTERNATIVE** (avoids dual parser) | Splits truth between `.mmd` and sidecar. Sidecar can desync on file rename/move. NOT version-controlled. But avoids touching the annotation parsers entirely. |
+
+**Recommendation:** Use `@ghost` annotations BUT update BOTH parsers (backend + frontend) in the same commit with cross-validation tests. If timeline pressure exists, use `.smartb/` as fallback.
+
+### Integration Points
+
+**In `annotations.ts` (backend):**
+
+1. Add `GHOST_REGEX` constant (1 line)
+2. Add `ghosts: GhostPath[]` to `AllAnnotations` interface
+3. Add ghost path matching block inside `parseAllAnnotations` (6 lines)
+4. Add ghost path serialization inside `injectAnnotations` (8 lines)
+
+**In `annotations.js` (frontend) -- MUST also update:**
+
+1. Add `GHOST_REGEX` constant (1 line)
+2. Add `state.ghosts = []` to state object
+3. Add ghost parsing in `parseAnnotations()` (4 lines)
+4. Add ghost serialization in `injectAnnotations()` (3 lines)
+
+**In `service.ts`:**
+
+1. Add `getGhostPaths(filePath)` method (delegates to `readAllAnnotations`)
+2. Add `addGhostPath(filePath, fromNodeId, toNodeId, label?)` (uses `modifyAnnotation`)
+3. Add `removeGhostPath(filePath, fromNodeId, toNodeId)` (uses `modifyAnnotation`)
+4. Add `clearGhostPaths(filePath)` (uses `modifyAnnotation`)
+
+**In `ghost-store.ts`:**
+
+The `GhostPathStore` in-memory store remains as a cache but is now backed by file persistence. On server startup, ghost paths are loaded from the `.mmd` file annotations. On ghost path creation, both the in-memory store AND the file annotation are updated.
+
+**In `ghost-path-routes.ts` and `mcp/tools.ts`:**
+
+The POST handler and `record_ghost_path` tool now call `service.addGhostPath()` instead of only `ghostStore.add()`. The `ghostStore` becomes a read-through cache populated from file annotations on first access.
+
+**In `mcp/tools.ts` -- `update_diagram` deadlock prevention:**
+
+The `update_diagram` tool (tools.ts:63-131) currently calls `service.writeDiagram()` first, then processes ghost paths via `ghostStore.add()`. If we change `ghostStore.add()` to also call `service.addGhostPath()` (which acquires the write lock), there is a deadlock risk: the write lock is still held from `writeDiagram()`, and `addGhostPath()` tries to acquire it again.
+
+**Solution:** Extend `injectAnnotations()` to accept ghost paths. Then `writeDiagram()` writes everything (content + statuses + risks + ghost paths) in a single atomic write. No second lock acquisition needed.
+
+**Confidence: HIGH for the annotation extension pattern. MEDIUM for dual-parser synchronization (requires careful testing).**
 
 ---
 
-## Integration Architecture
+## 2. Write Safety -- Unified Write Lock
 
-### Data Flow: .mmd File to Interactive Canvas
+### The Problem
 
+The `/save` endpoint in `file-routes.ts` writes directly to disk via `writeFile()`, bypassing `DiagramService.withWriteLock()`. If the MCP tool calls `service.writeDiagram()` at the same time the browser saves via `/save`, they can clobber each other.
+
+**Current write paths:**
+
+| Writer | Uses Write Lock? | File |
+|--------|-----------------|------|
+| `service.writeDiagram()` | YES | `service.ts` line 119 |
+| `service.modifyAnnotation()` | YES (via `withWriteLock`) | `service.ts` line 70 |
+| `/save` endpoint | **NO** | `file-routes.ts` line 51 |
+| `/delete` endpoint | n/a (unlink, not write) | `file-routes.ts` line 76 |
+| `/move` endpoint | n/a (rename) | `file-routes.ts` line 124 |
+
+### The Solution: Route `/save` Through DiagramService
+
+**Change `file-routes.ts`:**
+
+Replace the raw `writeFile(resolved, body.content, 'utf-8')` with `service.writeDiagram(body.filename, body.content)`.
+
+This is a ~3 line change:
+
+```typescript
+// BEFORE (file-routes.ts line 49-51):
+const resolved = resolveProjectPath(projectDir, body.filename);
+await mkdir(path.dirname(resolved), { recursive: true });
+await writeFile(resolved, body.content, 'utf-8');
+
+// AFTER:
+await service.writeDiagram(body.filename, body.content);
 ```
-.mmd file (on disk)
-    |
-    v
-@mermaid-js/parser  (server-side, AST extraction)
-    |
-    v
-AST-to-Graph transformer  (server-side, custom)
-    |
-    v
-DiagramGraph model  (shared between server and client)
-    |
-    v
-ELK.js layout  (browser-side, via Web Worker)
-    |
-    v
-Custom SVG renderer  (browser-side, vanilla JS)
-    |
-    v
-Interactive SVG in DOM  (drag, select, hover, breakpoints, ghost paths)
-    |
-    v
-Heatmap canvas overlay  (simpleheat, when heatmap mode active)
-```
 
-### Where Each Technology Runs
+**Important:** Call `service.writeDiagram(filePath, content)` with NO optional annotation parameters. Looking at `_writeDiagramInternal` (service.ts:139): `if (flags || statuses || breakpoints || risks)` -- when none are passed, content is written as-is without annotation processing. This preserves any annotations already embedded in the content from the browser editor.
 
-| Technology | Runs In | Rationale |
-|------------|---------|-----------|
-| @mermaid-js/parser | Node.js server | Parse .mmd to AST server-side. Send graph model JSON to browser via WebSocket. |
-| ELK.js | Browser (Web Worker) | Layout computation is CPU-intensive for large graphs. Web Worker prevents UI blocking. Browser-side means layout responds to drag interactions without server round-trip. |
-| Custom SVG renderer | Browser | Renders SVG from layouted graph. Handles all interactions (drag, click, hover). |
-| simpleheat | Browser | Canvas overlay for heatmap mode. |
-| Undo/redo (CommandHistory) | Browser | All undo/redo is client-side. Commands modify the graph model and re-render. Save back to server via existing WebSocket/REST. |
-| Session recording | Node.js server | Server records events from MCP tool calls and file changes. Replay data sent to browser on demand. |
+The existing `withWriteLock` in `DiagramService` already handles:
+- Promise-chain serialization per file path
+- Lock cleanup when no more writes are queued
+- Error propagation without breaking the chain
 
-### Bundling Strategy
+### Write Lock Performance
 
-| Asset | Bundle Approach | Delivery |
-|-------|----------------|----------|
-| elkjs | `elk.bundled.min.js` served as static asset from `dist/static/` | `<script>` tag in live.html (like current Mermaid CDN) |
-| elkjs Web Worker | `elk-worker.min.js` in `dist/static/` | Loaded by elkjs when Web Worker mode enabled |
-| simpleheat | Copy `simpleheat.js` (3KB) to `static/` | `<script>` tag in live.html |
-| @mermaid-js/parser | Bundled into server dist by tsup | Server-side only, part of `dist/cli.js` |
-| Custom renderer | `canvas-renderer.js` in `static/` | `<script>` tag in live.html |
-| Undo/redo module | `undo-redo.js` in `static/` | `<script>` tag in live.html |
-| Session replay UI | `session-replay.js` in `static/` | `<script>` tag in live.html |
+The existing write lock pattern (`withWriteLock`) adds near-zero latency for non-contended writes. It chains promises: `prev.then(fn)`. When there is no previous write, `prev` is `Promise.resolve()` which resolves in the microtask queue (~0.001ms). This is well within the 5ms budget.
 
-**Critical:** elkjs must be served as a static file, not bundled by tsup. tsup targets Node.js (`platform: 'node'`). elkjs's browser bundle (`elk.bundled.js`) is a self-contained IIFE that works directly in the browser.
+For contended writes (two writers to the same file simultaneously), the second write waits for the first to complete. A typical `writeFile` to an SSD takes 0.5-2ms. Total worst-case latency: ~2ms per write in the contention case.
+
+**No new code needed** -- the lock already exists. The fix is routing `/save` through it.
+
+### Why Not Other Approaches
+
+| Approach | Verdict | Reason |
+|----------|---------|--------|
+| **Route through DiagramService** | **USE THIS** | Zero new code for the lock itself. Single chokepoint for all writes. Already tested. |
+| `node:fs/promises` advisory lock (`flock`) | REJECT | `flock` is POSIX-only (no Windows). Node.js does not expose `flock` natively. Would need `fs-ext` npm package. Overkill for single-process writes. |
+| Mutex library (`async-mutex`) | REJECT | New dependency. The existing promise-chain pattern does the same thing with zero deps. |
+| Write-ahead log (WAL) | REJECT | Complexity overkill. WAL is for databases, not for writing small text files. |
+| File rename pattern (write to `.tmp`, rename) | MAYBE for future | Atomic rename prevents partial writes. But the current `writeFile` with `utf-8` encoding writes the full buffer atomically on modern Node.js (< 2MB). Not needed for .mmd files. |
+
+**Confidence: HIGH** -- the write lock pattern already works for 4 annotation types. This just routes the last unprotected writer through it.
 
 ---
 
-## Alternatives Considered
+## 3. Automatic Heatmap Tracking -- Browser Interaction Events
 
-| Category | Recommended | Alternative | Why Not |
-|----------|-------------|-------------|---------|
-| Layout engine | ELK.js | dagre | Unmaintained, inferior layout quality, no compound graphs |
-| Layout engine | ELK.js | d3-force | Non-deterministic, wrong paradigm for directed flowcharts |
-| Layout engine | ELK.js | Cytoscape.js | Too heavy (full framework), fights our custom rendering |
-| SVG rendering | Native SVG DOM | SVG.js | Unnecessary abstraction, 2.6MB overhead, wrapper objects |
-| SVG rendering | Native SVG DOM | Snap.svg | Abandoned by Adobe |
-| SVG rendering | Native SVG DOM | elkjs-svg | Static output only, no interactivity |
-| Heatmap | simpleheat | heatmap.js | 12x larger, features we do not need |
-| Heatmap | simpleheat | Pure SVG gradients | Poor performance with many points, complex to implement |
-| Heatmap | simpleheat | WebGL (visual-heatmap) | Overkill for our data sizes (<500 points) |
-| Undo/redo | Custom command pattern | Immer patches | Does not understand graph semantics |
-| Undo/redo | Custom command pattern | undo-manager npm | Unmaintained, trivially small, not worth a dependency |
-| Session replay | Custom event stream | rrweb | Records DOM, not diagram semantics; 100x more data |
-| .mmd parsing | @mermaid-js/parser | Regex (current) | Too fragile for full graph model, misses edge cases |
-| .mmd parsing | @mermaid-js/parser | mermaid.mermaidAPI.parse | Requires browser DOM, undocumented internal API |
+### The Problem
+
+Heatmap data currently requires explicit MCP session recording (`start_session` + `record_step` for each `node:visited` event). Users do not get heatmap data from manual browsing -- only from AI agent sessions. The heatmap is therefore rarely useful.
+
+### The Solution: Passive Browser-Side Interaction Tracking
+
+Track user interactions with diagram nodes automatically in the browser, without requiring MCP sessions. Send aggregated data to the server periodically.
+
+**What to track (browser-side):**
+
+| Interaction | How to Detect | Event |
+|-------------|--------------|-------|
+| Node click | `click` event on `.node` / `.smartb-node` elements | `node:clicked` |
+| Node hover (>500ms) | `pointerenter`/`pointerleave` with timeout | `node:hovered` |
+| Node visible (>2s in viewport) | `IntersectionObserver` on node elements | `node:viewed` |
+| Ghost path viewed | Ghost path toggle ON while file has ghosts | `ghost:viewed` |
+
+**Browser-side implementation (`interaction-tracker.js`, ~120 lines):**
+
+```javascript
+// Pattern: accumulate counts in a local Map, flush to server every 30s
+var SmartBTracker = (function() {
+    var counts = {};  // { nodeId: number }
+    var FLUSH_INTERVAL = 30000; // 30 seconds
+    var MIN_HOVER_MS = 500;
+    var hoverTimers = {};
+
+    function increment(nodeId) {
+        counts[nodeId] = (counts[nodeId] || 0) + 1;
+    }
+
+    function flush() {
+        var file = SmartBFileTree.getCurrentFile();
+        if (!file || Object.keys(counts).length === 0) return;
+        var payload = { file: file, counts: counts };
+        counts = {};
+        // POST to server (fire-and-forget)
+        fetch((window.SmartBBaseUrl || '') + '/api/heatmap/' +
+            encodeURIComponent(file), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        }).catch(function() {}); // silent fail
+    }
+
+    // ... event listeners on diagram nodes
+    // ... IntersectionObserver for viewport tracking
+    // ... setInterval(flush, FLUSH_INTERVAL)
+
+    return { init: init, flush: flush };
+})();
+```
+
+**Server-side: New POST endpoint for `/api/heatmap/:file`:**
+
+Add to `session-routes.ts` (or a new `heatmap-routes.ts`):
+
+```typescript
+// POST /api/heatmap/:file -- Merge interaction counts into heatmap data
+routes.push({
+  method: 'POST',
+  pattern: new RegExp('^/api/heatmap/(?<file>.+)$'),
+  handler: async (req, res, params) => {
+    const file = decodeURIComponent(params['file']!);
+    const body = await readJsonBody<{ counts: Record<string, number> }>(req);
+    // Merge into existing heatmap data (accumulate counts)
+    await sessionStore.mergeHeatmapCounts(file, body.counts);
+    sendJson(res, { ok: true });
+  },
+});
+```
+
+**Server-side storage: Extend `SessionStore`:**
+
+Add a new method `mergeHeatmapCounts(file, counts)` that stores interaction counts in `.smartb/heatmap.json` (one JSON object mapping `file -> { nodeId -> count }`). The counts from browser interactions and MCP sessions are merged when `getHeatmapData()` is called.
+
+### Browser APIs Used (All Native, Zero Dependencies)
+
+| API | Purpose | Browser Support |
+|-----|---------|-----------------|
+| `IntersectionObserver` | Detect which nodes are visible in the viewport | All modern browsers (Chrome 51+, Firefox 55+, Safari 12.1+) |
+| `PointerEvent` (pointerenter/pointerleave) | Hover tracking with unified mouse/touch | All modern browsers |
+| `fetch` | POST counts to server | Already used throughout the app |
+| `setInterval` | Periodic flush | Universal |
+| `performance.now()` | Precise timing for hover duration | Universal |
+
+### Performance Guardrails
+
+| Concern | Mitigation |
+|---------|-----------|
+| Too many event listeners | Delegate all events on `#preview` container, not per-node |
+| Frequent flush blocking UI | `fetch` is async, fire-and-forget, no `await` |
+| IntersectionObserver overhead | Create ONE observer, observe all `.node`/`.smartb-node` elements. Re-observe after `diagram:rendered` event |
+| Memory growth | `counts` object is flushed and reset every 30s. Max ~500 keys (one per node) |
+| Server write contention | Heatmap POST writes to a separate file, not the `.mmd` file. No lock contention with diagram writes |
+| IntersectionObserver staleness | SVG is replaced on re-render. Re-observe on `diagram:rendered` event via `SmartBEventBus` |
+
+### Why Not Other Approaches
+
+| Approach | Verdict | Reason |
+|----------|---------|--------|
+| **Passive browser tracking + periodic flush** | **USE THIS** | Zero impact on render performance. No new deps. Automatic (user does not need to start a session). Merges cleanly with MCP session data. |
+| `rrweb` session recording | REJECT | 50KB+ library. Records DOM mutations, not diagram interactions. Wrong level of abstraction. |
+| Google Analytics / Plausible | REJECT | External service. This is a local-first tool. No cloud dependencies. |
+| MutationObserver on SVG | REJECT | Fires on every SVG re-render (zoom, pan, drag), not on user intent. Would generate noise, not signal. |
+| Record every event in real-time via WebSocket | REJECT | Adds WebSocket traffic for every hover/click. Batched POST every 30s is much more efficient. |
+
+**Confidence: HIGH** -- IntersectionObserver and PointerEvent are well-established browser APIs. The batched POST pattern is standard for analytics.
+
+---
+
+## 4. CSS Modularization -- Splitting `main.css` (577 Lines)
+
+### The Problem
+
+`main.css` at 577 lines exceeds the project's 500-line limit. It contains styles for 8+ distinct UI components mixed together. The project already has a good splitting pattern (see below), but `main.css` was not fully decomposed.
+
+### Current CSS Architecture (Already Partially Split)
+
+```
+static/
+  tokens.css          (76 lines)  -- Design tokens (CSS custom properties)
+  main-layout.css     (220 lines) -- Layout: sidebar, editor, preview, resize
+  main.css            (577 lines) -- PROBLEM: mixed component styles
+  annotations.css     (367 lines) -- Flag system, editor popovers
+  breakpoints.css     (69 lines)  -- Breakpoint indicators
+  heatmap.css         (74 lines)  -- Heatmap legend, toggle
+  session-player.css  (137 lines) -- Session replay UI
+  search.css          (103 lines) -- Search overlay
+  modal.css           (109 lines) -- Modal dialogs
+```
+
+The splitting pattern is already established: one CSS file per feature/component. `main.css` is the last file that needs decomposition.
+
+### The Solution: Extract 3-4 Component Files from `main.css`
+
+Analyzing the content of `main.css` (577 lines), it contains these distinct sections:
+
+| Section | Lines | Extract To |
+|---------|-------|-----------|
+| Reset + body | 1-9 | Keep in `main.css` (global reset) |
+| Topbar + toolbar buttons | 10-167 | `toolbar.css` (~160 lines) |
+| Zoom controls | 210-251 | `zoom.css` (~42 lines) |
+| Toast | 255-272 | Keep in `main.css` (global utility) |
+| Kbd | 274-282 | Keep in `main.css` (global utility) |
+| Help overlay | 284-314 | Keep in `main.css` (global utility) |
+| Breadcrumb bar | 334-381 | `breadcrumb.css` (~48 lines) |
+| Auto-collapse notice | 383-421 | Keep in `main.css` (feature utility) |
+| Focus mode | 423-430 | Keep in `main.css` (global modifier) |
+| Context menu | 432-461 | `context-menu.css` (~30 lines) |
+| Selection | 463-466 | Keep in `main.css` (global utility) |
+| Sidebar tabs | 468-486 | Keep in `main.css` or merge with `main-layout.css` |
+| MCP session cards | 488-577 | `mcp-sessions.css` (~90 lines) |
+
+**After split:**
+
+| File | Lines | Content |
+|------|-------|---------|
+| `main.css` | ~210 | Reset, body, toast, kbd, help, collapse notice, focus mode, selection, sidebar tabs |
+| `toolbar.css` | ~160 | Topbar, toolbar groups, toolbar buttons, badges, workspace switcher, status dot |
+| `context-menu.css` | ~30 | Context menu, menu items, separators, risk colors |
+| `mcp-sessions.css` | ~90 | MCP session cards, headers, file lists, dividers, empty state |
+
+**Optional additional splits (if `main.css` still feels large):**
+
+| File | Lines | Content |
+|------|-------|---------|
+| `breadcrumb.css` | ~48 | Breadcrumb bar, items, separator, exit button |
+| `zoom.css` | ~42 | Zoom controls, zoom button, zoom label |
+
+### Implementation
+
+1. Create new CSS files in `static/`
+2. Cut sections from `main.css` and paste into new files
+3. Add `<link rel="stylesheet">` tags to `live.html` (after `main.css`)
+4. Verify no CSS specificity changes (all selectors are flat class-based, no nesting issues)
+
+**No build tool needed.** CSS files are served as static assets. The `<link>` tags in `live.html` already follow this exact pattern for the 7 existing extracted CSS files.
+
+### Why This Approach
+
+| Approach | Verdict | Reason |
+|----------|---------|--------|
+| **Plain CSS file splitting** | **USE THIS** | Follows existing pattern. Zero tooling. Zero build changes. Easy to verify (just move classes). |
+| CSS Modules | REJECT | Requires a build step (PostCSS/webpack). This project uses vanilla JS with no CSS build. |
+| CSS-in-JS | REJECT | No JS framework. Cannot inline styles in vanilla JS IIFEs without a build step. |
+| Sass/SCSS | REJECT | Adds a preprocessor build step. The project explicitly avoids build tools for static assets. |
+| Shadow DOM / Web Components | REJECT | Would require refactoring all vanilla JS modules into custom elements. Massive scope creep. |
+| Single file with region comments | REJECT | Does not solve the 500-line limit. Comments do not reduce cognitive load when editing. |
+
+**Confidence: HIGH** -- the project already has 7 extracted CSS files following this exact pattern. This is just completing the decomposition.
+
+---
+
+## Recommended Stack (Unchanged)
+
+No changes to `package.json`. All solutions use existing capabilities.
+
+### Core (Unchanged)
+
+| Technology | Version | Purpose | Role in v2.1 |
+|------------|---------|---------|--------------|
+| Node.js | >= 22 | Runtime | `node:fs/promises` for ghost path persistence |
+| TypeScript | ~5.9 | Language | Type-safe annotation extensions |
+| tsup | ^8.5.1 | Build | No changes needed |
+| vitest | ^4.0.18 | Tests | Test new annotation parsing, write lock coverage |
+
+### Server (Unchanged)
+
+| Technology | Version | Purpose | Role in v2.1 |
+|------------|---------|---------|--------------|
+| ws | ^8.19.0 | WebSocket | Broadcasts ghost path updates (already works) |
+| @modelcontextprotocol/sdk | ^1.26.0 | MCP server | `record_ghost_path` now persists to file |
+| zod | ^4.3.6 | Schema validation | No changes |
+
+### Browser (Unchanged + New Vanilla JS Module)
+
+| Technology | Version | Purpose | Role in v2.1 |
+|------------|---------|---------|--------------|
+| Vanilla JS | n/a | Browser UI | New `interaction-tracker.js` module |
+| Native SVG DOM | n/a | Diagram rendering | No changes |
+| `IntersectionObserver` | Browser native | Viewport node tracking | New: auto heatmap |
+| `PointerEvent` | Browser native | Hover/click tracking | New: auto heatmap |
+
+---
+
+## Files to Create
+
+| File | Size | Purpose |
+|------|------|---------|
+| `static/interaction-tracker.js` | ~120 lines | Passive node interaction tracking for heatmap |
+| `static/toolbar.css` | ~160 lines | Extracted from main.css |
+| `static/context-menu.css` | ~30 lines | Extracted from main.css |
+| `static/mcp-sessions.css` | ~90 lines | Extracted from main.css |
+
+## Files to Modify
+
+| File | Change | Size Impact |
+|------|--------|-------------|
+| `src/diagram/annotations.ts` | Add `GHOST_REGEX`, parse/inject ghost annotations | +30 lines |
+| `src/diagram/types.ts` | GhostPath already exists, no change needed | 0 |
+| `src/diagram/service.ts` | Add `getGhostPaths`, `addGhostPath`, `removeGhostPath`, `clearGhostPaths` | +40 lines |
+| `src/server/file-routes.ts` | Route `/save` through `service.writeDiagram()` | -2 / +1 lines |
+| `src/server/ghost-path-routes.ts` | Call `service.addGhostPath()` in POST handler | ~5 lines changed |
+| `src/server/ghost-store.ts` | Add `loadFromAnnotations()` for cache population | +15 lines |
+| `src/mcp/tools.ts` | `record_ghost_path` calls `service.addGhostPath()` | ~3 lines changed |
+| `src/session/session-store.ts` | Add `mergeHeatmapCounts()` method | +25 lines |
+| `src/server/session-routes.ts` | Add POST `/api/heatmap/:file` route | +20 lines |
+| **`static/annotations.js`** | **Add GHOST_REGEX, parse/inject ghost paths (CRITICAL)** | **+15 lines** |
+| `static/main.css` | Remove extracted sections | -370 lines |
+| `static/live.html` | Add 4 new `<link>` and 1 `<script>` tag | +5 lines |
 
 ---
 
 ## Installation
 
 ```bash
-# NEW runtime dependency
-npm install elkjs
-
-# MOVE from devDependencies to dependencies
-# @mermaid-js/parser is already installed as devDep -- move to dependencies
-npm install @mermaid-js/parser
-
-# NEW browser-only assets (copy to static/, not npm install)
-# simpleheat: download from https://github.com/mourner/simpleheat
-# elk.bundled.min.js: copy from node_modules/elkjs/lib/elk.bundled.min.js
-
-# No other new npm packages needed
-```
-
-### Post-install setup
-
-```bash
-# Copy ELK.js browser bundle to static assets
-cp node_modules/elkjs/lib/elk.bundled.js static/elk.bundled.js
-cp node_modules/elkjs/lib/elk-worker.min.js static/elk-worker.min.js
-
-# Download simpleheat (3KB, no npm package needed)
-curl -o static/simpleheat.js https://raw.githubusercontent.com/mourner/simpleheat/gh-pages/simpleheat.js
-```
-
-Alternatively, add a build step in tsup `onSuccess` to copy these files:
-
-```typescript
-// tsup.config.ts addition
-onSuccess: async () => {
-  cpSync('static', 'dist/static', { recursive: true });
-  cpSync('node_modules/elkjs/lib/elk.bundled.js', 'dist/static/elk.bundled.js');
-  cpSync('node_modules/elkjs/lib/elk-worker.min.js', 'dist/static/elk-worker.min.js');
-}
+# No npm install needed. Zero new dependencies.
+# All changes are internal code modifications.
 ```
 
 ---
@@ -336,67 +480,28 @@ onSuccess: async () => {
 
 | Avoid | Why | Use Instead |
 |-------|-----|-------------|
-| **React/Vue/Svelte** | Project constraint: vanilla JS in browser. Adding a framework means bundling it, a build step for static assets, and fighting the existing vanilla JS codebase. | Native DOM API + SVG API |
-| **D3.js (full)** | 250KB+ for a visualization library. We need layout (ELK) and rendering (native SVG), not D3's bindable data-joins. D3 is designed for data visualization, not interactive editors. | ELK.js (layout) + native SVG (rendering) |
-| **Cytoscape.js** | 280KB+ graph framework. Has its own rendering, events, styling. We would use 5% of its API (layout) and ignore the rest. Philosophical mismatch: Cytoscape renders; we want to render ourselves. | ELK.js |
-| **Konva.js / Fabric.js** | Canvas-based rendering libraries. We need SVG (for CSS styling, DOM event handling, and export). Canvas libraries mean re-implementing text layout, hit testing, and losing SVG export. | Native SVG |
-| **Joint.js / mxGraph** | Commercial / heavy diagramming frameworks. Joint.js is 400KB+. mxGraph is abandoned (now draw.io internals). Both impose their own data model. | Custom graph model + ELK.js + native SVG |
-| **Mermaid.js** (for v2 rendering) | v2 replaces Mermaid rendering with custom canvas. Mermaid stays for backward compat / fallback but is not the primary renderer. Do not add new Mermaid dependencies. | Custom SVG renderer with ELK.js layout |
-| **rrweb** | 50KB+ library for DOM session replay. Records clicks, scrolls, CSS mutations. We need diagram state changes, not UI replay. | Custom JSONL event stream |
-| **WebSocket library for client** | The browser has native `WebSocket`. The existing `ws-client.js` already implements reconnection with exponential backoff. Do not add socket.io-client or similar. | Native `WebSocket` API (already in use) |
-
----
-
-## Version Compatibility (New Dependencies)
-
-| Package | Compatible With | Notes |
-|---------|-----------------|-------|
-| `elkjs@^0.11.0` | Browser (all modern), Node >= 12 | Browser bundle is self-contained IIFE. Web Worker version needs `elk-worker.min.js` served as static asset. |
-| `@mermaid-js/parser@^0.6.3` | Node >= 18 | Uses Langium internally. ESM-only. Already a devDependency, moving to runtime dependency for server-side parsing. |
-| `simpleheat@0.4.0` | Browser (canvas-capable) | No npm install needed. Single 3KB file copied to static/. Works in all modern browsers with Canvas API. |
-
----
-
-## Existing Stack (Unchanged, Not Re-Researched)
-
-These remain exactly as-is from v1. Listed for completeness.
-
-| Technology | Version | Role in v2 |
-|------------|---------|------------|
-| Node.js | >= 22 LTS | Runtime |
-| TypeScript | ~5.9 | Language |
-| ws | ^8.19.0 | WebSocket server (now also sends graph model JSON, not just raw .mmd) |
-| @modelcontextprotocol/sdk | ^1.26.0 | MCP server (new tools: set_breakpoint, get_session, replay_session) |
-| commander | ^14.0.3 | CLI |
-| chokidar | ^5.0.0 | File watcher |
-| zod | ^4.3.6 | Schema validation (MCP tool schemas for new observability tools) |
-| tsup | ^8.5.1 | Build (server-side bundle) |
-| vitest | ^4.0.18 | Tests |
-| Mermaid.js | 11.x (CDN) | Fallback rendering + VS Code extension (until extension gets custom renderer) |
+| `async-mutex` / `p-mutex` | Existing promise-chain write lock works identically | `DiagramService.withWriteLock()` |
+| `rrweb` | Records DOM, not diagram interactions | Native `IntersectionObserver` + `PointerEvent` |
+| `better-sqlite3` | Overkill for storing ghost path annotations | `.mmd` annotation block |
+| Analytics libraries | This is local-first, no cloud | Vanilla JS tracker + periodic POST |
+| Sass/PostCSS | No CSS build pipeline exists or is needed | Plain CSS file splitting |
+| `lodash.debounce` | 1 line of vanilla JS does this | `setTimeout`/`clearTimeout` |
 
 ---
 
 ## Sources
 
-- [elkjs npm](https://www.npmjs.com/package/elkjs) -- v0.11.0, layout engine. Verified via `npm view elkjs version`. **HIGH confidence.**
-- [elkjs GitHub](https://github.com/kieler/elkjs) -- Web Worker support, JSON format, layout algorithms. **HIGH confidence.**
-- [ELK JSON Format](https://eclipse.dev/elk/documentation/tooldevelopers/graphdatastructure/jsonformat.html) -- Official graph data structure documentation. **HIGH confidence.**
-- [ELK Layout Options](https://eclipse.dev/elk/reference/options.html) -- Algorithm configuration reference. **HIGH confidence.**
-- [@mermaid-js/parser npm](https://www.npmjs.com/package/@mermaid-js/parser) -- v0.6.3, AST parsing. Verified via `npm view`. **HIGH confidence.**
-- [@dagrejs/dagre npm](https://www.npmjs.com/package/@dagrejs/dagre) -- v2.0.4, confirmed unmaintained. **HIGH confidence.**
-- [Dagre Alternatives and Reviews](https://www.libhunt.com/r/dagre) -- Ecosystem comparison. **MEDIUM confidence.**
-- [elkjs-svg GitHub](https://github.com/EmilStenstrom/elkjs-svg) -- Reference SVG renderer, 32KB. **HIGH confidence.**
-- [simpleheat GitHub](https://github.com/mourner/simpleheat) -- v0.4.0, 3KB canvas heatmap. **HIGH confidence.**
-- [SVG drag interaction tutorial](https://www.petercollingridge.co.uk/tutorials/svg/interactive/dragging/) -- Vanilla JS SVG drag implementation. **MEDIUM confidence.**
-- [svg-drag-select GitHub](https://github.com/luncheon/svg-drag-select) -- 1.8KB, reference for select-on-drag. **MEDIUM confidence.**
-- [Command Pattern undo/redo](https://www.esveo.com/en/blog/undo-redo-and-the-command-pattern/) -- Implementation patterns. **MEDIUM confidence.**
-- [rrweb GitHub](https://github.com/rrweb-io/rrweb) -- Session replay reference (rejected for our use case). **HIGH confidence.**
-- [Mermaid AST parsing issue #2523](https://github.com/mermaid-js/mermaid/issues/2523) -- Community discussion on AST extraction. **MEDIUM confidence.**
-- [CSS SVG filter heat map](https://expensive.toys/blog/svg-filter-heat-map) -- SVG filter technique reference. **MEDIUM confidence.**
-- [Interactive Debugging of Multi-Agent AI Systems (CHI 2025)](https://dl.acm.org/doi/full/10.1145/3706598.3713581) -- Breakpoint and steering patterns for AI agent debugging. **MEDIUM confidence.**
-- [LangGraph Studio Debugging Guide](https://mem0.ai/blog/visual-ai-agent-debugging-langgraph-studio) -- Graph breakpoint reference implementation. **MEDIUM confidence.**
+- [Node.js `fs/promises` API](https://nodejs.org/api/fs.html#fspromiseswritefilefile-data-options) -- `writeFile` atomicity for files < buffer size. **HIGH confidence.**
+- [IntersectionObserver API (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/IntersectionObserver) -- Browser support, performance characteristics. **HIGH confidence.**
+- [PointerEvent API (MDN)](https://developer.mozilla.org/en-US/docs/Web/API/PointerEvent) -- Unified mouse/touch events. **HIGH confidence.**
+- Existing codebase: `src/diagram/annotations.ts` -- backend annotation regex pattern with 4 types. **HIGH confidence (primary source).**
+- Existing codebase: `static/annotations.js` -- frontend annotation parser, DUPLICATED logic. Lines 37-57 parse 4 types; lines 72-83 inject 4 types. **HIGH confidence (primary source).**
+- Existing codebase: `src/diagram/service.ts` -- `withWriteLock` pattern at line 35-46. **HIGH confidence (primary source).**
+- Existing codebase: `src/server/ghost-store.ts` -- in-memory ghost path store. **HIGH confidence (primary source).**
+- Existing codebase: `static/main.css` -- 577 lines, 8+ component sections identified. **HIGH confidence (primary source).**
+- Existing codebase: `static/live.html` -- CSS loading pattern with 8 `<link>` tags. **HIGH confidence (primary source).**
 
 ---
 
-*Stack research for: SmartB Diagrams v2 -- Interactive Canvas + AI Observability*
-*Researched: 2026-02-15*
+*Stack research for: SmartB Diagrams v2.1 -- Bug Fixes & Usability Improvements*
+*Researched: 2026-02-19*

@@ -1,340 +1,306 @@
-# Feature Landscape: Interactive Canvas + AI Observability
+# Feature Landscape
 
-**Domain:** Interactive diagram editor with AI reasoning observability
-**Researched:** 2026-02-15
-**Milestone:** v2 — Interactive Canvas Renderer + Advanced AI Observability
-**Overall confidence:** MEDIUM — verified via official docs, competitor analysis, and multiple sources. AI observability visualization (Ghost Paths, Pattern Memory) are novel concepts with LOW confidence as no direct competitors exist.
-
-## Context: What Exists vs What's New
-
-SmartB v1 (already built) provides a Mermaid-based viewer with pan/zoom, flag annotations, node/edge editing via text manipulation, search, export, file tree, subgraph collapse/expand, WebSocket sync, and MCP tools. This research focuses exclusively on the NEW features needed for v2.
-
-The v2 milestone has two pillars:
-1. **Interactive Canvas** — transform from text-manipulation viewer to direct-manipulation editor
-2. **AI Observability** — features that make AI reasoning transparent, replayable, and debuggable
+**Domain:** AI Observability Tool -- Bug Fixes & Usability (v2.1)
+**Researched:** 2026-02-19
+**Previous:** v2.0 features research (2026-02-15) covered the full interactive canvas + AI observability vision. This v2.1 research focuses ONLY on bug fixes and usability improvements for existing features.
 
 ---
 
 ## Table Stakes
 
-Features users expect in an interactive canvas diagram editor. Missing = product feels incomplete compared to Excalidraw, draw.io, Mermaid Chart Visual Editor.
+Features that are broken or missing, making existing capabilities feel incomplete.
 
-| Feature | Why Expected | Complexity | Dependencies | Notes |
-|---------|--------------|------------|--------------|-------|
-| **Select nodes (click)** | Every canvas tool lets you click to select. Excalidraw, tldraw, Figma, draw.io all have this. Without selection, no other interaction is possible. | LOW | Existing SVG node ID extraction | Already have `extractNodeId()` in annotations.js. Need visual selection indicator (blue border/handles). |
-| **Context menu (right-click)** | Standard in draw.io, GoJS, Konva, Syncfusion Diagram, Excalidraw. Right-click on a node shows actions (edit, delete, copy, add connection, change style). Users expect this from any visual editor. | MEDIUM | Node selection | Replace browser's default context menu. Items: Edit Label, Delete Node, Duplicate, Add Connection From/To, Change Color, Add Flag. GoJS and Konva both demonstrate custom context menus for canvas. |
-| **Inline edit (double-click label)** | Excalidraw, Miro, draw.io all support double-click to edit text. Current `doEditNodeText()` uses `prompt()` dialog which is jarring. Inline editing feels native. | MEDIUM | Node selection | Create a contenteditable overlay positioned over the SVG node label. On blur/Enter, update .mmd content. Mermaid Chart Visual Editor already does this. |
-| **Undo/Redo (Ctrl+Z / Ctrl+Shift+Z)** | Universal expectation. Every editor from Notepad to Excalidraw has undo/redo. Without it, users fear making changes because they can't revert. Excalidraw completely rebuilt their undo/redo manager in 2024 for better granularity. | HIGH | All edit operations | Two patterns: Command Pattern (store each operation + inverse) or Memento Pattern (store full state snapshots). Memento is simpler for Mermaid text content because state is just a string. Store history as string[] with pointer. Cap at ~100 entries. Pause history during drag operations (mousedown to mouseup = one undo entry). |
-| **Copy/Paste/Duplicate (Ctrl+C/V/D)** | Standard in all editors. Circuit Diagram, BeeGraphy, Visual Paradigm all support Ctrl+C/V on nodes. Users expect to duplicate a node with its label and style. | MEDIUM | Node selection, Undo/Redo | Copy = serialize selected node(s) to clipboard (Mermaid text fragment). Paste = insert at cursor position or offset from original. Duplicate (Ctrl+D) = paste immediately with offset. Must generate new node IDs (already have `generateNodeId()`). |
-| **Keyboard shortcuts for edit actions** | Delete key to remove selected node. Escape to deselect. Ctrl+A to select all. These are table stakes in every canvas editor. | LOW | Node selection | Extend existing keyboard handler. Map: Delete/Backspace = remove, Escape = deselect, Ctrl+A = select all (for future multi-select). |
-
-**Confidence:** HIGH — verified across Excalidraw, tldraw, draw.io, Konva, GoJS documentation and feature sets.
-
----
+| Feature | Why Expected | Complexity | Notes |
+|---------|--------------|------------|-------|
+| Ghost path persistence | Users expect data to survive server restart. Ghost paths vanish on restart because they are only in `GhostPathStore` (in-memory Map). | Low | Extend existing annotation system with `%% @ghost` format |
+| Write safety for `/save` | Browser saves via `/save` endpoint bypass `DiagramService.withWriteLock()`. Concurrent MCP writes can corrupt files. | Low | 3-line fix: route `/save` through `service.writeDiagram()` |
+| CSS under 500 lines | Project rule: no file > 500 lines. `main.css` is at 577 lines. | Low | Extract 3 component CSS files following established pattern |
+| Ghost paths load on file open | When opening a diagram, ghost paths from annotations should render immediately, not wait for MCP to re-record them. | Low | Parse `@ghost` from annotation block on file read, populate cache |
+| Ghost path individual delete | Every graph editor (React Flow, Cytoscape, draw.io) lets users delete individual edges. Bulk "clear all" without individual delete violates baseline expectation. | Low | REST endpoint + store method + X button per ghost path in list |
+| Ghost path list/panel | When ghost paths exist, users need a list view (not just SVG overlay). draw.io Layers panel, Figma layers panel, SmartB's own Flags Panel all establish this pattern. | Low | Follows existing flag panel pattern. Show from->to, label, delete button per row |
+| Heatmap manual mode toggle | Hotjar, Contentsquare, FullStory all provide explicit mode switching (click/scroll/move tabs). Current auto-detect mode selection is confusing and uncontrollable. | Low | Two buttons or dropdown: "Risk" / "Frequency" in the heatmap UI |
+| Heatmap file switch refresh | When user switches files, heatmap must update. Hotjar and Contentsquare auto-update on page navigation. Current code only fetches on `init()`. | Low | Listen for `file:changed` event, refetch `/api/heatmap/:newFile` |
+| Heatmap empty state messaging | When toggled on with zero data, showing nothing is confusing. Hotjar shows "No data yet -- add tracking snippet." Contentsquare shows "Waiting for data." | Low | Toast or legend message explaining why no data exists and how to get it |
+| MCP read access for ghost paths | AI creates ghost paths but cannot query them. Breaks the feedback loop. Existing MCP tools for flags have both `set_flag` and `get_flags`. Ghost paths need `list_ghost_paths`. | Low | New MCP tool following existing pattern |
 
 ## Differentiators
 
-Features that set SmartB apart from generic diagram editors and existing AI observability tools.
+Features that improve the experience beyond fixing what is broken.
 
-### Canvas Differentiators
-
-| Feature | Value Proposition | Complexity | Dependencies | Notes |
-|---------|-------------------|------------|--------------|-------|
-| **Property Panel (right sidebar)** | Inspect and modify selected node properties: color, shape, label, status. Like Figma's Properties Panel or Excalidraw's right sidebar. No Mermaid editor offers this. Current SmartB only has a Flags panel. | HIGH | Node selection | Sections: Identity (ID, label), Appearance (fill color, border color, shape), Status (ok/problem/in-progress/discarded), Connections (list of edges from/to). Uses Mermaid `style` directives and `classDef` for colors. Shape changes require rewriting node definition syntax (`[]` vs `()` vs `{}` vs `>]`). |
-| **Drag nodes to reposition** | Mermaid uses automatic layout (dagre/ELK). Dragging nodes is the #1 requested feature on mermaid-live-editor (Issue #1284, #1507). Mermaid Chart Visual Editor partially supports this. No open-source Mermaid tool does it well. | VERY HIGH | Node selection | **Critical constraint:** Mermaid's layout engine recalculates positions on every render. Dragged positions would reset on next render. Solutions: (1) Store position overrides in `%% @position NodeId x y` annotations and apply CSS transforms post-render, (2) Use Mermaid's ELK layout with position hints, (3) Abandon Mermaid rendering and use a custom renderer. Option 1 is recommended — keeps Mermaid as source of truth while allowing visual overrides. |
-| **Multi-select and group operations** | Select multiple nodes (Shift+click or drag-select) and move/delete/style them together. Excalidraw and draw.io both have this. Important for large diagrams. | HIGH | Node selection, Property Panel | Requires selection rectangle (rubber band). All selected nodes highlighted. Property Panel shows shared properties when multi-selected. Group operations: delete all, change color of all, move all. |
-| **Folder management (rename/delete folders)** | Current sidebar has file create/delete/rename but no folder rename/delete. Users expect full CRUD on the file tree. | LOW | Existing file tree | Add right-click context menu to folder headers. Server needs `/rmdir` and `/rename-folder` endpoints. Recursive delete with confirmation. |
-
-### AI Observability Differentiators
-
-| Feature | Value Proposition | Complexity | Dependencies | Notes |
-|---------|-------------------|------------|--------------|-------|
-| **AI Breakpoints** | Developer sets a "breakpoint" on a node. When AI reaches that node (sets its status to in-progress), the system pauses AI execution and notifies the developer. Like debugger breakpoints but for AI reasoning. **No existing tool does this.** LangSmith shows traces but cannot pause execution. Cursor shows reasoning but you cannot stop it mid-flow. | HIGH | MCP tools, Node status system | Requires new annotation `%% @breakpoint NodeId`. New MCP tool `check_breakpoints()` that AI calls before proceeding — returns "pause" if current node has a breakpoint. Needs WebSocket notification to browser: "Breakpoint hit on node X." Developer reviews, then clicks "Continue" to unset breakpoint and allow AI to proceed. The AI must cooperate by calling `check_breakpoints()` — requires prompt engineering in the AI agent conventions. |
-| **Ghost Paths (discarded reasoning branches)** | Show AI's discarded reasoning paths as faded/dashed nodes alongside the chosen path. Like a "deleted scenes" view for AI thinking. When AI explores option A and option B but picks A, option B appears as a ghost path. **Novel concept — no competitor offers this.** LangSmith shows only the taken path. | HIGH | MCP tools, Custom rendering | AI agent calls `update_diagram` with discarded branches marked with `%% @status NodeId discarded`. Ghost paths rendered with 30% opacity and dashed borders (already have `discarded` status with gray color — extend with opacity). Add toggle button "Show/Hide Ghost Paths" to filter discarded nodes. Key insight: the AI must emit alternative branches explicitly — requires convention where AI writes all considered options to the diagram, not just the chosen one. |
-| **Risk Heatmap** | Color-code diagram nodes by risk level — red for high-risk steps (API calls, data mutations, complex logic), yellow for medium, green for safe. AI agent annotates risk via `%% @risk NodeId high|medium|low "reason"`. Overlay as gradient backgrounds. Similar to security risk heatmaps but applied to AI reasoning steps. | MEDIUM | MCP tools, Annotation system | New annotation type. Server parses `@risk` annotations. Browser renders as background gradient: red (#ef4444 at 20% opacity) for high, yellow (#eab308 at 15%) for medium, green default. Risk reasons shown in tooltip on hover. MCP tool `set_risk_level(nodeId, level, reason)`. Risk panel in sidebar lists all high-risk nodes. |
-| **Session Replay** | Record diagram evolution over time and play it back. Developer sees "at 10:05 AI added step X, at 10:06 AI changed Y to Z, at 10:07 developer flagged Z." Like Datadog Session Replay but for diagram evolution. LogRocket and CubeAPM show that session replay with timeline scrubbing is the gold standard for understanding temporal behavior. | VERY HIGH | WebSocket events, State history | Capture every diagram state change as a timestamped snapshot. Store in memory (ring buffer, last N states) or persist to `.smartb/history/`. UI: timeline scrubber at bottom of canvas. Playback speed control (1x, 2x, 4x). Diff highlighting between frames (green = added, red = removed, yellow = modified). ~72% of enterprises now use session replay for debugging (2025 market data). |
-| **Pattern Memory** | SmartB recognizes recurring diagram patterns across sessions. "Last 3 times the AI hit a 'Parse Config' step, the developer flagged it. Suggesting pre-emptive flag." Learns from developer feedback history. | VERY HIGH | Flag history, Local storage/file persistence | Store flag history in `.smartb/patterns.json`: `{ nodeLabel: "Parse Config", flagCount: 3, lastFlag: "...", suggestedAction: "..." }`. Pattern matching: fuzzy match node labels across sessions. UI: warning icon on nodes matching flagged patterns, with tooltip "This pattern was flagged 3 times before." MCP tool `get_patterns()` returns learned patterns to AI for self-correction. **Novel — no competitor has this.** |
-| **Diagram as Executable Contract** | Define expected states and transitions in the diagram, then validate AI execution against them. Diagram becomes a spec that the AI must follow. If AI deviates, SmartB flags the deviation automatically. Like Pact contract testing but for AI reasoning flow. | VERY HIGH | MCP tools, Validation engine | New annotation `%% @expect NodeId status:ok after:NodeX`. Validation engine checks: did node X complete before node Y? Did all expected nodes reach expected status? Deviations shown as red borders with "Expected: ok, Got: problem." Export contract as JSON for CI/CD validation. Specmatic and Pact show this pattern works for APIs — apply to AI reasoning. |
-
-**Confidence:**
-- Canvas differentiators: MEDIUM (based on competitor analysis of Excalidraw, draw.io, Mermaid Chart)
-- AI Breakpoints: LOW (novel concept, no competitor to reference)
-- Ghost Paths: LOW (novel concept, must validate with users)
-- Risk Heatmap: MEDIUM (risk heatmap pattern well-established in security/business; novel for AI reasoning)
-- Session Replay: MEDIUM (session replay well-established in web observability; novel for diagram editors)
-- Pattern Memory: LOW (novel concept, requires ML-like pattern matching)
-- Executable Contract: LOW (contract testing well-established for APIs; novel for AI reasoning diagrams)
-
----
+| Feature | Value Proposition | Complexity | Notes |
+|---------|-------------------|------------|-------|
+| Automatic heatmap tracking | Heatmap works without MCP sessions -- tracks user browsing (clicks, hovers, viewport) automatically. Follows Contentsquare/Hotjar "auto-capture" philosophy: zero-setup data collection. | Medium | New `interaction-tracker.js` module, new POST endpoint, `IntersectionObserver` + batched flush |
+| Merged heatmap data | Browser interactions + MCP session visits combined in same heatmap view | Medium | Merge counts from new `.smartb/heatmap.json` with session JSONL data |
+| Ghost path management from UI | Delete individual ghost paths via context menu (currently only "clear all" exists) | Low | Add DELETE endpoint with `fromNodeId`+`toNodeId`, context menu item |
+| Heatmap data persisted per file | Heatmap counts survive server restart (currently only session-based, explicit MCP recording) | Low | Store browser interaction counts in `.smartb/heatmap.json` |
+| Ghost path context menu creation | Replace modal with right-click "Add Ghost Path From Here" -> click target. draw.io, React Flow, Cytoscape all use context menu for adding edges. | Medium | Extends existing context menu system |
+| Ghost path promotion to real edge | User sees a useful ghost path, clicks "Promote to Edge" to make it real in the .mmd file. Inverse of draw.io "hide layer." Unique to SmartB. | Medium | Combines ghost delete + MmdEditor edge creation |
+| Ghost path reason field | AI includes WHY a path was discarded: "Rejected: API rate limits." Shown as tooltip. Braintrust captures reasoning tokens; SmartB shows reasoning for the road NOT taken. | Low | MCP tool schema extension + tooltip UI |
+| Heatmap real-time WebSocket updates | When AI records steps mid-session, heatmap updates live. `session:event` WS message already exists but heatmap ignores it. FullSession emphasizes real-time heatmaps. | Low | WS listener in heatmap.js for `session:event` messages |
+| Cumulative heatmap with time windows | "Last hour / Last day / All time" selector. Datadog continuous profiler pattern. The longer the tool runs, the more valuable the heatmap. | Medium | Query changes + time range UI in legend |
 
 ## Anti-Features
 
-Features to explicitly NOT build in v2. Builds on v1 anti-features list.
+Features to explicitly NOT build in this milestone.
 
-| Anti-Feature | Why Tempting | Why Avoid | What to Do Instead |
-|--------------|-------------|-----------|-------------------|
-| **Full drag-to-position with layout persistence** | "I want to drag nodes freely like Excalidraw." | Mermaid recalculates layout on every render. Persisting positions means fighting the layout engine. This is why mermaid-live-editor Issue #1284 has been open since 2022 with no solution. Building a custom renderer to replace Mermaid is a 6-month project. | Use position annotations (`%% @position`) as CSS transform overrides post-render. Accept that positions reset when Mermaid content changes substantially. This is good enough for "nudge this node over" without rebuilding the renderer. |
-| **Collaborative real-time editing (multi-cursor)** | "Two people editing the same diagram simultaneously." | Requires OT/CRDT for conflict resolution on .mmd text. Adds tremendous complexity. Figma and tldraw have hundreds of engineers working on this. | Diagrams live in git. Use VS Code Live Share for real-time collaboration. SmartB's WebSocket already syncs view state — both users see the same diagram, just can't edit simultaneously. |
-| **Custom node shapes beyond Mermaid syntax** | "I want star-shaped nodes, custom SVGs, icon-in-node." | Breaks Mermaid compatibility. Custom shapes cannot be represented in .mmd text. Creates a proprietary format that doesn't work in other Mermaid tools. | Support all Mermaid-native shapes (rectangle, rounded, stadium, subroutine, cylinder, circle, diamond, hexagon, parallelogram, trapezoid). These cover all practical use cases. |
-| **AI model integration (embedding AI calls)** | "SmartB should call the AI directly to auto-fill diagrams." | SmartB is an observability layer, not an AI agent. Calling AI models adds API key management, cost tracking, model selection UI. Competes with Cursor/Claude Code on their turf. | MCP is the integration layer. AI tools call SmartB, not the other way around. SmartB observes and enables feedback, it does not orchestrate AI execution. |
-| **Complex animation/transition system** | "Animate node state changes with smooth transitions." | SVG animation in Mermaid-rendered diagrams is fragile. Mermaid re-renders the entire SVG on changes, destroying animation state. Complex animations add performance overhead. | Use simple CSS transitions for selection highlights, hover effects, and opacity changes (ghost paths). Animate only the overlay layer, not the Mermaid SVG itself. |
-| **Database/backend persistence** | "Store diagram history in SQLite/PostgreSQL." | Adds database dependency to a local-first tool. Violates the "zero infrastructure" principle. Makes installation heavier. | Use file-based persistence: `.mmd` files for diagrams, `.smartb/history/` directory for session replay snapshots, `patterns.json` for pattern memory. All git-friendly, all local. |
-
----
+| Anti-Feature | Why Avoid | What to Do Instead |
+|--------------|-----------|-------------------|
+| Full analytics dashboard | Scope creep -- this is a bug-fix milestone | Keep heatmap as toggle overlay on diagram |
+| Ghost path editing (change label/endpoints) | Ghost paths are AI-generated metadata, not user-editable content | Allow delete only; AI re-records if needed |
+| Real-time collaboration locking | Single-user tool (local-first). Write lock is for MCP+browser concurrency | Keep single-process promise-chain serialization |
+| CSS preprocessor (Sass/SCSS) | No build pipeline for static assets, adding one is scope creep | Plain CSS file splitting (existing pattern) |
+| Heatmap export (CSV/PDF) | Not requested, adds complexity | Heatmap is visual overlay only |
+| Ghost path animation (flowing dashes) | Nice-to-have, not a bug fix | Keep current static dashed rendering. Use CSS `transition: opacity 0.3s` for toggle only |
+| simpleheat canvas overlay | Previous v2.0 research recommended this. For v2.1, the existing node-fill-based heatmap works fine. | Keep current `applyFrequencyHeatmap()` in heatmap.js |
+| Drag-to-create ghost paths | Conflicts with pan/zoom drag behavior. Cytoscape edge-editing extension shows this requires significant implementation effort. | Use context menu: right-click -> "Add Ghost Path" -> click target |
+| Ghost path branching tree view | Requires separate layout algorithm. Visual complexity overwhelming. iToT shows tree views need dedicated space. | Ghost paths render as individual dashed curves. For complex analysis, use session replay |
+| Heatmap snapshot comparison | Requires dedicated side-by-side UI. Contentsquare "compare journeys" is a major feature on its own. | Defer to v2.2+ |
+| Full session auto-start | Creates excessive JSONL files for one-off MCP interactions | Auto-track via diagram diffs without formal sessions |
+| Heatmap on non-flowchart diagrams | Custom renderer only handles flowcharts. Mermaid SVG structure is unpredictable. | Show "Heatmap not available for this diagram type" |
 
 ## Feature Dependencies
 
 ```
-[Node Selection System] (new)
-    |
-    |--required-by--> [Context Menu]
-    |--required-by--> [Property Panel]
-    |--required-by--> [Inline Edit]
-    |--required-by--> [Copy/Paste/Duplicate]
-    |--required-by--> [Multi-Select]
-    |--required-by--> [Drag to Reposition]
-    |--required-by--> [Keyboard Delete]
+@ghost annotation parsing --> Ghost path persistence (file read/write)
+Ghost path persistence --> Ghost paths load on file open (initial population)
+Ghost paths load on file open --> Ghost path management from UI (can delete persisted paths)
+Ghost path persistence --> MCP list_ghost_paths tool (can read persisted paths)
+Ghost path management from UI --> Ghost path promotion to real edge (requires individual delete)
 
-[Undo/Redo System] (new)
-    |--required-by--> [All edit operations must be undoable]
-    |--requires--> [Centralized edit pipeline] (refactor applyEdit())
+Existing context menu --> Ghost path context menu creation (extends context menu)
+Node selection --> Ghost path context menu creation (right-click on selected node)
 
-[Context Menu] (new)
-    |--enhances--> [Existing flag popover actions]
-    |--enhances--> [Existing editor popover actions]
+Write lock for /save --> (independent, no deps)
 
-[Property Panel] (new)
-    |--requires--> [Node Selection System]
-    |--requires--> [Mermaid style directive generation]
-    |--extends--> [Existing Flag Panel]
+interaction-tracker.js --> POST /api/heatmap/:file endpoint (server must accept counts)
+POST /api/heatmap/:file --> mergeHeatmapCounts() in SessionStore (persist counts)
+mergeHeatmapCounts() --> Merged heatmap data (combine with MCP session data)
 
-[AI Breakpoints] (new)
-    |--requires--> [Existing annotation system (%% @flag)]
-    |--requires--> [Existing MCP tools]
-    |--requires--> [WebSocket notification system]
+Heatmap mode toggle --> (independent, no deps)
+Heatmap file switch refresh --> (independent, no deps)
+Heatmap empty state messaging --> (independent, no deps)
+Heatmap real-time WS updates --> Heatmap file switch refresh (must handle current file context)
 
-[Ghost Paths] (new)
-    |--requires--> [Existing status system (%% @status)]
-    |--requires--> [CSS opacity/dash rendering]
-    |--requires--> [Toggle visibility UI]
-
-[Risk Heatmap] (new)
-    |--requires--> [New annotation type (%% @risk)]
-    |--requires--> [Existing MCP tools (new tool)]
-    |--requires--> [SVG post-processing (background colors)]
-
-[Session Replay] (new)
-    |--requires--> [State history capture]
-    |--requires--> [Timeline scrubber UI]
-    |--requires--> [Diff highlighting engine]
-    |--blocked-by--> [Undo/Redo] (same state history mechanism)
-
-[Pattern Memory] (new)
-    |--requires--> [Flag history persistence]
-    |--requires--> [Fuzzy label matching]
-    |--requires--> [New MCP tool]
-
-[Executable Contract] (new)
-    |--requires--> [New annotation type (%% @expect)]
-    |--requires--> [Validation engine]
-    |--requires--> [Deviation visualization]
-    |--blocked-by--> [Risk Heatmap] (shares annotation infrastructure)
-
-[Folder Management] (new)
-    |--extends--> [Existing file tree sidebar]
-    |--requires--> [New server endpoints]
+CSS splitting --> (independent, no deps)
 ```
 
-### Critical Path
+### Critical Path: Two Independent Tracks
 
-The dependency chain reveals a clear build order:
+**Track 1: Ghost Paths (sequential)**
+1. Persistence (`@ghost` annotations) -- unlocks everything
+2. Individual delete + list panel -- makes management usable
+3. MCP read tool -- closes AI feedback loop
+4. Context menu creation -- improves creation UX
+5. Promotion to real edge -- advanced differentiator
 
-1. **Node Selection System** unlocks all canvas interactions
-2. **Undo/Redo System** must exist before shipping any destructive edit operation
-3. **Context Menu + Inline Edit** are the highest-impact canvas features with moderate complexity
-4. **Property Panel** is complex but transformative for usability
-5. **AI Breakpoints + Ghost Paths** are the AI observability quick wins (extend existing annotation system)
-6. **Session Replay** is the most complex feature and should come last
+**Track 2: Heatmap (mostly parallel)**
+1. Mode toggle + file switch refresh -- independent quick fixes
+2. Empty state messaging -- independent quick fix
+3. Real-time WebSocket updates -- extends existing infra
+4. Auto-tracking via interaction-tracker.js -- most complex, biggest impact
 
----
+Tracks can execute in parallel with no cross-dependencies.
 
-## MVP Recommendation (v2)
+## MVP Recommendation
 
-### Phase A: Canvas Foundation (must ship first)
+### Priority 1: Fix the Broken (must ship)
 
-1. **Node selection with visual feedback** — blue border, handles on corners
-2. **Undo/Redo system** — Memento pattern with string[] history
-3. **Context menu** — right-click with Edit/Delete/Duplicate/Flag/Connect actions
-4. **Inline edit** — double-click to edit label in-place
-5. **Copy/Paste/Duplicate** — Ctrl+C/V/D with generated IDs
-6. **Folder management** — rename/delete folders in sidebar
+1. **CSS splitting** -- Zero risk, immediate compliance with 500-line rule
+2. **Write safety for `/save`** -- Critical bug fix, 3-line change
+3. **Ghost path persistence (`@ghost` annotations)** -- Core feature fix
+4. **Ghost paths load on file open** -- Natural completion of persistence
+5. **Ghost path individual delete + list panel** -- Basic management
+6. **Heatmap mode toggle** -- Manual risk/frequency switching
+7. **Heatmap file switch refresh** -- Eliminate stale data
+8. **Heatmap empty state messaging** -- Explain missing data
 
-### Phase B: Property Panel + Polish
+### Priority 2: Close the Feedback Loop (should ship)
 
-7. **Property Panel** — right sidebar with color/shape/status controls
-8. **Multi-select** — Shift+click and rubber-band selection
-9. **Keyboard delete** — Delete/Backspace removes selected nodes
+9. **MCP `list_ghost_paths` tool** -- AI reads its own discarded paths
+10. **Ghost path context menu creation** -- Replace broken modal
+11. **Heatmap real-time WebSocket updates** -- Live frequency updates
+12. **Ghost path reason field** -- AI explains discarded paths
 
-### Phase C: AI Observability Layer
+### Priority 3: Differentiate (nice to have)
 
-10. **AI Breakpoints** — pause AI execution at flagged nodes
-11. **Ghost Paths** — show discarded reasoning branches at reduced opacity
-12. **Risk Heatmap** — color-code nodes by risk level
-
-### Phase D: Advanced Observability
-
-13. **Session Replay** — timeline scrubber for diagram evolution
-14. **Pattern Memory** — learn from repeated flags
-15. **Executable Contract** — validate AI execution against diagram spec
-
-### Defer to v3+
-
-- Drag-to-reposition (requires Mermaid layout override system)
-- Multi-cursor collaboration
-- Custom shapes beyond Mermaid syntax
+13. **Ghost path promotion to real edge** -- Rescue discarded ideas
+14. **Automatic heatmap tracking** -- Zero-setup frequency data
+15. **Merged heatmap data** -- Browser + MCP data combined
+16. **Cumulative heatmap with time windows** -- Historical analysis
 
 ---
 
-## Complexity Assessment
+## Ecosystem Research: How Similar Tools Handle These Patterns
 
-| Feature | Estimated Effort | Risk Level | Notes |
-|---------|-----------------|------------|-------|
-| Node Selection | 1-2 days | Low | Extend existing extractNodeId() |
-| Context Menu | 2-3 days | Low | Replace popover system |
-| Inline Edit | 2-3 days | Medium | Overlay positioning tricky with zoom/pan |
-| Undo/Redo | 3-4 days | Medium | Must integrate with all edit paths |
-| Copy/Paste/Duplicate | 2-3 days | Low | String manipulation, ID generation |
-| Property Panel | 5-7 days | High | Mermaid style syntax is complex |
-| Multi-Select | 3-4 days | Medium | Rubber band + batch operations |
-| Folder Management | 1-2 days | Low | Server endpoints + tree UI |
-| AI Breakpoints | 4-5 days | High | MCP cooperation model is novel |
-| Ghost Paths | 3-4 days | Medium | CSS overlay + toggle |
-| Risk Heatmap | 3-4 days | Medium | New annotation + SVG processing |
-| Session Replay | 8-12 days | Very High | State capture + timeline UI + diff engine |
-| Pattern Memory | 5-7 days | High | Fuzzy matching + persistence |
-| Executable Contract | 7-10 days | Very High | Validation engine + deviation UI |
+### Ghost Path / Alternative Path Visualization in the Ecosystem
 
-**Total estimated effort:** 49-70 developer-days for all features.
+SmartB's ghost paths are genuinely novel -- no production tool shows "roads not taken" as a first-class overlay concept. The closest analogies come from four different domains:
 
----
+**1. draw.io Layers (Toggle Visibility of Element Groups)**
+draw.io uses layers to organize and toggle groups of diagram elements. Users click an eye icon in the Layers panel to show/hide. Layers support custom link actions (`toggle` JSON) and tag-based cross-layer visibility. The annotation layer pattern (put docs on a hidden layer) directly maps to SmartB's ghost path toggle. Key UX patterns: eye icon toggle, per-layer CRUD, lock/unlock.
+Source: [draw.io Interactive Layers](https://www.drawio.com/blog/interactive-diagram-layers)
 
-## Competitor Feature Matrix (v2 scope)
+**2. React Flow / Cytoscape Edge Management**
+React Flow supports deleting edges via `onReconnectEnd` (drag edge to empty space). Context menus via `onNodeContextMenu` show "duplicate/delete" actions. Undo/redo via snapshot-based `useUndoRedo` hook (Ctrl+Z / Ctrl+Shift+Z). Cytoscape's `cytoscape-edge-editing` extension adds context menu items for "Add Bend Point" / "Remove Bend Point" on edges, with undoable operations. Both tools support individual edge selection and deletion.
+Source: [React Flow Context Menu](https://reactflow.dev/examples/interaction/context-menu), [Cytoscape Edge Editing](https://github.com/iVis-at-Bilkent/cytoscape.js-edge-editing)
 
-### Canvas Editors
+**3. iToT (Interactive Tree-of-Thoughts, arXiv 2024)**
+The closest academic tool to SmartB's ghost paths. iToT provides "a tree-based visualization of the ToT generation paths" with interactive controls. Users can "explore each step of the model's problem-solving process as well as correct and extend the model's thoughts." The semantic grouping feature reveals AI self-consistency: "if none of the branches are grouped, this indicates high variance." Key insight: iToT shows a SEPARATE tree view, while SmartB overlays ghost paths on the MAIN diagram. SmartB's approach is less cluttered but less comprehensive.
+Source: [iToT: Interactive Tree-of-Thoughts](https://arxiv.org/html/2409.00413v1)
 
-| Feature | Excalidraw | draw.io | Mermaid Chart Visual | tldraw | SmartB v2 |
-|---------|-----------|---------|---------------------|--------|-----------|
-| Select/click nodes | Yes | Yes | Yes | Yes | **Planned** |
-| Drag to reposition | Yes | Yes | Partial | Yes | Deferred (v3) |
-| Context menu | Yes | Yes | No | Yes | **Planned** |
-| Inline text edit | Yes | Yes | Yes | Yes | **Planned** |
-| Property panel | Yes (right sidebar) | Yes (right panel) | No | Yes | **Planned** |
-| Undo/Redo | Yes (rebuilt 2024) | Yes | No | Yes | **Planned** |
-| Copy/Paste | Yes | Yes | No | Yes | **Planned** |
-| Multi-select | Yes | Yes | No | Yes | **Planned** |
-| Export SVG/PNG | Yes | Yes | Yes | Yes | Already built |
-| Real-time sync | Yes (Excalidraw+) | No | No | Yes | Already built |
+**4. LangSmith / Langfuse Trace Visualization**
+LangSmith shows execution traces as trees with spans for each step. Langfuse shows "agent graphs" as visual representations of agent workflows. Both show the TAKEN path only. Neither shows discarded alternatives. SmartB's ghost paths fill a gap these tools leave open: visibility into what the AI CONSIDERED but rejected.
+Source: [Langfuse Agent Graphs](https://langfuse.com/docs/observability/features/agent-graphs), [LangSmith Observability](https://www.langchain.com/langsmith/observability)
 
-### AI Observability
+**Table Stakes UX for Ghost Path Management (synthesized from ecosystem):**
 
-| Feature | LangSmith | Langfuse | Datadog APM | Weights & Biases | SmartB v2 |
-|---------|-----------|---------|-------------|------------------|-----------|
-| Trace visualization | Tree/waterfall | Tree/waterfall | Flamegraph | Tree | **Flowchart diagram** |
-| Execution replay | Yes (trace replay) | Yes | Yes (session replay) | No | **Planned (timeline scrubber)** |
-| Developer intervention | No (read-only) | No (read-only) | No (read-only) | No (read-only) | **Yes (flags + breakpoints)** |
-| Risk assessment | No | No | Error tracking | No | **Planned (heatmap)** |
-| Discarded paths | No | No | No | No | **Planned (ghost paths)** |
-| Pattern learning | No | Partial (eval suites) | Anomaly detection | Experiment tracking | **Planned (pattern memory)** |
-| Contract validation | No | No | SLOs | No | **Planned (executable contract)** |
-| Local-first | No (cloud) | Self-host option | No (cloud) | No (cloud) | **Yes (always local)** |
-| Open integration | SDK lock-in | OpenTelemetry | Proprietary | SDK | **MCP (open standard)** |
+| Pattern | Source Tools | SmartB Status | Priority |
+|---------|-------------|---------------|----------|
+| Toggle visibility (show/hide all) | draw.io, Figma, Photoshop | DONE (toggle button exists) | -- |
+| Individual item deletion | React Flow, Cytoscape, draw.io | MISSING | P1 |
+| List panel with CRUD actions | draw.io Layers, Figma Layers | MISSING | P1 |
+| Create via context menu | React Flow, Cytoscape, draw.io | MISSING (modal is broken) | P2 |
+| Persist to file | draw.io (.drawio XML), Figma (cloud) | MISSING (in-memory only) | P1 |
+| Read via API (programmatic access) | LangSmith, Langfuse (trace API) | MISSING | P2 |
+| Promote/materialize (virtual to real) | draw.io (show layer) | MISSING (differentiator) | P3 |
+| Tooltip with metadata | Langfuse (span details), LangSmith | MISSING (differentiator) | P2 |
 
-### Key Competitive Insight (v2)
+### Heatmap / Hotspot Tracking in the Ecosystem
 
-SmartB v2's unique position intensifies: it is the **only tool** that combines:
-1. **Direct manipulation** of AI reasoning diagrams (not just viewing traces)
-2. **Bidirectional feedback** that the AI can read and act on (breakpoints, flags)
-3. **Temporal analysis** of how reasoning evolved (session replay, not just final state)
-4. **Pattern learning** from developer corrections (no competitor does this)
-5. **Local-first** with open integration (MCP, not proprietary SDK)
+The web analytics ecosystem has definitively solved heatmap UX. SmartB can directly apply these proven patterns:
 
-The closest competitor in the canvas editing space is Mermaid Chart Visual Editor, but it has no AI observability features. The closest competitor in AI observability is LangSmith, but it has no direct-manipulation editor and is read-only.
+**1. Auto-Capture Pattern (Hotjar/Contentsquare)**
+Since Hotjar joined Contentsquare in 2024, the combined platform exemplifies zero-setup tracking. Installation: single script tag. Data collection begins automatically. No manual tagging, no event definitions, no code changes per page. Contentsquare's free plan gives "autocapture" by default. This is THE pattern SmartB should follow: install once, heatmap populates automatically.
+Source: [Contentsquare Auto-Capture](https://contentsquare.com/blog/contentsquare-vs-hotjar/), [Hotjar Heatmap Setup](https://help.hotjar.com/hc/en-us/articles/360056147054-How-to-Set-Up-a-Hotjar-Heatmap)
 
----
+**2. Explicit Mode Switching (Hotjar Click/Scroll/Move Tabs)**
+Hotjar shows three heatmap types as tabs: Click maps, Scroll maps, Move maps. Users explicitly choose which mode to view. The current SmartB auto-detect (frequency if visits exist, else risk) removes user control. Every analytics tool provides manual mode selection as table stakes.
+Source: [Hotjar Heatmaps](https://www.hotjar.com/product/heatmaps/)
 
-## User Behavior Expectations
+**3. Real-Time Updates (FullSession, Contentsquare)**
+FullSession emphasizes "real-time interactive heatmaps" as a key differentiator. Contentsquare updates live during user sessions. SmartB already has the WebSocket infrastructure (`session:event` messages) but the heatmap module does not listen to them.
+Source: [FullSession Heatmap Tools](https://www.fullsession.io/blog/ux-heatmap-tools/)
 
-### Canvas Interactions (based on Excalidraw/draw.io conventions)
+**4. Empty State Guidance (Universal Pattern)**
+Every SaaS analytics tool shows helpful empty states. Hotjar: "Add the tracking snippet to start collecting data." Mixpanel: "No events yet. Send your first event." SmartB's heatmap shows literally nothing when empty -- no explanation, no guidance.
 
-| Action | Expected Behavior | Notes |
-|--------|-------------------|-------|
-| Click node | Select node, show handles | Deselect previous |
-| Shift+Click node | Add to selection | Multi-select |
-| Click empty space | Deselect all | Standard |
-| Double-click node | Enter inline edit mode | Or open property panel |
-| Right-click node | Show context menu | Edit, Delete, Duplicate, Flag, Connect |
-| Right-click empty space | Show canvas context menu | Add Node, Paste, Fit to View |
-| Ctrl+Z | Undo last action | Works globally |
-| Ctrl+Shift+Z | Redo | Or Ctrl+Y |
-| Ctrl+C | Copy selected node(s) | To internal clipboard |
-| Ctrl+V | Paste copied node(s) | With offset and new IDs |
-| Ctrl+D | Duplicate selected | Same as copy+paste |
-| Delete / Backspace | Remove selected node(s) | With edges |
-| Escape | Exit current mode / deselect | Cancel any operation |
+**5. APM Flame Graph Analogy (Datadog, Splunk)**
+Datadog Continuous Profiler and Splunk AlwaysOn Profiling both demonstrate "always-on, no-restart" instrumentation for code paths. The width of each bar indicates frequency. SmartB's frequency heatmap is conceptually identical but applied to diagram nodes instead of code functions. The key lesson: auto-instrumentation (no manual setup) is what makes these tools useful in practice.
+Source: [Datadog Continuous Profiler](https://docs.datadoghq.com/getting_started/profiler/), [Splunk APM Flame Graph](https://docs.splunk.com/observability/apm/profiling/using-the-flamegraph.html)
 
-### AI Observability Interactions
+**Table Stakes UX for Heatmap (synthesized from ecosystem):**
 
-| Action | Expected Behavior | Notes |
-|--------|-------------------|-------|
-| Click breakpoint icon | Toggle breakpoint on node | Visual indicator (red circle like IDE debuggers) |
-| AI hits breakpoint | Notification bar appears at top | "Breakpoint hit: Node X. [Continue] [Step] [Remove]" |
-| Toggle ghost paths | Show/hide discarded branches | Toggle in toolbar |
-| Hover risk node | Show risk tooltip with reason | "High risk: External API call to payment gateway" |
-| Drag timeline scrubber | Diagram updates to historical state | Frame-by-frame or continuous |
-| Click pattern warning | Show pattern history | "Flagged 3 times. Last flag: 'Wrong config format'" |
+| Pattern | Source Tools | SmartB Status | Priority |
+|---------|-------------|---------------|----------|
+| Auto-capture (no manual setup) | Contentsquare, Hotjar, FullStory, Datadog | MISSING | P2 (differentiator) |
+| Explicit mode toggle | Hotjar (click/scroll/move), Contentsquare | MISSING | P1 |
+| File/page switch auto-refresh | All analytics tools | MISSING | P1 |
+| Empty state with guidance | All SaaS analytics | MISSING | P1 |
+| Real-time live updates | FullSession, Contentsquare | MISSING | P2 |
+| Legend with mode indicator | Hotjar, Contentsquare | PARTIAL (legend shows but no mode switch) | P1 |
+| Time window selector | Datadog, Hotjar, Contentsquare | MISSING | P3 |
+| Compare periods | Contentsquare "compare journeys" | MISSING | Defer |
+
+### Annotation Persistence Patterns in the Ecosystem
+
+**1. Mermaid Native Persistence Options**
+Mermaid supports three in-file metadata mechanisms: `%%` line comments (used by SmartB), YAML frontmatter (`---` blocks), and `%%{ }%%` directives. SmartB's annotation block pattern (`%% --- ANNOTATIONS ---`) is a clean extension of the standard `%%` comment mechanism. This is the right approach.
+Source: [Mermaid Syntax Reference](https://mermaid.js.org/intro/syntax-reference.html)
+
+**2. Sidecar File Pattern (DAM Industry)**
+Digital Asset Management (DAM) uses sidecar files extensively: `image01.jpg` with `image01.xmp`. The sidecar stores metadata without modifying the original asset. Naming convention: same filename, different extension. Applied to Mermaid: `plan.mmd` with `plan.meta.json`. Tradeoff: non-destructive but can get out of sync when files are moved.
+Source: [Sidecar Files in DAM](https://www.orangelogic.com/sidecar-in-digital-asset-management)
+
+**3. Mermaid Chart Platform Comments**
+The commercial Mermaid Chart platform added a "Comments" feature for persistent annotations beyond plain text comments. This is a cloud-managed approach, not applicable to SmartB's local-first model.
+Source: [Mermaid Chart Comments](https://docs.mermaidchart.com/blog/posts/how-to-use-the-new-comments-feature-in-mermaid-chart)
+
+**Recommendation: Use the annotation block (`%% @ghost`)** because:
+1. Consistent with 4 existing annotation types (flags, statuses, breakpoints, risks)
+2. Git-friendly: ghost paths appear in diffs, reviewable in PRs
+3. Single source of truth: no sidecar sync issues
+4. Mermaid-safe: `%%` comments are ignored by all Mermaid renderers
+5. Survives file copy/move operations
+
+### Competitor Feature Matrix
+
+**Ghost Path / Alternative Path Management**
+
+| Feature | draw.io | React Flow | Cytoscape | iToT | LangSmith | SmartB v2.1 |
+|---------|---------|------------|-----------|------|-----------|-------------|
+| Alternative paths as overlay | Layers (toggle) | Edge types | Edge classes | Tree view | No | Ghost paths (dashed) |
+| Individual path delete | Select+delete | onReconnectEnd | cy.remove() | No | No | **Planned** |
+| Persist to file | .drawio XML | No (runtime) | No (runtime) | No | No | **Planned (@ghost)** |
+| Create via context menu | Add Edge | Handle drag | Right-click | Interactive | No | **Planned** |
+| List/manage view | Layers panel | No | No | Tree panel | Trace panel | **Planned** |
+| Promote to real element | Show layer | No | No | Accept branch | No | **Planned** |
+| AI-readable via API | No | No | No | No | Read-only traces | **Planned (MCP)** |
+
+**Heatmap / Hotspot Tracking**
+
+| Feature | Hotjar/CS | FullStory | Datadog APM | LangSmith | SmartB v2.1 |
+|---------|-----------|-----------|-------------|-----------|-------------|
+| Auto-tracking (no setup) | Yes (script) | Yes (auto) | Yes (agent) | Yes (SDK) | **Planned** |
+| Manual mode toggle | Yes (tabs) | Yes (filter) | Yes (metrics) | Yes (views) | **Planned** |
+| Real-time updates | Yes | Yes | Yes | Yes | **Planned (WS)** |
+| File/page switch refresh | Yes (auto) | Yes (auto) | Yes (auto) | Yes (auto) | **Planned** |
+| Empty state guidance | Yes | Yes | Yes | No | **Planned** |
+| Time window selector | Yes | Yes | Yes | Yes | **Planned** |
+
+### Key Competitive Insight
+
+SmartB's ghost paths are genuinely unique. No production tool shows "roads not taken" as a first-class diagram overlay. The closest pattern is draw.io layers, but those are user-organized groups, not AI-generated alternatives. The iToT research prototype is academic-only and uses a separate tree view rather than overlay.
+
+For heatmaps, every problem SmartB faces has been solved by the web analytics ecosystem (Hotjar, Contentsquare, FullStory). The patterns are proven and directly applicable:
+1. Auto-capture everything (no manual setup)
+2. Provide explicit mode switching (not auto-detect)
+3. Update in real-time via existing WebSocket infrastructure
+4. Show clear empty states with actionable guidance
+5. Refresh on context change (file switch)
 
 ---
 
 ## Sources
 
-### Canvas Editors
-- [Excalidraw GitHub](https://github.com/excalidraw/excalidraw) — HIGH confidence
-- [Excalidraw Keyboard Shortcuts](https://csswolf.com/excalidraw-keyboard-shortcuts-pdf/) — MEDIUM confidence
-- [Excalidraw 2024 Changelog](https://plus.excalidraw.com/blog/excalidraw-in-2024) — HIGH confidence
-- [tldraw Docs](https://tldraw.dev/) — HIGH confidence
-- [Konva.js Canvas Context Menu](https://konvajs.org/docs/sandbox/Canvas_Context_Menu.html) — HIGH confidence
-- [Konva.js Select and Transform](https://konvajs.org/docs/select_and_transform/Basic_demo.html) — HIGH confidence
-- [GoJS Custom Context Menu](https://gojs.net/latest/samples/customContextMenu.html) — HIGH confidence
-- [Mermaid Chart Visual Editor Announcement](https://docs.mermaidchart.com/blog/posts/mermaid-chart-releases-new-visual-editor-for-flowcharts) — MEDIUM confidence
-- [Mermaid Live Editor Drag Issues (#1284, #1507)](https://github.com/mermaid-js/mermaid-live-editor/issues/1284) — HIGH confidence
-- [Mermaid Node Positioning Limitation (#270)](https://github.com/mermaid-js/mermaid/issues/270) — HIGH confidence
+### Codebase Analysis
+- `src/diagram/annotations.ts` (annotation regex pattern), `src/server/ghost-store.ts` (in-memory store), `src/server/file-routes.ts` (unprotected `/save` endpoint), `static/main.css` (577 lines)
+- Project constraints: `CLAUDE.md` (500-line rule, no new heavy deps, vanilla JS)
 
-### Property Panel UX
-- [How to Design Properties Panel — UX Planet](https://uxplanet.org/how-to-design-properties-panel-4d562cc47da3) — MEDIUM confidence
-- [BPMN.js Properties Panel](https://www.npmjs.com/package/bpmn-js-properties-panel) — HIGH confidence
+### Ghost Path / Alternative Path Ecosystem
+- [draw.io Interactive Layers](https://www.drawio.com/blog/interactive-diagram-layers) -- HIGH confidence
+- [draw.io Layer Management](https://www.drawio.com/doc/layers) -- HIGH confidence
+- [React Flow Delete Edge on Drop](https://reactflow.dev/examples/edges/delete-edge-on-drop) -- HIGH confidence
+- [React Flow Context Menu](https://reactflow.dev/examples/interaction/context-menu) -- HIGH confidence
+- [Cytoscape Edge Editing Extension](https://github.com/iVis-at-Bilkent/cytoscape.js-edge-editing) -- HIGH confidence
+- [Cytoscape Quick Tour](https://manual.cytoscape.org/en/stable/Quick_Tour_of_Cytoscape.html) -- HIGH confidence
+- [iToT: Interactive Tree-of-Thoughts](https://arxiv.org/html/2409.00413v1) -- MEDIUM confidence (academic)
+- [Tree of Thought UI (GitHub)](https://github.com/mazewoods/tree-of-thought-ui) -- LOW confidence (community project)
+- [Langfuse Agent Graphs](https://langfuse.com/docs/observability/features/agent-graphs) -- HIGH confidence
+- [LangSmith Observability](https://www.langchain.com/langsmith/observability) -- HIGH confidence
+- [Braintrust AI Observability](https://www.braintrust.dev/articles/best-ai-observability-tools-2026) -- MEDIUM confidence
+- [Portkey Agent Observability](https://portkey.ai/blog/agent-observability-measuring-tools-plans-and-outcomes/) -- MEDIUM confidence
 
-### Undo/Redo Patterns
-- [Konva.js Undo/Redo with React](https://konvajs.org/docs/react/Undo-Redo.html) — HIGH confidence
-- [Undo/Redo in Multiplayer — Liveblocks](https://liveblocks.io/blog/how-to-build-undo-redo-in-a-multiplayer-environment) — MEDIUM confidence
-- [Command Pattern vs Memento for Undo](https://codinghelmet.com/articles/does-the-command-pattern-require-undo) — MEDIUM confidence
-- [Writing Undo/Redo Systems in JavaScript](https://medium.com/fbbd/intro-to-writing-undo-redo-systems-in-javascript-af17148a852b) — MEDIUM confidence
+### Heatmap / Hotspot Ecosystem
+- [Hotjar Heatmap Setup](https://help.hotjar.com/hc/en-us/articles/360056147054-How-to-Set-Up-a-Hotjar-Heatmap) -- HIGH confidence
+- [Contentsquare vs Hotjar](https://contentsquare.com/blog/contentsquare-vs-hotjar/) -- HIGH confidence
+- [Contentsquare Website Heatmap](https://contentsquare.com/website-heatmap-tool/) -- HIGH confidence
+- [FullSession Heatmap Tools](https://www.fullsession.io/blog/ux-heatmap-tools/) -- MEDIUM confidence
+- [UXCam Heatmap Tools](https://uxcam.com/blog/best-heatmap-analysis-tool/) -- MEDIUM confidence
+- [Datadog Continuous Profiler](https://docs.datadoghq.com/getting_started/profiler/) -- HIGH confidence
+- [Splunk APM Flame Graph](https://docs.splunk.com/observability/apm/profiling/using-the-flamegraph.html) -- HIGH confidence
+- [Brendan Gregg Flame Graphs](https://www.brendangregg.com/flamegraphs.html) -- HIGH confidence
 
-### AI Observability
-- [LLM Observability Tools 2026](https://research.aimultiple.com/llm-observability/) — MEDIUM confidence
-- [Best AI Observability Platforms 2025](https://www.comet.com/site/blog/llm-observability-tools/) — MEDIUM confidence
-- [15 AI Agent Observability Tools 2026](https://research.aimultiple.com/agentic-monitoring/) — MEDIUM confidence
-- [Agent Tracing for Debugging — Maxim](https://www.getmaxim.ai/articles/agent-tracing-for-debugging-multi-agent-ai-systems/) — MEDIUM confidence
-- [Datadog Session Replay](https://www.datadoghq.com/knowledge-center/session-replay/) — HIGH confidence
-- [Session Replay Monitoring Tools 2025](https://cubeapm.com/blog/top-session-replay-monitoring-tools/) — MEDIUM confidence
+### Annotation Persistence
+- [Mermaid Syntax Reference](https://mermaid.js.org/intro/syntax-reference.html) -- HIGH confidence
+- [Mermaid Chart Comments](https://docs.mermaidchart.com/blog/posts/how-to-use-the-new-comments-feature-in-mermaid-chart) -- MEDIUM confidence
+- [Sidecar Files in DAM](https://www.orangelogic.com/sidecar-in-digital-asset-management) -- MEDIUM confidence
+- [Mermaid Class Diagram Annotations](https://mermaid.js.org/syntax/classDiagram.html) -- HIGH confidence
 
-### Risk Heatmaps
-- [Risk Heat Map Guide — Creately](https://creately.com/guides/risk-heat-map/) — MEDIUM confidence
-- [Risk Heat Map — MetricStream](https://www.metricstream.com/learn/risk-heat-map.html) — MEDIUM confidence
-
-### Mermaid Constraints
-- [Mermaid Layout Engines — DeepWiki](https://deepwiki.com/mermaid-js/mermaid/2.3-diagram-types-detection) — MEDIUM confidence
-- [Mermaid ELK Layout Positioning (#5420)](https://github.com/mermaid-js/mermaid/issues/5420) — HIGH confidence
+### AI Reasoning Observability
+- [CRV: Verifying Chain-of-Thought via Computational Graph](https://arxiv.org/abs/2510.09312) -- MEDIUM confidence (academic)
+- [LangGraph Tree of Thoughts](https://langchain-ai.github.io/langgraph/tutorials/tot/tot/) -- HIGH confidence
+- [Hugging Face ToT Blog](https://huggingface.co/blog/sadhaklal/tree-of-thoughts) -- MEDIUM confidence
 
 ---
-*Feature research for: Interactive Canvas + AI Observability (v2 milestone)*
-*Researched: 2026-02-15*
+*Feature research for: SmartB Diagrams v2.1 -- Bug Fixes & Usability*
+*Enriched with ecosystem/competitor research: 2026-02-19*
