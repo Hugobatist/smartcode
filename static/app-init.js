@@ -244,6 +244,7 @@
 
     // ── Init Phase 16: Heatmap & Session Player ──
     if (window.SmartBHeatmap) SmartBHeatmap.init();
+    if (window.SmartBInteractionTracker) SmartBInteractionTracker.init();
     if (window.SmartBSessionPlayer) SmartBSessionPlayer.init();
 
     // ── Init MCP Sessions view ──

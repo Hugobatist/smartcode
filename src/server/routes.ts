@@ -23,6 +23,7 @@ import { registerBreakpointRoutes } from './breakpoint-routes.js';
 import { registerGhostPathRoutes } from './ghost-path-routes.js';
 import { registerAnnotationRoutes } from './annotation-routes.js';
 import { registerMcpSessionRoutes } from './mcp-session-routes.js';
+import { registerHeatmapRoutes, type HeatmapStore } from './heatmap-routes.js';
 import { list as listWorkspaces } from '../registry/workspace-registry.js';
 
 /**
@@ -35,6 +36,7 @@ export function registerRoutes(
   wsManager?: WebSocketManager,
   breakpointContinueSignals?: Map<string, boolean>,
   sessionStore?: SessionStore,
+  heatmapStore?: HeatmapStore,
 ): Route[] {
   const routes: Route[] = [];
 
@@ -205,9 +207,14 @@ export function registerRoutes(
   // ── Annotation routes (risk levels) ──
   registerAnnotationRoutes(routes, service);
 
-  // ── Session + Heatmap routes ──
+  // ── Session routes ──
   if (sessionStore) {
     registerSessionRoutes(routes, sessionStore);
+  }
+
+  // ── Heatmap routes (click tracking + session data merge) ──
+  if (heatmapStore) {
+    registerHeatmapRoutes(routes, heatmapStore, sessionStore, wsManager);
   }
 
   // ── MCP Session discovery routes ──

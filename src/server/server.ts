@@ -12,6 +12,7 @@ import { WebSocketManager } from './websocket.js';
 import { FileWatcher } from '../watcher/file-watcher.js';
 import { serializeGraphModel } from '../diagram/graph-serializer.js';
 import { SessionStore } from '../session/session-store.js';
+import { HeatmapStore } from './heatmap-routes.js';
 import { register as registerWorkspace, deregister as deregisterWorkspace } from '../registry/workspace-registry.js';
 
 /** Options for starting the HTTP server */
@@ -169,6 +170,7 @@ export interface ServerInstance {
   fileWatcher: FileWatcher;
   breakpointContinueSignals: Map<string, boolean>;
   sessionStore: SessionStore;
+  heatmapStore: HeatmapStore;
   /** Add a new project directory with its own FileWatcher and WebSocket namespace */
   addProject: (name: string, dir: string) => void;
   /** Close all FileWatcher instances (default + named projects) */
@@ -191,8 +193,9 @@ export function createHttpServer(projectDir: string, existingService?: DiagramSe
   const wsManager = new WebSocketManager(httpServer);
   const breakpointContinueSignals = new Map<string, boolean>();
   const sessionStore = new SessionStore(resolvedDir);
+  const heatmapStore = new HeatmapStore();
 
-  const routes = registerRoutes(service, resolvedDir, wsManager, breakpointContinueSignals, sessionStore);
+  const routes = registerRoutes(service, resolvedDir, wsManager, breakpointContinueSignals, sessionStore, heatmapStore);
   const handler = createHandler(routes, staticDir);
 
   httpServer.on('request', (req, res) => {
@@ -262,7 +265,7 @@ export function createHttpServer(projectDir: string, existingService?: DiagramSe
     watchers.clear();
   }
 
-  return { httpServer, wsManager, fileWatcher, breakpointContinueSignals, sessionStore, addProject, closeAllWatchers };
+  return { httpServer, wsManager, fileWatcher, breakpointContinueSignals, sessionStore, heatmapStore, addProject, closeAllWatchers };
 }
 
 /**

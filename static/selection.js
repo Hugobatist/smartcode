@@ -135,6 +135,11 @@
         if (window.SmartBEventBus) {
             SmartBEventBus.emit('selection:changed', { id: nodeId, type: 'node' });
         }
+
+        // Track click for heatmap frequency data
+        if (window.SmartBInteractionTracker) {
+            SmartBInteractionTracker.trackClick(nodeId);
+        }
     }
 
     /**
@@ -299,7 +304,7 @@
                         deleteConfirmTimer = null;
                         deleteConfirmNodeId = null;
                     }, 2000);
-                    if (window.toast) window.toast('Pressione Delete novamente para remover o nodo');
+                    if (window.toast) window.toast('Press Delete again to remove the node');
                 }
             }
             if (e.key === 'Escape') {

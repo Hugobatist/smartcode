@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SmartB - Diagramas Live</title>
+    <title>SmartB - Live Diagrams</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%233b82f6'/><text x='16' y='22' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='700' font-size='18'>S</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="vendor/dagre-bundle.js"></script>
@@ -16,6 +17,7 @@
     <link rel="stylesheet" href="heatmap.css">
     <link rel="stylesheet" href="session-player.css">
     <link rel="stylesheet" href="search.css">
+    <link rel="stylesheet" href="modal.css">
 </head>
 <body>
 
@@ -25,36 +27,36 @@
     <div class="toolbar-group">
         <span class="logo">SmartB</span>
         <span id="workspaceSwitcher" class="workspace-switcher"></span>
-        <span class="file-name" id="currentFileName">Plano Acao</span>
+        <span class="file-name" id="currentFileName">Action Plan</span>
     </div>
 
     <div class="toolbar-separator"></div>
 
     <!-- Group 2: View -->
     <div class="toolbar-group">
-        <button class="toolbar-btn" id="toggleSidebar" title="Toggle sidebar">Arquivos</button>
-        <button class="toolbar-btn" id="toggleEditor" title="Toggle editor">Editor</button>
-        <button class="toolbar-btn" id="toggleAutoSync">Auto-Sync</button>
+        <button class="toolbar-btn" id="toggleSidebar" title="Toggle file explorer (Ctrl+B)"><span class="toolbar-icon" data-icon="sidebar"></span>Files</button>
+        <button class="toolbar-btn" id="toggleEditor" title="Toggle code editor (Ctrl+E)"><span class="toolbar-icon" data-icon="editor"></span>Editor</button>
+        <button class="toolbar-btn" id="toggleAutoSync" title="Toggle auto-sync with file changes"><span class="toolbar-icon" data-icon="sync"></span>Sync</button>
     </div>
 
     <div class="toolbar-separator"></div>
 
     <!-- Group 3: Edit -->
     <div class="toolbar-group">
-        <button class="toolbar-btn toolbar-btn--primary" id="btnAddNode" onclick="MmdEditor.toggleAddNode()">+ Nodo</button>
-        <button class="toolbar-btn toolbar-btn--primary" id="btnAddEdge" onclick="MmdEditor.toggleAddEdge()">+ Seta</button>
+        <button class="toolbar-btn toolbar-btn--primary" id="btnAddNode" onclick="MmdEditor.toggleAddNode()" title="Add node (N)"><span class="toolbar-icon" data-icon="node"></span>Node</button>
+        <button class="toolbar-btn toolbar-btn--primary" id="btnAddEdge" onclick="MmdEditor.toggleAddEdge()" title="Add edge (A)"><span class="toolbar-icon" data-icon="arrowRight"></span>Edge</button>
     </div>
 
     <div class="toolbar-separator"></div>
 
     <!-- Group 4: Inspect -->
     <div class="toolbar-group">
-        <button class="toolbar-btn" id="btnFlags" onclick="SmartBAnnotations.toggleFlagMode()">Flags <span class="toolbar-badge" id="flagCountBadge" data-count="0"></span></button>
-        <button class="toolbar-btn" id="toggleFlagPanel" onclick="SmartBAnnotations.togglePanel()">Painel</button>
-        <button class="toolbar-btn" id="btnGhostPaths" onclick="SmartBGhostPaths.toggle()">Ghost <span class="toolbar-badge" id="ghostCountBadge" data-count="0"></span></button>
-        <button class="toolbar-btn" id="btnHeatmap" onclick="SmartBHeatmap.toggle()">Heatmap</button>
+        <button class="toolbar-btn" id="btnFlags" onclick="SmartBAnnotations.toggleFlagMode()" title="Toggle flag mode (F)"><span class="toolbar-icon" data-icon="flag"></span>Flags <span class="toolbar-badge" id="flagCountBadge" data-count="0"></span></button>
+        <button class="toolbar-btn" id="toggleFlagPanel" onclick="SmartBAnnotations.togglePanel()" title="Toggle flags panel"><span class="toolbar-icon" data-icon="eye"></span>Panel</button>
+        <button class="toolbar-btn" id="btnGhostPaths" onclick="SmartBGhostPaths.toggle()" title="Toggle ghost paths"><span class="toolbar-icon" data-icon="ghost"></span>Ghost <span class="toolbar-badge" id="ghostCountBadge" data-count="0"></span></button>
+        <button class="toolbar-btn" id="btnHeatmap" onclick="SmartBHeatmap.toggle()" title="Toggle heatmap (H)"><span class="toolbar-icon" data-icon="heatmap"></span>Heat</button>
         <span style="position:relative">
-            <button class="toolbar-btn" id="btnSessions">Sessions</button>
+            <button class="toolbar-btn" id="btnSessions" title="Session recordings"><span class="toolbar-icon" data-icon="play"></span>Recordings</button>
             <div class="session-dropdown hidden" id="sessionDropdown"><div id="sessionList"></div></div>
         </span>
     </div>
@@ -63,10 +65,10 @@
 
     <!-- Group 5: Export + Status (right-aligned) -->
     <div class="toolbar-group">
-        <button class="toolbar-btn" onclick="saveCurrentFile()">Salvar</button>
-        <button class="toolbar-btn" onclick="exportSVG()">SVG</button>
-        <button class="toolbar-btn" onclick="exportPNG()">PNG</button>
-        <button class="toolbar-btn toolbar-btn--ghost" onclick="showHelp()">?</button>
+        <button class="toolbar-btn" onclick="saveCurrentFile()" title="Save file (Ctrl+S)"><span class="toolbar-icon" data-icon="save"></span>Save</button>
+        <button class="toolbar-btn" onclick="exportSVG()" title="Export as SVG"><span class="toolbar-icon" data-icon="download"></span>SVG</button>
+        <button class="toolbar-btn" onclick="exportPNG()" title="Export as PNG"><span class="toolbar-icon" data-icon="image"></span>PNG</button>
+        <button class="toolbar-btn toolbar-btn--ghost" onclick="showHelp()" title="Help & shortcuts (?)"><span class="toolbar-icon" data-icon="help"></span>?</button>
     </div>
 
     <div class="status">
@@ -80,11 +82,14 @@
     <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
-            <span>Explorer</span>
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" id="tabFiles" onclick="SmartBMcpSessions.setViewMode('files')">Files</button>
+                <button class="sidebar-tab" id="tabSessions" onclick="SmartBMcpSessions.setViewMode('sessions')">Sessions</button>
+            </div>
             <div class="actions">
-                <button id="btnNewFolder" onclick="createNewFolder()" title="Nova pasta"></button>
-                <button id="btnNewFile" onclick="createNewFile()" title="Novo diagrama"></button>
-                <button id="btnSaveFile" onclick="saveCurrentFile()" title="Salvar (Ctrl+S)"></button>
+                <button id="btnNewFolder" onclick="createNewFolder()" title="New folder"></button>
+                <button id="btnNewFile" onclick="createNewFile()" title="New diagram"></button>
+                <button id="btnSaveFile" onclick="saveCurrentFile()" title="Save (Ctrl+S)"></button>
             </div>
         </div>
         <div id="fileTree" style="flex:1;overflow-y:auto;padding:4px 0"></div>
@@ -100,7 +105,7 @@
                     <kbd>Ctrl</kbd>+<kbd>Enter</kbd> render
                 </span>
             </div>
-            <textarea id="editor" spellcheck="false" placeholder="Cole ou escreva Mermaid aqui..."></textarea>
+            <textarea id="editor" spellcheck="false" placeholder="Paste or write Mermaid here..."></textarea>
         </div>
 
         <!-- Resize handle (hidden when editor hidden) -->
@@ -122,7 +127,7 @@
                 </select>
                 <button class="sp-btn" id="spClose" title="Close replay">Close</button>
             </div>
-            <div class="fit-hint" id="fitHint">Scroll para zoom | Arraste para mover</div>
+            <div class="fit-hint" id="fitHint">Scroll to zoom | Drag to pan</div>
             <div class="zoom-controls">
                 <button class="zoom-btn" onclick="zoomOut()">-</button>
                 <span class="zoom-label" id="zoomLabel">100%</span>
@@ -148,43 +153,43 @@
 <!-- Help -->
 <div class="help-overlay" id="helpOverlay" onclick="this.classList.remove('show')">
     <div class="help-box" onclick="event.stopPropagation()">
-        <h2>Atalhos</h2>
-        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd></span><span>Renderizar</span></div>
+        <h2>Shortcuts</h2>
+        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd></span><span>Render</span></div>
         <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>E</kbd></span><span>Toggle editor</span></div>
         <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>B</kbd></span><span>Toggle sidebar</span></div>
         <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>-</kbd></span><span>Zoom in/out</span></div>
         <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>0</kbd></span><span>Zoom fit</span></div>
-        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>S</kbd></span><span>Salvar arquivo</span></div>
-        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>F</kbd></span><span>Buscar nodo</span></div>
-        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span>Desfazer (undo)</span></div>
-        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></span><span>Refazer (redo)</span></div>
-        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>C</kbd></span><span>Copiar nodo</span></div>
-        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>V</kbd></span><span>Colar nodo</span></div>
-        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>D</kbd></span><span>Duplicar nodo</span></div>
+        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>S</kbd></span><span>Save file</span></div>
+        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>F</kbd></span><span>Search node</span></div>
+        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>Z</kbd></span><span>Undo</span></div>
+        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd></span><span>Redo</span></div>
+        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>C</kbd></span><span>Copy node</span></div>
+        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>V</kbd></span><span>Paste node</span></div>
+        <div class="help-row"><span><kbd>Ctrl</kbd>+<kbd>D</kbd></span><span>Duplicate node</span></div>
         <div class="help-row"><span>Scroll</span><span>Zoom</span></div>
-        <div class="help-row"><span>Arrastar</span><span>Pan</span></div>
-        <div class="help-row"><span><kbd>N</kbd></span><span>Adicionar nodo</span></div>
-        <div class="help-row"><span><kbd>A</kbd></span><span>Adicionar seta</span></div>
+        <div class="help-row"><span>Drag</span><span>Pan</span></div>
+        <div class="help-row"><span><kbd>N</kbd></span><span>Add node</span></div>
+        <div class="help-row"><span><kbd>A</kbd></span><span>Add edge</span></div>
         <div class="help-row"><span><kbd>F</kbd></span><span>Toggle Flag Mode</span></div>
-        <div class="help-row"><span>Click no nodo</span><span>Selecionar</span></div>
-        <div class="help-row"><span>Right-click</span><span>Menu de contexto</span></div>
-        <div class="help-row"><span>Duplo-clique no nodo</span><span>Editar texto inline</span></div>
-        <div class="help-row"><span><kbd>Del</kbd> / <kbd>Backspace</kbd></span><span>Deletar selecionado</span></div>
-        <div class="help-row"><span>Duplo-clique</span><span>Focus no subgraph</span></div>
-        <div class="help-row"><span><kbd>Esc</kbd></span><span>Sair do Focus Mode</span></div>
-        <div class="help-row"><span><kbd>B</kbd></span><span>Toggle Breakpoint (nodo selecionado)</span></div>
+        <div class="help-row"><span>Click on node</span><span>Select</span></div>
+        <div class="help-row"><span>Right-click</span><span>Context menu</span></div>
+        <div class="help-row"><span>Double-click on node</span><span>Edit text inline</span></div>
+        <div class="help-row"><span><kbd>Del</kbd> / <kbd>Backspace</kbd></span><span>Delete selected</span></div>
+        <div class="help-row"><span>Double-click</span><span>Focus on subgraph</span></div>
+        <div class="help-row"><span><kbd>Esc</kbd></span><span>Exit Focus Mode</span></div>
+        <div class="help-row"><span><kbd>B</kbd></span><span>Toggle Breakpoint (selected node)</span></div>
         <div class="help-row"><span>Right-click > Toggle Breakpoint</span><span>Toggle Breakpoint</span></div>
         <div class="help-row"><span>Ghost button</span><span>Toggle ghost path visibility</span></div>
         <div class="help-row"><span><kbd>H</kbd></span><span>Toggle heatmap</span></div>
         <div class="help-row"><span><kbd>Space</kbd></span><span>Play/pause replay (session player)</span></div>
         <div class="help-row"><span><kbd>Left</kbd> / <kbd>Right</kbd></span><span>Step frame (session player)</span></div>
-        <div class="help-row"><span><kbd>?</kbd></span><span>Ajuda</span></div>
+        <div class="help-row"><span><kbd>?</kbd></span><span>Help</span></div>
         <br>
-        <h2>Como funciona</h2>
+        <h2>How it works</h2>
         <p style="font-size:13px;color:var(--text-secondary);line-height:1.6">
-            O Claude atualiza os arquivos <code>.mmd</code> na pasta <code>diagramas/</code>.
-            Com Auto-Sync ligado, esta pagina atualiza em tempo real via WebSocket.
-            Clique em <strong>Editor</strong> para editar direto no navegador.
+            Claude updates the <code>.mmd</code> files in the <code>diagrams/</code> folder.
+            With Auto-Sync enabled, this page updates in real time via WebSocket.
+            Click <strong>Editor</strong> to edit directly in the browser.
         </p>
     </div>
 </div>
@@ -222,8 +227,11 @@
 <script src="breakpoints.js"></script>
 <script src="ghost-paths.js"></script>
 <script src="heatmap.js"></script>
+<script src="interaction-tracker.js"></script>
 <script src="session-player.js"></script>
 <script src="ws-handler.js"></script>
+<script src="mcp-sessions.js"></script>
+<script src="modal.js"></script>
 <script src="app-init.js"></script>
 
 </body>

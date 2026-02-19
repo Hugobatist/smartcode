@@ -198,6 +198,9 @@
         // Reset ghost path user-hide tracking on file switch
         if (window.SmartBGhostPaths) SmartBGhostPaths.resetUserHide();
 
+        // Flush and reset interaction tracker for new file
+        if (window.SmartBInteractionTracker) SmartBInteractionTracker.resetForFile();
+
         // Fetch overlay data for the new file (ghost paths, heatmap, sessions)
         var encoded = encodeURIComponent(path);
         if (window.SmartBGhostPaths) {
