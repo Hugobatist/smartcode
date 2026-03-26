@@ -18,10 +18,25 @@ dist/
 *~
 
 # SmartCode session data (local-only)
-.smartcode/sessions/
+.smartcode/
 
 # OS
 Thumbs.db
 
 # Planning (internal)
 .planning/
+
+# Claude config (local)
+.claude/
+
+# Univale project (not part of SmartCode)
+univale/
+
+# Evaluation docs
+AVALIACAO-PROJETO.md
+
+# VS Code extension (separate repo)
+vscode-extension/
+
+# Build artifacts
+tsconfig.webview.tsbuildinfo
