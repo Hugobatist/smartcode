@@ -172,11 +172,16 @@
     --mermaid-edge-label-bg:  var(--edge-label-bg);
 
     /* ── Tipografia ── */
-    --font-hand: 'Caveat', 'Comic Sans MS', cursive;
-    --font-ui:   'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-    /* Caveat renderiza mais estreita que uma sans no mesmo px → fator de compensação */
-    --font-hand-scale: 1.18;
+    /* Rótulo de nó: LEGÍVEL por padrão (Nunito, arredondada e fácil de ler).
+       A "cara de desenho" vem do traço dos nós (rough.js), não da letra — é o
+       mesmo princípio do Excalidraw. A Caveat (manuscrita) segue carregada em
+       --font-script: basta apontar --font-hand para ela se um dia quiser a
+       letra à mão de volta. */
+    --font-hand:   'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-script: 'Caveat', cursive; /* manuscrita opcional (não usada por padrão) */
+    --font-ui:     'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono:   'JetBrains Mono', 'Fira Code', monospace;
+    --font-hand-scale: 1.0; /* Nunito tem largura normal — sem compensação */
 
     /* ── Espaçamento (inalterado — escala saudável de 4px) ── */
     --space-1: 4px;
