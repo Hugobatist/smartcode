@@ -1,15 +1,20 @@
 import type { ValidationResult } from './types.js';
 import { parseDiagramType } from './parser.js';
 import { KNOWN_DIAGRAM_TYPES } from './constants.js';
+import { EDGE_OPS, parseEdgesFromLine } from './graph-edge-parser.js';
 
 /**
- * Validate Mermaid syntax using a regex-based heuristic approach.
+ * Validate Mermaid syntax.
  *
- * The @mermaid-js/parser package (v0.6) only supports a limited set of diagram types
- * (info, packet, pie, architecture, gitGraph, radar) and does NOT support flowchart,
- * which is the primary diagram type for SmartCode. We use a heuristic validator that
- * catches obvious syntax errors. Browser-side Mermaid.js catches the rest at render time.
+ * For flow diagrams (the project's primary type), edge structure is validated by
+ * reusing the production edge parser (EDGE_OPS + parseEdgesFromLine): a line that
+ * carries an edge operator but yields no parseable edge is flagged. This matches
+ * exactly what the renderer can draw, so it adds no false positives. Bracket
+ * balance is checked for all types. Anything subtler is left to browser-side
+ * Mermaid.js at render time — the validator is advisory and never blocks saving.
  */
+const FLOW_DIAGRAM_TYPES = new Set(['flowchart', 'graph']);
+
 export function validateMermaidSyntax(content: string): ValidationResult {
   const errors: ValidationResult['errors'] = [];
   const trimmedContent = content.trim();
@@ -30,13 +35,11 @@ export function validateMermaidSyntax(content: string): ValidationResult {
     return { valid: false, errors, diagramType: undefined };
   }
 
-  // Check bracket matching
-  const bracketErrors = checkBracketMatching(content);
-  errors.push(...bracketErrors);
+  errors.push(...checkBracketMatching(content));
 
-  // Check for dangling arrows (lines ending with --> with nothing after)
-  const danglingErrors = checkDanglingArrows(content);
-  errors.push(...danglingErrors);
+  if (FLOW_DIAGRAM_TYPES.has(diagramType)) {
+    errors.push(...checkEdgeSyntax(content));
+  }
 
   return {
     valid: errors.length === 0,
@@ -87,29 +90,48 @@ function checkBracketMatching(content: string): ValidationResult['errors'] {
 }
 
 /**
- * Check for dangling arrows (lines ending with an arrow operator and nothing after).
+ * Flag lines that carry an edge operator the project supports but produce no
+ * parseable edge: dangling arrows, a missing source/target, or otherwise
+ * malformed links. Uses the same parser the renderer relies on, so a valid edge
+ * of any supported operator is never flagged.
  */
-function checkDanglingArrows(content: string): ValidationResult['errors'] {
+function checkEdgeSyntax(content: string): ValidationResult['errors'] {
   const errors: ValidationResult['errors'] = [];
   const lines = content.split('\n');
 
-  const danglingArrowPattern = /-->\s*$/;
-
   for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]!;
-    const lineNum = i + 1;
-    const trimmed = line.trim();
-
-    // Skip empty lines and comments
+    const trimmed = lines[i]!.trim();
     if (trimmed === '' || trimmed.startsWith('%%')) continue;
 
-    if (danglingArrowPattern.test(trimmed)) {
-      errors.push({
-        message: `Dangling arrow -- line ends with '-->' but no target node`,
-        line: lineNum,
-      });
-    }
+    if (!hasEdgeOperator(trimmed)) continue;
+    if (parseEdgesFromLine(trimmed).length > 0) continue;
+
+    errors.push({ message: classifyBadEdge(trimmed), line: i + 1 });
   }
 
   return errors;
+}
+
+/** True if the line contains any supported edge operator. */
+function hasEdgeOperator(line: string): boolean {
+  return EDGE_OPS.some((op) => op.pattern.test(line));
+}
+
+/** Produce a specific message for an edge-bearing line that did not parse. */
+function classifyBadEdge(line: string): string {
+  for (const op of EDGE_OPS) {
+    const match = op.pattern.exec(line);
+    if (!match) continue;
+
+    // Operator sits at the end of the line — nothing follows it.
+    if (match.index + match[0].length >= line.length) {
+      return `Dangling arrow -- "${line}" ends with an edge operator but has no target node`;
+    }
+    // Operator sits at the start of the line — nothing precedes it.
+    if (line.slice(0, match.index).trim() === '') {
+      return `Edge without a source -- "${line}" starts with an edge operator`;
+    }
+    break;
+  }
+  return `Malformed edge -- "${line}" has an edge operator but no valid endpoints`;
 }
