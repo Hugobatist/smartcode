@@ -20,7 +20,7 @@
     background: var(--surface-1);
     border-bottom: 2px solid var(--status-problem);
     color: var(--text-primary);
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-ui);
     font-size: 13px;
     animation: slideDown 0.2s ease-out;
 }
@@ -43,7 +43,7 @@
     color: var(--text-primary);
     cursor: pointer;
     font-size: 12px;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-ui);
     transition: background 0.15s;
 }
 

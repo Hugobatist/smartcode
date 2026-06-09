@@ -15,13 +15,39 @@
 (function() {
     'use strict';
 
-    // ── Status color palette (matches Mermaid classDef in renderer.js) ──
-    var STATUS_COLORS = {
-        'ok':          { fill: '#22c55e', stroke: '#16a34a', text: '#fff' },
-        'problem':     { fill: '#ef4444', stroke: '#dc2626', text: '#fff' },
-        'in-progress': { fill: '#eab308', stroke: '#ca8a04', text: '#000' },
-        'discarded':   { fill: '#71717a', stroke: '#52525b', text: '#fff' },
-    };
+    // ── Leitor de token CSS (fonte única de verdade em tokens.css, D-26) ──
+    function readToken(name, fallback) {
+        try {
+            var v = getComputedStyle(document.documentElement)
+                .getPropertyValue(name).trim();
+            return v || fallback;
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    // ── Paleta de status — lida de tokens.css (não mais hardcoded).
+    // No modelo pastel, o texto usa o grafite/giz (--node-text), não branco,
+    // porque os fills são claros. Fallbacks espelham a paleta de marcador. ──
+    function getStatusColors(status) {
+        var text = readToken('--node-text', '#2b2a28');
+        switch (status) {
+            case 'ok':
+                return { fill: readToken('--status-ok', '#e6f6ec'),
+                         stroke: readToken('--status-ok-ink', '#2f8f57'), text: text };
+            case 'problem':
+                return { fill: readToken('--status-problem', '#fdeaea'),
+                         stroke: readToken('--status-problem-ink', '#cc4b4b'), text: text };
+            case 'in-progress':
+                return { fill: readToken('--status-warning', '#fdf3da'),
+                         stroke: readToken('--status-warning-ink', '#b8860b'), text: text };
+            case 'discarded':
+                return { fill: readToken('--status-neutral', '#f0efec'),
+                         stroke: readToken('--status-neutral-ink', '#8a857c'), text: text };
+            default:
+                return null;
+        }
+    }
 
     // ── Last rendered graph model (for re-application) ──
     var lastGraphModel = null;
@@ -38,7 +64,7 @@
         for (var nodeId in statuses) {
             if (!statuses.hasOwnProperty(nodeId)) continue;
             var status = statuses[nodeId];
-            var colors = STATUS_COLORS[status];
+            var colors = getStatusColors(status);
             if (!colors) continue;
             var nodeEl = svg.querySelector('[data-node-id="' + nodeId + '"]');
             if (!nodeEl) continue;

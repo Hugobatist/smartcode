@@ -22,7 +22,7 @@
     border: 1px solid var(--border-default);
     border-radius: 6px;
     padding: 8px 12px;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-ui);
     font-size: 11px;
     color: var(--text-primary);
     min-width: 80px;
@@ -89,7 +89,7 @@
 /* Mode toggle button */
 .heatmap-mode-toggle {
     font-size: 9px;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-ui);
     font-weight: 500;
     padding: 2px 6px;
     border-radius: 3px;

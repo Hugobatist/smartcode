@@ -25,14 +25,30 @@
     }
 
     /**
+     * Fonte default de medição. DEVE bater com a fonte de desenho dos rótulos
+     * em svg-renderer.js (Caveat 600 19px) — senão a largura do nó diverge do
+     * texto desenhado (texto vaza ou sobra). Lê o token --font-hand de tokens.css
+     * para nunca dessincronizar; fallback p/ Caveat se o token não existir.
+     */
+    function defaultMeasureFont() {
+        var fam = 'Caveat, cursive';
+        try {
+            var t = getComputedStyle(document.documentElement)
+                .getPropertyValue('--font-hand').trim();
+            if (t) fam = t;
+        } catch (e) { /* sem DOM/CSS: usa fallback */ }
+        return '600 19px ' + fam;
+    }
+
+    /**
      * Measure the pixel width of a text string using an offscreen canvas.
      * @param {string} text - The text to measure.
-     * @param {string} [font] - CSS font string. Defaults to '600 15px Inter, sans-serif'.
+     * @param {string} [font] - CSS font string. Defaults to Caveat 600 19px.
      * @returns {number} Width in pixels.
      */
     function measureTextWidth(text, font) {
         var ctx = getMeasureContext();
-        ctx.font = font || '600 15px Inter, sans-serif';
+        ctx.font = font || defaultMeasureFont();
         return ctx.measureText(text).width;
     }
 

@@ -14,28 +14,47 @@
 (function() {
     'use strict';
 
+    // ── Leitor de token CSS (fonte única de verdade em tokens.css, D-26) ──
+    function readToken(name, fallback) {
+        try {
+            var v = getComputedStyle(document.documentElement)
+                .getPropertyValue(name).trim();
+            return v || fallback;
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    // Monta os themeVariables do Mermaid a partir de tokens.css. O Mermaid mede o
+    // texto com a própria fonte que renderiza, então usar Caveat aqui é seguro
+    // (sem a pegadinha de medição do renderer custom). Fallbacks = paleta pastel.
+    function buildThemeVariables() {
+        var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+        return {
+            darkMode: dark,
+            background: readToken('--ink-paper', '#fdfdfb'),
+            fontFamily: readToken('--font-hand', "'Caveat', cursive"),
+            fontSize: '18px',
+            primaryColor: readToken('--node-fill', '#e8f0fe'),
+            primaryTextColor: readToken('--node-text', '#2b2a28'),
+            primaryBorderColor: readToken('--node-ink', '#4263c9'),
+            secondaryColor: readToken('--marker-azul-fill', '#e8f0fe'),
+            tertiaryColor: readToken('--marker-verde-fill', '#e6f6ec'),
+            lineColor: readToken('--edge-ink', '#7d786f'),
+            mainBkg: readToken('--node-fill', '#e8f0fe'),
+            nodeBorder: readToken('--node-ink', '#4263c9'),
+            clusterBkg: readToken('--mermaid-cluster-bg', '#f7f6f2'),
+            clusterBorder: readToken('--subgraph-ink', '#c4bfb5'),
+            titleColor: readToken('--node-text', '#2b2a28'),
+            edgeLabelBackground: readToken('--edge-label-bg', '#fdfdfb'),
+        };
+    }
+
     // ── Shared Mermaid Config ──
     var MERMAID_CONFIG = {
         startOnLoad: false,
         theme: 'base',
-        themeVariables: {
-            darkMode: false,
-            background: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontSize: '16px',
-            primaryColor: '#3b82f6',
-            primaryTextColor: '#18181b',
-            primaryBorderColor: '#2563eb',
-            secondaryColor: '#dbeafe',
-            tertiaryColor: '#f0fdf4',
-            lineColor: '#52525b',
-            mainBkg: '#eff6ff',
-            nodeBorder: '#2563eb',
-            clusterBkg: '#f4f4f5',
-            clusterBorder: '#a1a1aa',
-            titleColor: '#18181b',
-            edgeLabelBackground: '#ffffff',
-        },
+        themeVariables: buildThemeVariables(),
         flowchart: {
             curve: 'basis',
             padding: 48,
@@ -46,6 +65,13 @@
         },
         securityLevel: 'loose',
     };
+
+    // Reaplica o tema (cores/fonte) de tokens.css antes de renderizar — cobre
+    // troca de tema claro/escuro e mantém o Mermaid em sincronia com a fonte única.
+    function refreshMermaidTheme() {
+        MERMAID_CONFIG.themeVariables = buildThemeVariables();
+        mermaid.initialize(MERMAID_CONFIG);
+    }
 
     mermaid.initialize(MERMAID_CONFIG);
 
@@ -72,11 +98,18 @@
         var statusMap = SmartCodeAnnotations.getStatusMap();
         if (!statusMap || statusMap.size === 0) return cleanCode;
 
+        // Cores de status lidas de tokens.css (não mais hardcoded). Texto usa
+        // o grafite/giz (--node-text), pois os fills são pastéis claros.
+        var sTxt = readToken('--node-text', '#2b2a28');
         var classDefs = [
-            'classDef ok fill:#22c55e,stroke:#16a34a,color:#fff;',
-            'classDef problem fill:#ef4444,stroke:#dc2626,color:#fff;',
-            'classDef inProgress fill:#eab308,stroke:#ca8a04,color:#000;',
-            'classDef discarded fill:#71717a,stroke:#52525b,color:#fff;',
+            'classDef ok fill:' + readToken('--status-ok', '#e6f6ec') +
+                ',stroke:' + readToken('--status-ok-ink', '#2f8f57') + ',color:' + sTxt + ';',
+            'classDef problem fill:' + readToken('--status-problem', '#fdeaea') +
+                ',stroke:' + readToken('--status-problem-ink', '#cc4b4b') + ',color:' + sTxt + ';',
+            'classDef inProgress fill:' + readToken('--status-warning', '#fdf3da') +
+                ',stroke:' + readToken('--status-warning-ink', '#b8860b') + ',color:' + sTxt + ';',
+            'classDef discarded fill:' + readToken('--status-neutral', '#f0efec') +
+                ',stroke:' + readToken('--status-neutral-ink', '#8a857c') + ',color:' + sTxt + ';',
         ];
 
         var classAssignments = [];
@@ -221,6 +254,8 @@
     // ── Render ──
     async function render(code) {
         if (!code || !code.trim()) return;
+        // Reaplica a paleta de tokens.css (cobre troca de tema claro/escuro).
+        refreshMermaidTheme();
         // Strip annotations before rendering (Mermaid doesn't understand %% @flag / @status)
         var cleanCode = window.SmartCodeAnnotations
             ? SmartCodeAnnotations.getCleanContent(code)

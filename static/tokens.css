@@ -1,66 +1,184 @@
-/* SmartCode — Carbon Design Tokens */
-/* Single source of truth for all colors, spacing, and radius */
+/* SmartCode — Hand-drawn Design Tokens (estilo Excalidraw) */
+/* Fonte ÚNICA de verdade: cor, tipografia, raio, sombra, motion. */
+/* JS lê estes tokens via getComputedStyle — nada de cor hardcoded em .js */
+
+/* ==========================================================================
+   Fontes self-hosted (D-01/D-33) — woff2 em vendor/fonts, sem CDN
+   Nunito e Caveat são fontes variáveis: um único arquivo cobre todos os pesos.
+   Mantemos latin + latin-ext para garantir acentuação pt-BR (á, ç, ã, õ...).
+   ========================================================================== */
+@font-face {
+    font-family: 'Nunito';
+    font-style: normal;
+    font-weight: 400 800; /* eixo variável: cobre 400..800 */
+    font-display: swap;
+    src: url('vendor/fonts/nunito-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+        U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+        U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+    font-family: 'Nunito';
+    font-style: normal;
+    font-weight: 400 800;
+    font-display: swap;
+    src: url('vendor/fonts/nunito-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+        U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+        U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+    font-family: 'Caveat';
+    font-style: normal;
+    font-weight: 400 700; /* eixo variável: cobre 400..700 */
+    font-display: swap;
+    src: url('vendor/fonts/caveat-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+        U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+        U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+    font-family: 'Caveat';
+    font-style: normal;
+    font-weight: 400 700;
+    font-display: swap;
+    src: url('vendor/fonts/caveat-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+        U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+        U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+/* JetBrains Mono (editor de código) — mantida, agora self-hosted (era CDN) */
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 400 500;
+    font-display: swap;
+    src: url('vendor/fonts/jetbrainsmono-latin.woff2') format('woff2');
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+        U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+        U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+    font-family: 'JetBrains Mono';
+    font-style: normal;
+    font-weight: 400 500;
+    font-display: swap;
+    src: url('vendor/fonts/jetbrainsmono-latin-ext.woff2') format('woff2');
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+        U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+        U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
 
 :root {
-    /* Surface colors (dark chrome) */
-    --surface-0: #111113;
-    --surface-1: #18181b;
-    --surface-2: #1f1f23;
-    --surface-3: #27272b;
-    --surface-4: #303036;
+    /* ── Tinta neutra (papel + grafite suave) — primitivos ── */
+    --ink-paper:      #fdfdfb;  /* branco-creme levíssimo (não branco puro) */
+    --ink-paper-2:    #f7f6f2;  /* painel/superfície elevada */
+    --ink-paper-3:    #efedea;  /* hover/recuo */
+    --ink-line:       #e7e4de;  /* linhas divisórias suaves */
+    --ink-grafite:    #2b2a28;  /* texto principal — grafite quente, NÃO #000 */
+    --ink-grafite-2:  #6b6862;  /* texto secundário */
+    --ink-grafite-3:  #9c988f;  /* texto terciário / placeholder */
 
-    /* Preview canvas (light, for Mermaid readability) */
-    --preview-bg: #fafafa;
+    /* ── Tintas de marcador (pastel dessaturado, "caneta de quadro") ── */
+    /* Pares fill (claro)/ink (saturado da MESMA família) p/ cada cor */
+    --marker-azul-fill:    #e8f0fe;  --marker-azul-ink:    #4263c9;
+    --marker-violeta-fill: #efeafe;  --marker-violeta-ink: #6b4fd6;
+    --marker-verde-fill:   #e6f6ec;  --marker-verde-ink:   #2f8f57;
+    --marker-amarelo-fill: #fdf3da;  --marker-amarelo-ink: #b8860b;
+    --marker-vermelho-fill:#fdeaea;  --marker-vermelho-ink:#cc4b4b;
+    --marker-cinza-fill:   #f0efec;  --marker-cinza-ink:   #8a857c;
+    --marker-rosa-fill:    #fdeaf2;  --marker-rosa-ink:    #c14b86;
 
-    /* Borders */
-    --border-subtle: #27272b;
-    --border-default: #303036;
-    --border-focus: #3b82f6;
+    /* ── Superfícies (chrome claro — era dark grafite) ── */
+    --surface-0: var(--ink-paper);    /* canvas/editor — era #111113 */
+    --surface-1: var(--ink-paper-2);  /* topbar, sidebar, painéis — era #18181b */
+    --surface-2: #ffffff;             /* cards, popovers (papel "na frente") */
+    --surface-3: var(--ink-paper-3);  /* botões, hover — era #27272b */
+    --surface-4: #e4e1db;             /* hover forte, separadores — era #303036 */
 
-    /* Text */
-    --text-primary: #e4e4e7;
-    --text-secondary: #a1a1aa;
-    --text-tertiary: #71717a;
+    /* ── Canvas do diagrama (claro) ── */
+    --preview-bg:      var(--ink-paper);  /* era #fafafa liso */
+    --canvas-bg:       var(--ink-paper);
+    --canvas-dot:      #d8d4cc;           /* cor do pontinho do dot-grid */
+    --canvas-dot-bold: #c4bfb5;           /* pontinho de referência (cada 5º) */
+
+    /* ── Bordas ── */
+    --border-subtle:  var(--ink-line);
+    --border-default: #ddd9d2;
+    --border-focus:   var(--marker-azul-ink);
+
+    /* ── Texto ── */
+    --text-primary:   var(--ink-grafite);
+    --text-secondary: var(--ink-grafite-2);
+    --text-tertiary:  var(--ink-grafite-3);
     --text-on-accent: #ffffff;
 
-    /* Accent (blue) */
-    --accent: #3b82f6;
-    --accent-hover: #2563eb;
-    --accent-muted: rgba(59, 130, 246, 0.15);
+    /* ── Acento (azul de marcador, não azul de SaaS) ── */
+    --accent:        var(--marker-azul-ink);   /* era #3b82f6 (Tailwind 500) */
+    --accent-hover:  #35539e;
+    --accent-muted:  var(--marker-azul-fill);
 
-    /* Status — semantically identical colors */
-    --status-ok: #22c55e;
-    --status-ok-stroke: #16a34a;
-    --status-problem: #ef4444;
-    --status-problem-stroke: #dc2626;
-    --status-warning: #eab308;
-    --status-warning-stroke: #ca8a04;
-    --status-neutral: #71717a;
-    --status-neutral-stroke: #52525b;
+    /* ── Status (tom marcador — pastel dessaturado, não semáforo) ── */
+    /* Mantém os nomes -stroke (consumidos no CSS) apontando para o ink novo */
+    --status-ok:             var(--marker-verde-fill);
+    --status-ok-ink:         var(--marker-verde-ink);
+    --status-ok-stroke:      var(--marker-verde-ink);
+    --status-problem:        var(--marker-vermelho-fill);
+    --status-problem-ink:    var(--marker-vermelho-ink);
+    --status-problem-stroke: var(--marker-vermelho-ink);
+    --status-warning:        var(--marker-amarelo-fill);
+    --status-warning-ink:    var(--marker-amarelo-ink);
+    --status-warning-stroke: var(--marker-amarelo-ink);
+    /* alias: alguns componentes usam o nome "progress" (= warning/amarelo) */
+    --status-progress:       var(--marker-amarelo-ink);
+    --status-neutral:        var(--marker-cinza-fill);
+    --status-neutral-ink:    var(--marker-cinza-ink);
+    --status-neutral-stroke: var(--marker-cinza-ink);
 
-    /* Utility */
-    --ghost-path: #8b5cf6;
-    --search-match: #f59e0b;
-    --breakpoint: #ef4444;
-    --diff-added: #22c55e;
-    --diff-removed: #ef4444;
-    --diff-modified: #eab308;
+    /* ── Utilidades ── */
+    --ghost-path:    var(--marker-violeta-ink);
+    --search-match:  #e8a317;
+    --breakpoint:    var(--marker-vermelho-ink);
+    --diff-added:    var(--marker-verde-ink);
+    --diff-removed:  var(--marker-vermelho-ink);
+    --diff-modified: var(--marker-amarelo-ink);
 
-    /* Mermaid theme (light canvas) */
-    --mermaid-primary: #3b82f6;
-    --mermaid-primary-text: #18181b;
-    --mermaid-primary-border: #2563eb;
-    --mermaid-secondary: #dbeafe;
-    --mermaid-tertiary: #f0fdf4;
-    --mermaid-line: #52525b;
-    --mermaid-main-bg: #eff6ff;
-    --mermaid-node-border: #2563eb;
-    --mermaid-cluster-bg: #f4f4f5;
-    --mermaid-cluster-border: #a1a1aa;
-    --mermaid-title: #18181b;
-    --mermaid-edge-label-bg: #ffffff;
+    /* ── Tema do DIAGRAMA (nós/arestas) — antes triplicado, agora aqui ── */
+    /* Estes são a FONTE ÚNICA de verdade lida por renderer.js / svg-renderer.js
+       / custom-renderer.js via getComputedStyle (D-26). */
+    --node-fill:       var(--marker-azul-fill);
+    --node-ink:        var(--marker-azul-ink);
+    --node-text:       var(--ink-grafite);
+    --edge-ink:        #7d786f;            /* grafite-areia, NÃO #52525b frio */
+    --edge-label-bg:   var(--ink-paper);   /* "apaga" a linha atrás do label */
+    --edge-label-text: var(--ink-grafite-2);
+    --subgraph-fill:   rgba(0,0,0,0.018);  /* leve sombreado, quase nada */
+    --subgraph-ink:    #c4bfb5;
+    --subgraph-text:   var(--ink-grafite-2);
 
-    /* Spacing scale */
+    /* Compat: tokens Mermaid antigos agora derivam do tema unificado acima.
+       Mantidos para não quebrar quem ainda os referencie. */
+    --mermaid-primary:        var(--marker-azul-ink);
+    --mermaid-primary-text:   var(--ink-grafite);
+    --mermaid-primary-border: var(--marker-azul-ink);
+    --mermaid-secondary:      var(--marker-azul-fill);
+    --mermaid-tertiary:       var(--marker-verde-fill);
+    --mermaid-line:           var(--edge-ink);
+    --mermaid-main-bg:        var(--node-fill);
+    --mermaid-node-border:    var(--node-ink);
+    --mermaid-cluster-bg:     var(--ink-paper-2);
+    --mermaid-cluster-border: var(--subgraph-ink);
+    --mermaid-title:          var(--ink-grafite);
+    --mermaid-edge-label-bg:  var(--edge-label-bg);
+
+    /* ── Tipografia ── */
+    --font-hand: 'Caveat', 'Comic Sans MS', cursive;
+    --font-ui:   'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+    /* Caveat renderiza mais estreita que uma sans no mesmo px → fator de compensação */
+    --font-hand-scale: 1.18;
+
+    /* ── Espaçamento (inalterado — escala saudável de 4px) ── */
     --space-1: 4px;
     --space-2: 8px;
     --space-3: 12px;
@@ -68,9 +186,68 @@
     --space-6: 24px;
     --space-8: 32px;
 
-    /* Radius scale */
-    --radius-sm: 2px;
-    --radius-md: 4px;
-    --radius-lg: 6px;
-    --radius-xl: 8px;
+    /* ── Raios generosos (a virada da rigidez; teto era 8px) ── */
+    --radius-sm:   6px;   /* era 2px — chips, kbd */
+    --radius-md:   10px;  /* era 4px — botões, inputs */
+    --radius-lg:   14px;  /* era 6px — cards pequenos */
+    --radius-xl:   20px;  /* era 8px — painéis, popovers, modal */
+    --radius-2xl:  28px;  /* NOVO — containers grandes, toolbar flutuante */
+    --radius-pill: 999px; /* NOVO — pills (zoom controls, badges, toggles) */
+
+    /* ── Sombras de papel (baixa opacidade, tom quente, espalhadas) ── */
+    --shadow-sm:  0 1px 2px rgba(43,42,40,0.06),
+                  0 1px 1px rgba(43,42,40,0.04);
+    --shadow-md:  0 2px 6px rgba(43,42,40,0.07),
+                  0 4px 12px rgba(43,42,40,0.05);
+    --shadow-lg:  0 6px 16px rgba(43,42,40,0.08),
+                  0 12px 32px rgba(43,42,40,0.06);
+    --shadow-xl:  0 12px 28px rgba(43,42,40,0.10),
+                  0 24px 56px rgba(43,42,40,0.08);
+    /* "Lift" no hover de nó: leve halo de cor do próprio nó */
+    --shadow-node-hover: 0 4px 14px rgba(66,99,201,0.18);
+
+    /* ── Motion (vocabulário consumido por UX/engine; Wave 2 usa inércia) ── */
+    --motion-fast: 120ms;  /* hover, micro-feedback */
+    --motion-base: 220ms;  /* abrir/fechar painel, fade */
+    --motion-slow: 380ms;  /* transições de tela, zoom-to-fit */
+    --ease-out:     cubic-bezier(0.22, 1, 0.36, 1);     /* desaceleração natural */
+    --ease-spring:  cubic-bezier(0.34, 1.56, 0.64, 1);  /* mola — já no projeto */
+    --ease-inertia: cubic-bezier(0.16, 1, 0.30, 1);     /* "deslize" do pan */
+}
+
+/* ── Tema escuro: lousa de giz (carvão quente, NÃO Carbon/Zinc) ── */
+[data-theme="dark"] {
+    /* Papel de carvão (quadro-negro), NÃO grafite-IDE */
+    --ink-paper:   #1c1b1a;  /* carvão quente (não #111113 azulado) */
+    --ink-paper-2: #232220;
+    --ink-paper-3: #2c2b28;
+    --ink-line:    #36342f;
+    --ink-grafite:   #ece9e2;  /* "giz" claro quente */
+    --ink-grafite-2: #b3afa6;
+    --ink-grafite-3: #807c73;
+
+    /* Marcadores no escuro: fill translúcido + ink mais luminoso */
+    --marker-azul-fill:    rgba(96,135,232,0.16);  --marker-azul-ink:    #8fb0f5;
+    --marker-violeta-fill: rgba(150,120,235,0.16); --marker-violeta-ink: #b39cf0;
+    --marker-verde-fill:   rgba(80,190,130,0.15);  --marker-verde-ink:   #74d59e;
+    --marker-amarelo-fill: rgba(220,180,80,0.15);  --marker-amarelo-ink: #e6c46a;
+    --marker-vermelho-fill:rgba(225,110,110,0.16); --marker-vermelho-ink:#f08f8f;
+    --marker-cinza-fill:   rgba(160,155,145,0.14); --marker-cinza-ink:   #b3afa6;
+    --marker-rosa-fill:    rgba(210,110,160,0.16); --marker-rosa-ink:    #e69bc0;
+
+    --surface-2: #2a2825;      /* card sobe sobre o carvão */
+    --surface-4: #3a3833;
+    --canvas-dot:      #34322d;
+    --canvas-dot-bold: #423f39;
+    --edge-ink:        #9c978d;  /* giz-areia */
+    --edge-label-bg:   var(--ink-paper);
+    --node-text:       var(--ink-grafite);
+    --subgraph-fill:   rgba(255,255,255,0.025);
+    --subgraph-ink:    #423f39;
+
+    --shadow-sm:  0 1px 2px rgba(0,0,0,0.30);
+    --shadow-md:  0 2px 8px rgba(0,0,0,0.35);
+    --shadow-lg:  0 8px 24px rgba(0,0,0,0.40);
+    --shadow-xl:  0 16px 48px rgba(0,0,0,0.45);
+    --shadow-node-hover: 0 4px 16px rgba(143,176,245,0.25);
 }

@@ -14,6 +14,9 @@ export const MIME_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.mmd': 'text/plain; charset=utf-8',
+  // Fontes self-hosted (Nunito, Caveat, JetBrains Mono) — servidas de static/vendor/fonts.
+  '.woff2': 'font/woff2',
+  '.woff': 'font/woff',
 };
 
 /**

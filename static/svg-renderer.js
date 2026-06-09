@@ -14,27 +14,57 @@
 
     var NS = 'http://www.w3.org/2000/svg';
 
-    // ── Theme constants (matching renderer.js MERMAID_CONFIG themeVariables) ──
+    // ── Leitor de token CSS (fonte única de verdade em tokens.css, D-26) ──
+    // Lê de getComputedStyle no momento do render — reflete o tema claro/escuro
+    // atual e nunca diverge da paleta de tokens.css. Fallback defensivo caso o
+    // token não exista (ex.: CSS ainda não carregou).
+    function readToken(name, fallback) {
+        try {
+            var v = getComputedStyle(document.documentElement)
+                .getPropertyValue(name).trim();
+            return v || fallback;
+        } catch (e) {
+            return fallback;
+        }
+    }
+
+    // ── Tema do diagrama — cores vêm de tokens.css; medidas/pesos são constantes.
+    // O objeto mantém o mesmo formato de antes; refreshTheme() repopula as cores
+    // a cada createSVG. Os fallbacks são a paleta hand-drawn (espelham tokens.css). ──
     var THEME = {
-        nodeFill: '#eff6ff',
-        nodeStroke: '#2563eb',
+        nodeFill: '#e8f0fe',
+        nodeStroke: '#4263c9',
         nodeStrokeWidth: '2',
-        nodeTextColor: '#18181b',
-        nodeFontSize: '15',
+        nodeTextColor: '#2b2a28',
+        nodeFontSize: '19',
         nodeFontWeight: '600',
-        nodeFontFamily: "'Inter', sans-serif",
-        edgeStroke: '#52525b',
+        nodeFontFamily: "'Caveat', cursive",
+        edgeStroke: '#7d786f',
         edgeStrokeWidth: '1.5',
-        edgeLabelBg: '#ffffff',
-        edgeLabelColor: '#52525b',
-        edgeLabelFontSize: '13',
-        subgraphFill: '#f4f4f5',
-        subgraphStroke: '#a1a1aa',
+        edgeLabelBg: '#fdfdfb',
+        edgeLabelColor: '#6b6862',
+        edgeLabelFontSize: '16',
+        subgraphFill: 'rgba(0,0,0,0.018)',
+        subgraphStroke: '#c4bfb5',
         subgraphStrokeWidth: '1',
-        subgraphLabelColor: '#18181b',
-        subgraphLabelFontSize: '14',
+        subgraphLabelColor: '#2b2a28',
+        subgraphLabelFontSize: '18',
         subgraphLabelFontWeight: '700'
     };
+
+    // Repopula as cores/fonte do THEME a partir de tokens.css (single source).
+    function refreshTheme() {
+        THEME.nodeFill = readToken('--node-fill', THEME.nodeFill);
+        THEME.nodeStroke = readToken('--node-ink', THEME.nodeStroke);
+        THEME.nodeTextColor = readToken('--node-text', THEME.nodeTextColor);
+        THEME.nodeFontFamily = readToken('--font-hand', THEME.nodeFontFamily);
+        THEME.edgeStroke = readToken('--edge-ink', THEME.edgeStroke);
+        THEME.edgeLabelBg = readToken('--edge-label-bg', THEME.edgeLabelBg);
+        THEME.edgeLabelColor = readToken('--edge-label-text', THEME.edgeLabelColor);
+        THEME.subgraphFill = readToken('--subgraph-fill', THEME.subgraphFill);
+        THEME.subgraphStroke = readToken('--subgraph-ink', THEME.subgraphStroke);
+        THEME.subgraphLabelColor = readToken('--subgraph-text', THEME.subgraphLabelColor);
+    }
 
     function el(tag) { return document.createElementNS(NS, tag); }
 
@@ -271,6 +301,9 @@
 
     // ── Main: create complete SVG from LayoutResult ──
     function createSVG(layout) {
+        // Lê a paleta de tokens.css antes de desenhar (cobre troca de tema).
+        refreshTheme();
+
         var svg = attrs(el('svg'), {
             xmlns: NS,
             width: '100%',
