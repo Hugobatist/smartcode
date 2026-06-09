@@ -6,13 +6,17 @@
 (function () {
     'use strict';
 
-    var ANNOTATION_START = '%% --- ANNOTATIONS (auto-managed by SmartCode) ---';
-    var ANNOTATION_END = '%% --- END ANNOTATIONS ---';
-    var FLAG_REGEX = /^%%\s*@flag\s+(\S+)\s+"([^"]*)"$/;
-    var STATUS_REGEX = /^%%\s*@status\s+(\S+)\s+(\S+)$/;
-    var BREAKPOINT_REGEX = /^%%\s*@breakpoint\s+(\S+)$/;
-    var RISK_REGEX = /^%%\s*@risk\s+(\S+)\s+(high|medium|low)\s+"([^"]*)"$/;
-    var GHOST_REGEX = /^%%\s*@ghost\s+(\S+)\s+(\S+)\s+"([^"]*)"$/;
+    // Parsing/serialization is delegated to the shared core
+    // (window.SmartCodeAnnotationsCore), built from src/diagram/annotations-core.ts
+    // into vendor/annotations-core.js. This keeps the viewer and the backend on a
+    // single source of truth so the .mmd annotation block can never diverge.
+    function core() {
+        var c = window.SmartCodeAnnotationsCore;
+        if (!c) {
+            throw new Error('SmartCodeAnnotationsCore not loaded -- include vendor/annotations-core.js before annotations.js');
+        }
+        return c;
+    }
 
     var state = {
         flagMode: false,
@@ -37,59 +41,35 @@
     // ── Parsing & Serialization ──
 
     function parseAnnotations(content) {
-        var flags = new Map(), statuses = new Map(), breakpoints = new Set(), risks = new Map();
-        var ghosts = [];
-        var lines = content.split('\n');
-        var inBlock = false;
-        for (var li = 0; li < lines.length; li++) {
-            var trimmed = lines[li].trim();
-            if (trimmed === ANNOTATION_START) { inBlock = true; continue; }
-            if (trimmed === ANNOTATION_END) { inBlock = false; continue; }
-            if (inBlock) {
-                var fm = trimmed.match(FLAG_REGEX);
-                if (fm) { flags.set(fm[1], { message: fm[2], timestamp: Date.now() }); continue; }
-                var sm = trimmed.match(STATUS_REGEX);
-                if (sm) { statuses.set(sm[1], sm[2]); continue; }
-                var bm = trimmed.match(BREAKPOINT_REGEX);
-                if (bm) { breakpoints.add(bm[1]); continue; }
-                var rm = trimmed.match(RISK_REGEX);
-                if (rm) { risks.set(rm[1], { level: rm[2], reason: rm[3] }); continue; }
-                var gm = trimmed.match(GHOST_REGEX);
-                if (gm) { ghosts.push({ fromNodeId: gm[1], toNodeId: gm[2], label: gm[3] }); continue; }
-            }
-        }
-        return { flags, statuses, breakpoints, risks, ghosts };
+        var parsed = core().parseAllAnnotations(content);
+        // Viewer flags carry a UI timestamp; the core uses { nodeId, message }.
+        var flags = new Map();
+        parsed.flags.forEach(function (f, nid) {
+            flags.set(nid, { message: f.message, timestamp: Date.now() });
+        });
+        return {
+            flags: flags,
+            statuses: parsed.statuses,
+            breakpoints: parsed.breakpoints,
+            risks: parsed.risks,
+            ghosts: parsed.ghosts,
+        };
     }
 
     function stripAnnotations(content) {
-        var lines = content.split('\n'), result = [];
-        var inBlock = false;
-        for (var si = 0; si < lines.length; si++) {
-            var t = lines[si].trim();
-            if (t === ANNOTATION_START) { inBlock = true; continue; }
-            if (t === ANNOTATION_END) { inBlock = false; continue; }
-            if (!inBlock) result.push(lines[si]);
-        }
-        while (result.length > 0 && result[result.length - 1].trim() === '') result.pop();
-        return result.join('\n');
+        return core().stripAnnotations(content);
     }
 
     function injectAnnotations(content, flags, statuses, ghosts) {
-        var clean = stripAnnotations(content), statusMap = statuses || state.statuses;
-        var ghostList = ghosts || state.ghosts || [];
-        var hasAnnotations = flags.size > 0 || statusMap.size > 0 || state.breakpoints.size > 0 || state.risks.size > 0 || ghostList.length > 0;
-        if (!hasAnnotations) return clean;
-        var lines = ['', ANNOTATION_START];
-        flags.forEach(function(val, nid) { lines.push('%% @flag ' + nid + ' "' + val.message.replace(/"/g, "''") + '"'); });
-        statusMap.forEach(function(sv, nid) { lines.push('%% @status ' + nid + ' ' + sv); });
-        state.breakpoints.forEach(function(nid) { lines.push('%% @breakpoint ' + nid); });
-        state.risks.forEach(function(val, nid) { lines.push('%% @risk ' + nid + ' ' + val.level + ' "' + val.reason.replace(/"/g, "''") + '"'); });
-        for (var gi = 0; gi < ghostList.length; gi++) {
-            var g = ghostList[gi];
-            lines.push('%% @ghost ' + g.fromNodeId + ' ' + g.toNodeId + ' "' + (g.label || '').replace(/"/g, "''") + '"');
-        }
-        lines.push(ANNOTATION_END);
-        return clean + '\n' + lines.join('\n');
+        // breakpoints and risks live in module state (not passed by callers);
+        // the core serializes whatever maps/sets it receives.
+        return core().injectAnnotations(content, {
+            flags: flags,
+            statuses: statuses || state.statuses,
+            breakpoints: state.breakpoints,
+            risks: state.risks,
+            ghosts: ghosts || state.ghosts || [],
+        });
     }
 
     function getCleanContent(content) { return stripAnnotations(content); }
