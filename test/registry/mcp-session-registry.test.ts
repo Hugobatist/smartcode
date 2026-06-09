@@ -1,9 +1,22 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFile, readdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, readdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtempSync } from 'node:fs';
-import { McpSessionRegistry } from '../../src/registry/mcp-session-registry.js';
+import {
+  McpSessionRegistry,
+  EMPTY_SESSION_TTL_MS,
+} from '../../src/registry/mcp-session-registry.js';
+
+/** Reescreve o manifesto de uma sessão no disco com um startedAt customizado
+ *  (para simular sessões antigas nos testes de TTL). */
+async function backdateManifest(tmpDir: string, sessionId: string, startedAt: number): Promise<void> {
+  const filePath = join(tmpDir, '.smartcode', 'mcp-sessions', `${sessionId}.json`);
+  const raw = await readFile(filePath, 'utf-8');
+  const manifest = JSON.parse(raw);
+  manifest.startedAt = startedAt;
+  await writeFile(filePath, JSON.stringify(manifest, null, 2), 'utf-8');
+}
 
 let tmpDir: string;
 
@@ -16,18 +29,19 @@ afterEach(async () => {
 });
 
 describe('McpSessionRegistry', () => {
-  it('register() creates a default session manifest file', async () => {
+  it('register() does NOT create any session (lazy default)', async () => {
     const registry = new McpSessionRegistry(tmpDir);
     await registry.register();
 
+    // Default preguiçosa: boot não cria sessão-fantasma vazia.
     const dir = join(tmpDir, '.smartcode', 'mcp-sessions');
     const files = await readdir(dir);
-    expect(files.length).toBe(1);
+    expect(files.length).toBe(0);
+    expect(registry.getActiveSessionId()).toBeNull();
 
-    const raw = await readFile(join(dir, files[0]!), 'utf-8');
-    const manifest = JSON.parse(raw);
-    expect(manifest.pid).toBe(process.pid);
-    expect(manifest.diagrams).toEqual([]);
+    // listActive lida com zero sessões sem quebrar.
+    const sessions = await McpSessionRegistry.listActive(tmpDir);
+    expect(sessions).toEqual([]);
   });
 
   it('trackDiagram() adds diagrams to the active session manifest', async () => {
@@ -119,16 +133,18 @@ describe('McpSessionRegistry', () => {
     const registry = new McpSessionRegistry(tmpDir);
     await registry.register();
 
+    // Lazy default: após register() não há sessão ativa ainda.
     const firstId = registry.getActiveSessionId();
-    const secondId = await registry.createSession('Debug auth');
+    expect(firstId).toBeNull();
 
+    const secondId = await registry.createSession('Debug auth');
     expect(secondId).not.toBe(firstId);
     expect(registry.getActiveSessionId()).toBe(secondId);
 
     const dir = join(tmpDir, '.smartcode', 'mcp-sessions');
     const files = await readdir(dir);
-    // register() creates 1 default + createSession() creates 1 more
-    expect(files.length).toBe(2);
+    // register() não cria nada (lazy); só o createSession() gera 1 manifesto.
+    expect(files.length).toBe(1);
   });
 
   it('createSession() with label persists the label', async () => {
@@ -230,5 +246,62 @@ describe('McpSessionRegistry', () => {
     const registry = new McpSessionRegistry(tmpDir);
     const id = await registry.createSession('Test');
     expect(registry.sessionId).toBe(id);
+  });
+
+  // ── TTL: auto-limpeza de sessões vazias antigas ──
+
+  it('listActive() removes an OLD EMPTY session (age > TTL)', async () => {
+    const registry = new McpSessionRegistry(tmpDir);
+    const id = await registry.createSession('Vazia antiga');
+    // Backdate para além do TTL.
+    await backdateManifest(tmpDir, id, Date.now() - EMPTY_SESSION_TTL_MS - 60_000);
+
+    const sessions = await McpSessionRegistry.listActive(tmpDir);
+    expect(sessions.length).toBe(0);
+
+    // Manifesto foi de fato apagado do disco (best-effort), aguarda o unlink.
+    await new Promise((r) => setTimeout(r, 20));
+    const files = await readdir(join(tmpDir, '.smartcode', 'mcp-sessions'));
+    expect(files.length).toBe(0);
+  });
+
+  it('listActive() PRESERVES a recent empty session (age < TTL)', async () => {
+    const registry = new McpSessionRegistry(tmpDir);
+    await registry.createSession('Vazia recente');
+    // startedAt = agora, dentro do TTL -- não deve ser removida.
+
+    const sessions = await McpSessionRegistry.listActive(tmpDir);
+    expect(sessions.length).toBe(1);
+    expect(sessions[0]!.diagrams.length).toBe(0);
+  });
+
+  it('listActive() NEVER removes a session with a diagram, even if old', async () => {
+    const registry = new McpSessionRegistry(tmpDir);
+    const id = await registry.createSession('Com diagrama');
+    await registry.trackDiagram('importante.mmd');
+    // Backdate bem além do TTL -- mas tem 1 diagrama, então NUNCA expira.
+    await backdateManifest(tmpDir, id, Date.now() - EMPTY_SESSION_TTL_MS * 10);
+
+    const sessions = await McpSessionRegistry.listActive(tmpDir);
+    expect(sessions.length).toBe(1);
+    expect(sessions[0]!.diagrams[0]!.filePath).toBe('importante.mmd');
+  });
+
+  // ── deleteOnDisk: exclusão de manifesto ──
+
+  it('deleteOnDisk() removes the manifest and returns "deleted"', async () => {
+    const registry = new McpSessionRegistry(tmpDir);
+    const id = await registry.createSession('Para apagar');
+
+    const result = await McpSessionRegistry.deleteOnDisk(tmpDir, id);
+    expect(result).toBe('deleted');
+
+    const session = await McpSessionRegistry.getSession(tmpDir, id);
+    expect(session).toBeNull();
+  });
+
+  it('deleteOnDisk() returns "not-found" for a non-existent session', async () => {
+    const result = await McpSessionRegistry.deleteOnDisk(tmpDir, 'nonexistent-id');
+    expect(result).toBe('not-found');
   });
 });

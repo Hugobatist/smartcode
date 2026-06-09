@@ -5,9 +5,10 @@ import type { WebSocketManager } from './websocket.js';
 
 /**
  * Register REST endpoints for MCP session discovery.
- *   GET   /api/mcp-sessions        -- list all active AI sessions
- *   GET   /api/mcp-sessions/:id    -- get details of a specific session
- *   PATCH /api/mcp-sessions/:id    -- rename a session label
+ *   GET    /api/mcp-sessions        -- list all active AI sessions
+ *   GET    /api/mcp-sessions/:id    -- get details of a specific session
+ *   PATCH  /api/mcp-sessions/:id    -- rename a session label
+ *   DELETE /api/mcp-sessions/:id    -- delete a session manifest from disk
  */
 export function registerMcpSessionRoutes(
   routes: Route[],
@@ -82,6 +83,34 @@ export function registerMcpSessionRoutes(
 
         sendJson(res, { ok: true, sessionId: id, label: label.trim() });
       } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        sendJson(res, { error: message }, 500);
+      }
+    },
+  });
+
+  // -------------------------------------------------------
+  // DELETE /api/mcp-sessions/:id -- Delete a session manifest
+  // -------------------------------------------------------
+  routes.push({
+    method: 'DELETE',
+    pattern: new RegExp('^/api/mcp-sessions/(?<id>[^/]+)$'),
+    handler: async (_req: IncomingMessage, res: ServerResponse, params: Record<string, string>) => {
+      try {
+        const id = decodeURIComponent(params['id']!);
+        const result = await McpSessionRegistry.deleteOnDisk(projectDir, id);
+        if (result === 'not-found') {
+          sendJson(res, { error: 'Session not found' }, 404);
+          return;
+        }
+
+        if (wsManager) {
+          wsManager.broadcastAll({ type: 'mcp-session:updated' });
+        }
+
+        sendJson(res, { ok: true, sessionId: id });
+      } catch (err) {
+        // Erro de IO inesperado (ex.: permissão) -- deleteOnDisk relança.
         const message = err instanceof Error ? err.message : 'Unknown error';
         sendJson(res, { error: message }, 500);
       }

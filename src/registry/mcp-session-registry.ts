@@ -15,6 +15,13 @@ import { tmpdir } from 'node:os';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { log } from '../utils/logger.js';
 
+/**
+ * TTL para sessões VAZIAS (zero diagramas). Sessões sem nenhum diagrama
+ * que fiquem ociosas mais que este tempo são removidas automaticamente na
+ * leitura (listActive). Sessões com >= 1 diagrama NUNCA expiram por idade.
+ */
+export const EMPTY_SESSION_TTL_MS = 45 * 60 * 1000; // 45 minutos
+
 /** A single diagram tracked within an MCP session */
 export interface DiagramEntry {
   filePath: string;
@@ -55,13 +62,16 @@ export class McpSessionRegistry {
     this.manifestDir = join(projectRoot, '.smartcode', 'mcp-sessions');
   }
 
-  /** Register the registry by ensuring the manifest directory exists */
+  /**
+   * Register the registry by ensuring the manifest directory exists.
+   *
+   * Default preguiçosa (lazy): NÃO criamos mais uma sessão default vazia no
+   * boot. A sessão nasce só sob demanda -- via createSession()
+   * (create_mcp_session) ou no 1º trackDiagram(), que já auto-cria. Isso
+   * evita o acúmulo de sessões-fantasma "Session <hash> / No diagrams yet".
+   */
   async register(): Promise<void> {
     await mkdir(this.manifestDir, { recursive: true });
-    // Backward-compat: create a default session so existing code works
-    if (this.sessions.size === 0) {
-      await this.createSession();
-    }
     log.debug(`MCP session registry registered (pid ${process.pid})`);
   }
 
@@ -162,7 +172,18 @@ export class McpSessionRegistry {
 
   // ── Static methods (read from disk, cross-process) ──
 
-  /** List all active MCP sessions for a project (filters out dead PIDs, cleans stale) */
+  /**
+   * List all active MCP sessions for a project.
+   *
+   * Faz duas faxinas (best-effort) na leitura:
+   *  1. Remove manifestos de PID morto (processo MCP encerrado).
+   *  2. Remove manifestos VAZIOS (0 diagramas) e ANTIGOS (idade > TTL),
+   *     mesmo de PID vivo -- são sessões-fantasma que nunca renderam nada.
+   *
+   * Salvaguardas: NUNCA remove sessão com >= 1 diagrama (independente da
+   * idade), e nunca remove uma sessão vazia recém-criada (respeita o TTL,
+   * usando startedAt como base de idade).
+   */
   static async listActive(projectRoot: string): Promise<McpSessionManifest[]> {
     const dir = join(projectRoot, '.smartcode', 'mcp-sessions');
     let entries: string[];
@@ -172,6 +193,7 @@ export class McpSessionRegistry {
       return [];
     }
 
+    const now = Date.now();
     const manifests: McpSessionManifest[] = [];
     const stale: string[] = [];
 
@@ -180,11 +202,19 @@ export class McpSessionRegistry {
       try {
         const raw = await readFile(join(dir, entry), 'utf-8');
         const manifest = JSON.parse(raw) as McpSessionManifest;
-        if (isProcessAlive(manifest.pid)) {
-          manifests.push(manifest);
-        } else {
+        if (!isProcessAlive(manifest.pid)) {
           stale.push(entry);
+          continue;
         }
+        // Faxina por TTL: vazia (0 diagramas) E ociosa há mais que o TTL.
+        // Sessão com diagrama nunca expira; recém-criada também não.
+        const isEmpty = !manifest.diagrams || manifest.diagrams.length === 0;
+        const age = now - (manifest.startedAt ?? now);
+        if (isEmpty && age > EMPTY_SESSION_TTL_MS) {
+          stale.push(entry);
+          continue;
+        }
+        manifests.push(manifest);
       } catch {
         stale.push(entry);
       }
@@ -229,6 +259,30 @@ export class McpSessionRegistry {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Apaga o manifesto de uma sessão do disco (funciona para sessões de
+   * qualquer processo). Retorna:
+   *  - 'deleted' se o arquivo existia e foi removido;
+   *  - 'not-found' se o manifesto não existia (id inexistente);
+   * Lança o erro original em falha de IO inesperada (ex.: permissão), para
+   * a rota poder responder 500.
+   */
+  static async deleteOnDisk(
+    projectRoot: string,
+    sessionId: string,
+  ): Promise<'deleted' | 'not-found'> {
+    const filePath = join(projectRoot, '.smartcode', 'mcp-sessions', `${sessionId}.json`);
+    try {
+      await unlink(filePath);
+      return 'deleted';
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        return 'not-found';
+      }
+      throw err;
     }
   }
 

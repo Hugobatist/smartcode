@@ -201,6 +201,69 @@
 }
 .mcp-session-header:hover .mcp-session-rename-btn { opacity: 1; }
 .mcp-session-rename-btn:hover { background: var(--surface-3); color: var(--text-primary); }
+/* Botão de lixeira (apagar sessão) -- mesmo padrão "aparece no hover" do rename */
+.mcp-session-delete-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    border-radius: 4px;
+    padding: 0;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+.mcp-session-header:hover .mcp-session-delete-btn { opacity: 1; }
+.mcp-session-delete-btn:hover { background: var(--surface-3); color: var(--status-problem-stroke); }
+.mcp-session-delete-btn svg { width: 12px; height: 12px; }
+/* Mini-confirm inline de exclusão (substitui o header) */
+.mcp-session-confirm {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 10px;
+    background: var(--surface-2);
+    font-size: 12px;
+}
+.mcp-session-confirm-text { flex: 1; color: var(--text-primary); font-weight: 600; }
+.mcp-session-confirm-btn {
+    padding: 3px 10px;
+    border: 1px solid var(--border-subtle);
+    background: var(--surface-3);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: inherit;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s, color 0.15s;
+}
+.mcp-session-confirm-btn:hover { background: var(--surface-4); color: var(--text-primary); }
+.mcp-session-confirm-btn.danger { background: var(--status-problem-stroke); color: #fff; border-color: transparent; }
+.mcp-session-confirm-btn.danger:hover { background: var(--status-problem-stroke); opacity: 0.88; }
+/* Toggle discreto "mostrar/ocultar vazias (N)" */
+.mcp-session-empty-toggle {
+    display: block;
+    width: calc(100% - 12px);
+    margin: 6px 6px;
+    padding: 5px 10px;
+    border: 1px dashed var(--border-subtle);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-family: inherit;
+    text-align: center;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+.mcp-session-empty-toggle:hover { background: var(--surface-3); color: var(--text-secondary); }
 .mcp-session-nofiles { padding: 6px 10px; font-size: 11px; color: var(--text-tertiary); }
 .mcp-session-file {
     display: flex;
