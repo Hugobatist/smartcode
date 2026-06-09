@@ -68,15 +68,20 @@
             if (!colors) continue;
             var nodeEl = svg.querySelector('[data-node-id="' + nodeId + '"]');
             if (!nodeEl) continue;
-            // Find shape element (rect, circle, polygon, etc.)
-            var shape = nodeEl.querySelector('rect, circle, polygon, path, ellipse');
-            if (!shape) {
-                var childG = nodeEl.querySelector('g');
-                if (childG) shape = childG.querySelector('rect, circle, polygon, path, ellipse');
-            }
-            if (shape) {
-                shape.setAttribute('fill', colors.fill);
-                shape.setAttribute('stroke', colors.stroke);
+            // Modo sketch: pinta a forma de hit (fill) + o traço rough (stroke).
+            if (window.SmartCodeSketchShapes && nodeEl.querySelector('.smartcode-shape-hit')) {
+                SmartCodeSketchShapes.paintShape(nodeEl, colors.fill, colors.stroke);
+            } else {
+                // Find shape element (rect, circle, polygon, etc.)
+                var shape = nodeEl.querySelector('rect, circle, polygon, path, ellipse');
+                if (!shape) {
+                    var childG = nodeEl.querySelector('g');
+                    if (childG) shape = childG.querySelector('rect, circle, polygon, path, ellipse');
+                }
+                if (shape) {
+                    shape.setAttribute('fill', colors.fill);
+                    shape.setAttribute('stroke', colors.stroke);
+                }
             }
             var textEl = nodeEl.querySelector('text');
             if (textEl) textEl.setAttribute('fill', colors.text);
@@ -116,16 +121,21 @@
             var el = svg.querySelector('[data-subgraph-id="' + targetId + '"]')
                   || svg.querySelector('[data-node-id="' + targetId + '"]');
             if (!el) continue;
-            var shape = el.querySelector('rect, circle, polygon, path, ellipse');
-            if (!shape) {
-                var childG = el.querySelector('g');
-                if (childG) shape = childG.querySelector('rect, circle, polygon, path, ellipse');
-            }
-            if (shape) {
-                if (parsed.fill) shape.setAttribute('fill', parsed.fill);
-                if (parsed.stroke) shape.setAttribute('stroke', parsed.stroke);
-                if (parsed['stroke-width']) shape.setAttribute('stroke-width', parsed['stroke-width']);
-                if (parsed['stroke-dasharray']) shape.setAttribute('stroke-dasharray', parsed['stroke-dasharray']);
+            // Modo sketch: fill na forma de hit, stroke no traço rough.
+            if (window.SmartCodeSketchShapes && el.querySelector('.smartcode-shape-hit')) {
+                SmartCodeSketchShapes.paintShape(el, parsed.fill || null, parsed.stroke || null);
+            } else {
+                var shape = el.querySelector('rect, circle, polygon, path, ellipse');
+                if (!shape) {
+                    var childG = el.querySelector('g');
+                    if (childG) shape = childG.querySelector('rect, circle, polygon, path, ellipse');
+                }
+                if (shape) {
+                    if (parsed.fill) shape.setAttribute('fill', parsed.fill);
+                    if (parsed.stroke) shape.setAttribute('stroke', parsed.stroke);
+                    if (parsed['stroke-width']) shape.setAttribute('stroke-width', parsed['stroke-width']);
+                    if (parsed['stroke-dasharray']) shape.setAttribute('stroke-dasharray', parsed['stroke-dasharray']);
+                }
             }
             // Apply text color if specified
             if (parsed.color) {

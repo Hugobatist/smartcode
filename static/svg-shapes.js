@@ -208,7 +208,17 @@
     };
 
     // ── Render function ──
-    function render(shape, w, h) {
+    // Fronteira ÚNICA de desenho de forma (proposta §2). Com a chave de sketch
+    // LIGADA (?sketch=1) e o módulo hand-drawn disponível, delega o desenho para
+    // o rough.js (D-22/D-25). DESLIGADA (default), o caminho é idêntico ao de
+    // hoje — o visual padrão não muda. O 4º parâmetro `seed` (opcional, vindo do
+    // id do nó) só é usado no modo sketch, para o desenho ser determinístico.
+    function render(shape, w, h, seed) {
+        if (window.SmartCodeSketchFlag &&
+            window.SmartCodeSketchFlag.isEnabled() &&
+            window.SmartCodeSketchShapes) {
+            return window.SmartCodeSketchShapes.render(shape, w, h, seed);
+        }
         var fn = SHAPE_RENDERERS[shape] || SHAPE_RENDERERS['rect'];
         return fn(w, h);
     }

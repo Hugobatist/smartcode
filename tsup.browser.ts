@@ -1,26 +1,43 @@
 import { defineConfig } from 'tsup';
 
 /**
- * Browser build of the shared annotation core. Emits an IIFE exposing
- * window.SmartCodeAnnotationsCore, consumed by static/annotations.js.
+ * Builds dos bundles de NAVEGADOR (IIFE). Cada entry vira um global window.*
+ * próprio, então usamos um ARRAY de configs (tsup roda todas) — `globalName`
+ * é por-config, não por-entry.
  *
- * Output lands in static/vendor/ next to the other browser bundles. The main
- * tsup config (tsup.config.ts) then copies static/ into dist/static/ via its
- * onSuccess hook, so the npm-published dist/ includes this bundle too.
+ * Output em static/vendor/ ao lado dos outros bundles. O config principal
+ * (tsup.config.ts) depois copia static/ para dist/static/ via onSuccess,
+ * então o dist/ publicado no npm inclui estes bundles também.
  *
- * Runs before the main build: `tsup --config tsup.browser.ts && tsup`.
+ * Roda antes do build principal: `tsup --config tsup.browser.ts && tsup`.
+ *
+ * Bundles:
+ *  1. annotations-core → window.SmartCodeAnnotationsCore (core de anotações).
+ *  2. sketch-shapes    → window.SmartCodeSketchShapes (formas hand-drawn,
+ *     Wave 2 da reforma visual; consumido por svg-shapes.js atrás da flag).
  */
-export default defineConfig({
-  entry: { 'annotations-core': 'src/diagram/annotations-core.ts' },
-  format: ['iife'],
-  globalName: 'SmartCodeAnnotationsCore',
+const shared = {
+  format: ['iife'] as const,
   outDir: 'static/vendor',
-  platform: 'browser',
-  target: 'es2020',
+  platform: 'browser' as const,
+  target: 'es2020' as const,
   outExtension: () => ({ js: '.js' }),
   dts: false,
   clean: false,
   sourcemap: false,
   splitting: false,
   minify: false,
-});
+};
+
+export default defineConfig([
+  {
+    ...shared,
+    entry: { 'annotations-core': 'src/diagram/annotations-core.ts' },
+    globalName: 'SmartCodeAnnotationsCore',
+  },
+  {
+    ...shared,
+    entry: { 'sketch-shapes': 'src/render/sketch-shapes.ts' },
+    globalName: 'SmartCodeSketchShapes',
+  },
+]);

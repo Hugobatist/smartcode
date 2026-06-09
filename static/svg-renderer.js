@@ -75,6 +75,49 @@
         return element;
     }
 
+    // ── Dot-grid de papel (D-12) — só no modo sketch ──
+    // Dois <pattern> em userSpaceOnUse (pontinho fino a cada 24px + âncora a
+    // cada 120px). Ficam no espaço do diagrama, então escalam junto com o
+    // zoom/pan (que transforma o container #preview). Cores vêm de tokens.css.
+    // Retorna um <rect> de fundo (cobrindo o viewBox) para ir atrás de tudo, ou
+    // null se não estiver no modo sketch.
+    function buildDotGrid(defs, width, height) {
+        var dot = readToken('--canvas-dot', '#d8d4cc');
+        var dotBold = readToken('--canvas-dot-bold', '#c4bfb5');
+
+        var pat = attrs(el('pattern'), {
+            id: 'smartcode-dotgrid', width: 24, height: 24,
+            patternUnits: 'userSpaceOnUse'
+        });
+        pat.appendChild(attrs(el('circle'), { cx: 1.2, cy: 1.2, r: 1.1, fill: dot }));
+        defs.appendChild(pat);
+
+        var patBold = attrs(el('pattern'), {
+            id: 'smartcode-dotgrid-bold', width: 120, height: 120,
+            patternUnits: 'userSpaceOnUse'
+        });
+        patBold.appendChild(attrs(el('circle'), { cx: 1.5, cy: 1.5, r: 1.5, fill: dotBold }));
+        defs.appendChild(patBold);
+
+        // Margem generosa além do viewBox para o grid não "acabar" ao paninar.
+        var pad = 2000;
+        var bg = el('g');
+        bg.setAttribute('class', 'smartcode-dotgrid-bg');
+        bg.appendChild(attrs(el('rect'), {
+            x: -pad, y: -pad, width: width + pad * 2, height: height + pad * 2,
+            fill: 'url(#smartcode-dotgrid)'
+        }));
+        bg.appendChild(attrs(el('rect'), {
+            x: -pad, y: -pad, width: width + pad * 2, height: height + pad * 2,
+            fill: 'url(#smartcode-dotgrid-bold)'
+        }));
+        return bg;
+    }
+
+    function sketchOn() {
+        return !!(window.SmartCodeSketchFlag && window.SmartCodeSketchFlag.isEnabled());
+    }
+
     // ── Arrow Markers ──
     function createArrowMarkers(defs) {
         var sizes = { 'arrow-normal': 8, 'arrow-thick': 10, 'arrow-dotted': 8 };
@@ -171,18 +214,32 @@
         var ny = isFinite(node.y) ? node.y : 0;
         g.setAttribute('transform', 'translate(' + nx + ',' + ny + ')');
 
-        var shapeEl = window.SmartCodeSvgShapes.render(node.shape, node.width, node.height);
-        attrs(shapeEl, { fill: THEME.nodeFill, stroke: THEME.nodeStroke, 'stroke-width': THEME.nodeStrokeWidth });
+        // Passa o id do nó como seed (4º arg): só importa no modo sketch, para o
+        // desenho à mão ser determinístico. No modo legado é ignorado.
+        var shapeEl = window.SmartCodeSvgShapes.render(node.shape, node.width, node.height, node.id);
 
-        // For subroutine <g>, apply styles to child elements individually
-        if (node.shape === 'subroutine' && shapeEl.tagName === 'g') {
-            var children = shapeEl.childNodes;
-            for (var c = 0; c < children.length; c++) {
-                if (children[c].nodeType === 1) {
-                    attrs(children[c], {
-                        fill: children[c].tagName === 'rect' ? THEME.nodeFill : 'none',
-                        stroke: THEME.nodeStroke, 'stroke-width': THEME.nodeStrokeWidth
-                    });
+        // Modo sketch: a forma vem como <g class="smartcode-shape"> com uma forma
+        // de hit por baixo. A cor inicial (fill pastel + ink) vai via paintShape,
+        // que mira a forma de hit e o traço rough — mesmo alvo que status usa.
+        var isSketch = shapeEl.getAttribute &&
+            shapeEl.getAttribute('class') === 'smartcode-shape';
+        if (isSketch) {
+            if (window.SmartCodeSketchShapes && SmartCodeSketchShapes.paintShape) {
+                SmartCodeSketchShapes.paintShape(shapeEl, THEME.nodeFill, THEME.nodeStroke);
+            }
+        } else {
+            attrs(shapeEl, { fill: THEME.nodeFill, stroke: THEME.nodeStroke, 'stroke-width': THEME.nodeStrokeWidth });
+
+            // For subroutine <g>, apply styles to child elements individually
+            if (node.shape === 'subroutine' && shapeEl.tagName === 'g') {
+                var children = shapeEl.childNodes;
+                for (var c = 0; c < children.length; c++) {
+                    if (children[c].nodeType === 1) {
+                        attrs(children[c], {
+                            fill: children[c].tagName === 'rect' ? THEME.nodeFill : 'none',
+                            stroke: THEME.nodeStroke, 'stroke-width': THEME.nodeStrokeWidth
+                        });
+                    }
                 }
             }
         }
@@ -229,6 +286,63 @@
         }
     }
 
+    // ── Aresta à mão (rough.js) + ponta de seta em "V" aberto (D-11) ──
+    // Desenha o MESMO path (mesmos pontos roteados pelo dagre) com rough.js, e a
+    // ponta como dois segmentos a ~28° da direção final (V aberto), herdando a
+    // cor/peso da linha. Seed determinístico pelo id da aresta. Só roda no modo
+    // sketch; o caminho legado fica intocado.
+    function appendSketchEdge(g, edge, points) {
+        var rc = window.SmartCodeSketchShapes && SmartCodeSketchShapes.getRough
+            ? SmartCodeSketchShapes.getRough() : null;
+        if (!rc) {
+            // Sem rough disponível: degrada para o path liso (não quebra o render).
+            var fallback = el('path');
+            fallback.setAttribute('d', edgePointsToPath(points));
+            applyEdgeStyle(fallback, edge.type);
+            g.appendChild(fallback);
+            return;
+        }
+        if (edge.type === 'invisible') return;
+
+        var seed = SmartCodeSketchShapes.seedFromId(edge.id || (edge.from + '->' + edge.to));
+        var thick = edge.type === 'thick';
+        var opts = {
+            roughness: 0.9, bowing: 0.8,
+            stroke: THEME.edgeStroke,
+            strokeWidth: thick ? 2.8 : parseFloat(THEME.edgeStrokeWidth),
+            seed: seed
+        };
+        if (edge.type === 'dotted') opts.strokeLineDash = [6, 6];
+
+        var d = edgePointsToPath(points);
+        if (!d) return;
+        g.appendChild(rc.path(d, opts));
+
+        // Ponta de seta em "V" (exceto 'open'/'invisible', que não têm seta).
+        if (edge.type !== 'open') {
+            var valid = [];
+            for (var i = 0; i < points.length; i++) {
+                if (isFinite(points[i].x) && isFinite(points[i].y)) valid.push(points[i]);
+            }
+            if (valid.length >= 2) {
+                var end = valid[valid.length - 1];
+                var prev = valid[valid.length - 2];
+                var ang = Math.atan2(end.y - prev.y, end.x - prev.x);
+                var arm = 14, spread = 0.5; // ~28 graus
+                var p1 = [end.x - arm * Math.cos(ang - spread), end.y - arm * Math.sin(ang - spread)];
+                var p2 = [end.x - arm * Math.cos(ang + spread), end.y - arm * Math.sin(ang + spread)];
+                g.appendChild(rc.line(p1[0], p1[1], end.x, end.y, {
+                    roughness: 0.8, bowing: 0.6, stroke: THEME.edgeStroke,
+                    strokeWidth: thick ? 2.6 : 1.7, seed: seed + 7
+                }));
+                g.appendChild(rc.line(p2[0], p2[1], end.x, end.y, {
+                    roughness: 0.8, bowing: 0.6, stroke: THEME.edgeStroke,
+                    strokeWidth: thick ? 2.6 : 1.7, seed: seed + 11
+                }));
+            }
+        }
+    }
+
     // ── Render a single edge ──
     function renderEdge(edge, nodesMap) {
         var g = el('g');
@@ -238,10 +352,14 @@
         var targetNode = nodesMap[edge.to];
         var points = targetNode ? shortenPathToNodeBoundary(edge.points, targetNode) : edge.points;
 
-        var path = el('path');
-        path.setAttribute('d', edgePointsToPath(points));
-        applyEdgeStyle(path, edge.type);
-        g.appendChild(path);
+        if (sketchOn() && window.SmartCodeSketchShapes) {
+            appendSketchEdge(g, edge, points);
+        } else {
+            var path = el('path');
+            path.setAttribute('d', edgePointsToPath(points));
+            applyEdgeStyle(path, edge.type);
+            g.appendChild(path);
+        }
 
         // Optional label at midpoint
         if (edge.label) {
@@ -280,12 +398,29 @@
         var sw = sg.width > 0 ? sg.width : 100;
         var sh = sg.height > 0 ? sg.height : 60;
 
-        g.appendChild(attrs(el('rect'), {
-            x: sx - sw / 2, y: sy - sh / 2,
-            width: sw, height: sh, rx: 8,
-            fill: THEME.subgraphFill, stroke: THEME.subgraphStroke,
-            'stroke-width': THEME.subgraphStrokeWidth
-        }));
+        // No modo sketch, o contorno do subgraph também é à mão (coesão); o
+        // fill leve continua num rect limpo por baixo. Caminho legado intocado.
+        var rcSg = sketchOn() && window.SmartCodeSketchShapes && SmartCodeSketchShapes.getRough
+            ? SmartCodeSketchShapes.getRough() : null;
+        if (rcSg) {
+            g.appendChild(attrs(el('rect'), {
+                x: sx - sw / 2, y: sy - sh / 2, width: sw, height: sh, rx: 14,
+                fill: THEME.subgraphFill, stroke: 'none'
+            }));
+            g.appendChild(rcSg.rectangle(sx - sw / 2, sy - sh / 2, sw, sh, {
+                roughness: 1.0, bowing: 1.0,
+                stroke: THEME.subgraphStroke,
+                strokeWidth: parseFloat(THEME.subgraphStrokeWidth) || 1,
+                seed: SmartCodeSketchShapes.seedFromId(sg.id || 'sg')
+            }));
+        } else {
+            g.appendChild(attrs(el('rect'), {
+                x: sx - sw / 2, y: sy - sh / 2,
+                width: sw, height: sh, rx: 8,
+                fill: THEME.subgraphFill, stroke: THEME.subgraphStroke,
+                'stroke-width': THEME.subgraphStrokeWidth
+            }));
+        }
 
         var text = el('text');
         attrs(text, {
@@ -317,6 +452,11 @@
 
         var root = el('g');
         root.setAttribute('class', 'smartcode-diagram');
+
+        // 0. Dot-grid de papel atrás de tudo (só no modo sketch — D-12).
+        if (sketchOn()) {
+            root.appendChild(buildDotGrid(defs, layout.width, layout.height));
+        }
 
         // Build nodes map for edge boundary calculations
         var nodesMap = {};

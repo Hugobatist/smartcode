@@ -9,6 +9,10 @@
          CDN do Google Fonts removido (D-01/D-33) — sem dependência de rede. -->
     <script src="vendor/dagre-bundle.js"></script>
     <script src="vendor/annotations-core.js"></script>
+    <!-- Modo sketch (hand-drawn, ?sketch=1): rough.js + camada de formas.
+         Vendorizados offline-first (sem CDN, D-24). Carregam antes de svg-shapes.js. -->
+    <script src="vendor/rough.min.js"></script>
+    <script src="vendor/sketch-shapes.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@11.12.2/dist/mermaid.min.js"></script>
     <link rel="stylesheet" href="tokens.css">
     <link rel="stylesheet" href="main-layout.css">
@@ -223,6 +227,7 @@
 <script src="clipboard.js"></script>
 <script src="viewport-transform.js"></script>
 <script src="dagre-layout.js"></script>
+<script src="sketch-flag.js"></script>
 <script src="svg-shapes.js"></script>
 <script src="svg-renderer.js"></script>
 <script src="custom-renderer.js"></script>

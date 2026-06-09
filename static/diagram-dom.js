@@ -195,6 +195,24 @@
         highlightNode: function(nodeId, on) {
             var el = this.findNodeElement(nodeId);
             if (!el) return;
+            // Modo sketch: o traço visível é o rough (.smartcode-sketch-stroke).
+            // Salva/restaura stroke nesses paths para o highlight de busca.
+            var sketchStrokes = el.querySelectorAll('.smartcode-sketch-stroke');
+            if (sketchStrokes && sketchStrokes.length) {
+                for (var s = 0; s < sketchStrokes.length; s++) {
+                    var sk = sketchStrokes[s];
+                    if (on) {
+                        sk.setAttribute('data-prev-stroke', sk.getAttribute('stroke') || '');
+                        sk.setAttribute('data-prev-stroke-width', sk.getAttribute('stroke-width') || '');
+                        sk.setAttribute('stroke', '#3b82f6');
+                        sk.setAttribute('stroke-width', '3');
+                    } else {
+                        sk.setAttribute('stroke', sk.getAttribute('data-prev-stroke') || '');
+                        sk.setAttribute('stroke-width', sk.getAttribute('data-prev-stroke-width') || '');
+                    }
+                }
+                return;
+            }
             // SVG elements don't support CSS outline — modify shape stroke instead
             var shape = el.querySelector('rect, circle, polygon, path, ellipse');
             if (!shape) {
